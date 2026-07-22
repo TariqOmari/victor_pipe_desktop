@@ -1,0 +1,38 @@
+name: victor_project
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Database packages - ALL OF THESE ARE NEEDED!
+  sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.4.2  # ← IMPORTANT! ADD THIS!
+  path: ^1.8.3
+  path_provider: ^2.1.0
+  
+  # State management
+  provider: ^6.0.5
+  
+  # Utilities
+  intl: ^0.18.0
+  
+  # Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+
+flutter:
+  uses-material-design: true
+  # IMPORTANT: Assets section MUST be indented properly!
+  assets:
+    - assets/images/companylogo.png

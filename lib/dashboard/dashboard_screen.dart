@@ -3,7 +3,7 @@ import 'sidebar.dart';
 import 'navbar.dart';
 import 'pages/home_page.dart';
 import 'pages/customers_page.dart';
-import 'pages/suppliers_page.dart'; // ← ADD THIS
+import 'pages/suppliers_page.dart';
 import 'pages/raw_materials_page.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -20,7 +20,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final List<Widget> pages = [
     const HomePage(),           // index 0: Dashboard
     const CustomersPage(),      // index 1: Customers
-    const SuppliersPage(),      // index 2: Suppliers ← NEW!
+    const SuppliersPage(),      // index 2: Suppliers
     const RawMaterialsPage(),   // index 3: Raw Materials
   ];
 

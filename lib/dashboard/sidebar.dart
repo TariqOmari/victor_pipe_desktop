@@ -104,7 +104,7 @@ class Sidebar extends StatelessWidget {
             ),
           ),
 
-          // Menu Items - 3 Pages!
+          // Menu Items
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
@@ -123,20 +123,19 @@ class Sidebar extends StatelessWidget {
                   title: 'مشتریان',
                   isSelected: selectedIndex == 1,
                 ),
-                // In the menu items list, add this between Customers and Raw Materials:
-_buildMenuItem(
-  context: context,
-  index: 2,
-  icon: Icons.local_shipping_outlined,
-  title: 'فروشندگان',
-  isSelected: selectedIndex == 2,
-),
                 _buildMenuItem(
                   context: context,
                   index: 2,
+                  icon: Icons.local_shipping_outlined,
+                  title: 'فروشندگان',
+                  isSelected: selectedIndex == 2,
+                ),
+                _buildMenuItem(
+                  context: context,
+                  index: 3,
                   icon: Icons.warehouse_outlined,
                   title: 'مدیریت مواد خام',
-                  isSelected: selectedIndex == 2,
+                  isSelected: selectedIndex == 3,
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
@@ -195,20 +194,8 @@ _buildMenuItem(
     required bool isSelected,
     bool isLogout = false,
   }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
-        color: isSelected 
-            ? Colors.white.withOpacity(0.15) 
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: isSelected
-            ? Border.all(
-                color: Colors.white.withOpacity(0.2),
-                width: 1,
-              )
-            : null,
-      ),
+    return Material(
+      color: Colors.transparent, // ← FIX: Wrapped in Material!
       child: ListTile(
         leading: Icon(
           icon,
@@ -241,6 +228,18 @@ _buildMenuItem(
                 ),
               )
             : null,
+        tileColor: isSelected 
+            ? Colors.white.withOpacity(0.15) 
+            : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: isSelected
+              ? BorderSide(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1,
+                )
+              : BorderSide.none,
+        ),
         onTap: () {
           if (isLogout) {
             _showLogoutDialog(context);
@@ -248,9 +247,6 @@ _buildMenuItem(
             onItemSelected(index);
           }
         },
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
       ),
     );
   }

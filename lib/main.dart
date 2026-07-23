@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/login_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'database/database_helper.dart';
@@ -36,6 +37,17 @@ class MyApp extends StatelessWidget {
               },
             ),
       },
+      // ============ ADD THIS ============
+      locale: const Locale('fa', 'IR'),
+      supportedLocales: const [
+        Locale('fa', 'IR'),
+        Locale('en', 'US'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
     );
   }
 }

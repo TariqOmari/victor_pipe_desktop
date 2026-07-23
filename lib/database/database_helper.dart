@@ -43,7 +43,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 4, // ← CHANGED TO VERSION 4!
+        version: 6, // ← CHANGED TO VERSION 6!
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) {
@@ -68,7 +68,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 4, // ← CHANGED TO VERSION 4!
+        version: 6, // ← CHANGED TO VERSION 6!
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) {
@@ -140,10 +140,8 @@ class DatabaseHelper {
         print('✅ Raw materials table added!');
       }
 
-      // ★★★ NEW: Version 4 - Add missing columns if they don't exist ★★★
       if (oldVersion < 4) {
         try {
-          // Check if columns exist by trying to add them
           await db.execute('ALTER TABLE raw_materials ADD COLUMN location TEXT');
           print('✅ Added location column!');
         } catch (e) {
@@ -158,6 +156,65 @@ class DatabaseHelper {
         }
         
         print('✅ Database upgraded to version 4 successfully!');
+      }
+
+      if (oldVersion < 5) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN date TEXT');
+          print('✅ Added date column!');
+        } catch (e) { print('⚠️ date column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN unit TEXT');
+          print('✅ Added unit column!');
+        } catch (e) { print('⚠️ unit column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN unit_price TEXT');
+          print('✅ Added unit_price column!');
+        } catch (e) { print('⚠️ unit_price column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN product TEXT');
+          print('✅ Added product column!');
+        } catch (e) { print('⚠️ product column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN commission TEXT');
+          print('✅ Added commission column!');
+        } catch (e) { print('⚠️ commission column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN transfer_cost TEXT');
+          print('✅ Added transfer_cost column!');
+        } catch (e) { print('⚠️ transfer_cost column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN miscellaneous TEXT');
+          print('✅ Added miscellaneous column!');
+        } catch (e) { print('⚠️ miscellaneous column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN final_price TEXT');
+          print('✅ Added final_price column!');
+        } catch (e) { print('⚠️ final_price column: $e'); }
+        
+        print('✅ Database upgraded to version 5 successfully!');
+      }
+
+      // ★★★ NEW: Version 6 - Add غرفه داری and بارچلانی ★★★
+      if (oldVersion < 6) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN ghurfedari TEXT');
+          print('✅ Added غرفه داری column!');
+        } catch (e) { print('⚠️ ghurfedari column: $e'); }
+        
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN barchalani TEXT');
+          print('✅ Added بارچلانی column!');
+        } catch (e) { print('⚠️ barchalani column: $e'); }
+        
+        print('✅ Database upgraded to version 6 successfully!');
       }
       
       print('✅ Database upgraded successfully!');
@@ -212,6 +269,16 @@ class DatabaseHelper {
         thickness TEXT,
         net_weight TEXT,
         gross_weight TEXT,
+        date TEXT,
+        unit TEXT,
+        unit_price TEXT,
+        product TEXT,
+        commission TEXT,
+        transfer_cost TEXT,
+        miscellaneous TEXT,
+        final_price TEXT,
+        ghurfedari TEXT,
+        barchalani TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
       )
@@ -386,35 +453,33 @@ class DatabaseHelper {
   }
 
   // ============ RAW MATERIALS ============
-Future<List<Map<String, dynamic>>> getRawMaterials() async {
-  try {
-    final db = await database;
-    final result = await db.query('raw_materials', orderBy: 'name ASC');
-    
-    // ← ADD THIS DEBUG PRINT!
-    print('📦 Raw materials fetched: ${result.length}');
-    if (result.isNotEmpty) {
-      print('📦 First material keys: ${result.first.keys}');
-      print('📦 First material: ${result.first}');
+  Future<List<Map<String, dynamic>>> getRawMaterials() async {
+    try {
+      final db = await database;
+      final result = await db.query('raw_materials', orderBy: 'name ASC');
+      
+      print('📦 Raw materials fetched: ${result.length}');
+      if (result.isNotEmpty) {
+        print('📦 First material keys: ${result.first.keys}');
+      }
+      
+      return result;
+    } catch (e) {
+      print('❌ Error getting raw materials: $e');
+      return [];
     }
-    
-    return result;
-  } catch (e) {
-    print('❌ Error getting raw materials: $e');
-    return [];
   }
-}
 
-Future<int> insertRawMaterial(Map<String, dynamic> material) async {
-  try {
-    final db = await database;
-    print('📦 Inserting: $material'); // ← ADD THIS!
-    return await db.insert('raw_materials', material);
-  } catch (e) {
-    print('❌ Error inserting raw material: $e');
-    return -1;
+  Future<int> insertRawMaterial(Map<String, dynamic> material) async {
+    try {
+      final db = await database;
+      print('📦 Inserting: $material');
+      return await db.insert('raw_materials', material);
+    } catch (e) {
+      print('❌ Error inserting raw material: $e');
+      return -1;
+    }
   }
-}
 
   Future<int> updateRawMaterial(int id, Map<String, dynamic> material) async {
     try {

@@ -1,6 +1,4 @@
-// sidebar.dart
 import 'package:flutter/material.dart';
-import 'dart:io';
 
 class Sidebar extends StatelessWidget {
   final int selectedIndex;
@@ -46,10 +44,10 @@ class Sidebar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // User Profile Header
-          _buildUserProfile(isSmallScreen),
+          // Header با استایل جدید
+          _buildHeader(isSmallScreen),
           
-          // Menu Items
+          // Menu Items با استایل جدید
           Expanded(
             child: ListView(
               padding: EdgeInsets.symmetric(
@@ -57,7 +55,7 @@ class Sidebar extends StatelessWidget {
                 horizontal: isSmallScreen ? 8 : 12,
               ),
               children: [
-                // Dashboard
+                // آیتم‌های منو با انیمیشن و استایل جدید
                 _buildMenuItem(
                   context: context,
                   index: 0,
@@ -65,7 +63,6 @@ class Sidebar extends StatelessWidget {
                   title: 'داشبورد',
                   isSelected: selectedIndex == 0,
                 ),
-                // Customers
                 _buildMenuItem(
                   context: context,
                   index: 1,
@@ -73,7 +70,6 @@ class Sidebar extends StatelessWidget {
                   title: 'مدیریت مشتریان',
                   isSelected: selectedIndex == 1,
                 ),
-                // Suppliers
                 _buildMenuItem(
                   context: context,
                   index: 2,
@@ -81,7 +77,6 @@ class Sidebar extends StatelessWidget {
                   title: 'مدیریت فروشندگان',
                   isSelected: selectedIndex == 2,
                 ),
-                // Raw Materials
                 _buildMenuItem(
                   context: context,
                   index: 3,
@@ -90,13 +85,19 @@ class Sidebar extends StatelessWidget {
                   isSelected: selectedIndex == 3,
                 ),
                 _buildMenuItem(
+                context: context,
+                index: 7, // ایندکس جدید
+                icon: Icons.factory_rounded,
+                title: 'مدیریت تولید',
+                isSelected: selectedIndex == 7,
+                ),
+                _buildMenuItem(
                   context: context,
                   index: 4,
                   icon: Icons.trending_up_rounded,
                   title: 'مدیریت فروشات',
                   isSelected: selectedIndex == 4,
                 ),
-                // Daily Expenses
                 _buildMenuItem(
                   context: context,
                   index: 5,
@@ -104,7 +105,6 @@ class Sidebar extends StatelessWidget {
                   title: 'مصارف روزمره',
                   isSelected: selectedIndex == 5,
                 ),
-                // Customers & Companies
                 _buildMenuItem(
                 context: context,
                 index: 6,  // ایندکس جدید
@@ -112,17 +112,29 @@ class Sidebar extends StatelessWidget {
                 title: 'مشتریان و شرکت‌ها',
                  isSelected: selectedIndex == 6,
                 ),
-                
-                // Admins Management
                 _buildMenuItem(
-                  context: context,
-                  index: 7,
-                  icon: Icons.admin_panel_settings_outlined,
-                  title: 'مدیریت مدیران',
-                  isSelected: selectedIndex == 7,
-                ),
+                context: context,
+                icon: Icons.report_rounded,
+                index: 8,
+                title: 'گزارشات',
+                isSelected: selectedIndex == 8,
+              ),
+              _buildMenuItem(
+               context: context,
+               index: 9,
+               icon: Icons.account_balance_rounded,
+               title: 'سرمایه',
+               isSelected: selectedIndex == 9,
+              ),
+              _buildMenuItem(
+               context: context,
+               index: 10,
+               icon: Icons.currency_exchange_rounded,
+               title: 'صرافی',
+               isSelected: selectedIndex == 10,
+              ),
                 
-                // Divider
+                // Divider با استایل جدید
                 Padding(
                   padding: EdgeInsets.symmetric(
                     vertical: isSmallScreen ? 8 : 12,
@@ -135,7 +147,7 @@ class Sidebar extends StatelessWidget {
                   ),
                 ),
                 
-                // Logout
+                // خروج از سیستم با استایل ویژه
                 _buildMenuItem(
                   context: context,
                   index: -1,
@@ -149,19 +161,14 @@ class Sidebar extends StatelessWidget {
           ),
 
           // Footer با استایل جدید
-          _buildFooter(isSmallScreen),
+          // _buildFooter(isSmallScreen),
         ],
       ),
     );
   }
 
-  // ======================== USER PROFILE HEADER ========================
-  Widget _buildUserProfile(bool isSmallScreen) {
-    final String fullName = user['full_name'] ?? 'کاربر';
-    final String username = user['username'] ?? '';
-    final String? profilePic = user['profile_pic'];
-    final String firstLetter = fullName.isNotEmpty ? fullName[0] : '?';
-
+  // ======================== هدر جدید ========================
+  Widget _buildHeader(bool isSmallScreen) {
     return Container(
       padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
       decoration: BoxDecoration(
@@ -172,145 +179,89 @@ class Sidebar extends StatelessWidget {
           ),
         ),
       ),
-      child: Column(
+      child: Row(
         children: [
-          // Profile Photo - Circle with nice border
+          // لوگو با انیمیشن و استایل جدید
           Container(
-            width: isSmallScreen ? 70 : 85,
-            height: isSmallScreen ? 70 : 85,
+            width: isSmallScreen ? 40 : 48,
+            height: isSmallScreen ? 40 : 48,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withOpacity(0.3),
-                  Colors.white.withOpacity(0.1),
-                ],
-              ),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.4),
-                width: 3,
-              ),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(isSmallScreen ? 10 : 12),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.2),
-                  blurRadius: 20,
+                  blurRadius: 15,
                   offset: const Offset(0, 4),
                 ),
                 BoxShadow(
-                  color: Colors.white.withOpacity(0.1),
-                  blurRadius: 10,
+                  color: Colors.white.withOpacity(0.3),
+                  blurRadius: 5,
                   offset: const Offset(0, -2),
                 ),
               ],
             ),
-            child: ClipOval(
-              child: profilePic != null && profilePic.isNotEmpty
-                  ? Image.file(
-                      File(profilePic),
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return _buildAvatarFallback(firstLetter, isSmallScreen);
-                      },
-                    )
-                  : _buildAvatarFallback(firstLetter, isSmallScreen),
-            ),
-          ),
-          
-          const SizedBox(height: 10),
-          
-          // User Name
-          Text(
-            fullName,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: isSmallScreen ? 14 : 17,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          
-          const SizedBox(height: 2),
-          
-          // Role Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(isSmallScreen ? 10 : 12),
+              child: Image.asset(
+                'assets/images/companylogo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Center(
+                    child: Text(
+                      'VP',
+                      style: TextStyle(
+                        color: const Color(0xFFCB001D),
+                        fontSize: isSmallScreen ? 16 : 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          SizedBox(width: isSmallScreen ? 10 : 14),
+          
+          // عنوان و زیرعنوان
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.admin_panel_settings,
-                  color: Colors.white.withOpacity(0.8),
-                  size: isSmallScreen ? 12 : 14,
-                ),
-                const SizedBox(width: 4),
                 Text(
-                  'مدیر',
+                  'ویکتور پایپ',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white,
+                    fontSize: isSmallScreen ? 15 : 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  'سیستم مدیریتی',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
                     fontSize: isSmallScreen ? 10 : 12,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ],
             ),
           ),
-          
-          const SizedBox(height: 4),
-          
-          // Username (small)
-          if (username.isNotEmpty)
-            Text(
-              '@$username',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
-                fontSize: isSmallScreen ? 9 : 11,
-                fontWeight: FontWeight.w400,
-              ),
-              textAlign: TextAlign.center,
-            ),
         ],
       ),
     );
   }
 
-  // ======================== Avatar Fallback ========================
-  Widget _buildAvatarFallback(String letter, bool isSmallScreen) {
-    return Container(
-      color: const Color(0xFF8B0000),
-      child: Center(
-        child: Text(
-          letter,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: isSmallScreen ? 28 : 36,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ======================== Menu Item ========================
+  // ======================== آیتم منوی جدید با استایل بهتر ========================
   Widget _buildMenuItem({
     required BuildContext context,
     required int index,
@@ -321,6 +272,7 @@ class Sidebar extends StatelessWidget {
   }) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 1200;
+    final isHovered = false; // برای حالت Hover در Web/Desktop
 
     return Material(
       color: Colors.transparent,
@@ -398,7 +350,9 @@ class Sidebar extends StatelessWidget {
                     ),
                   )
                 : null,
-            tileColor: Colors.transparent,
+            tileColor: isSelected
+                ? Colors.transparent
+                : Colors.transparent,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(isSmallScreen ? 10 : 12),
               side: isSelected
@@ -424,46 +378,46 @@ class Sidebar extends StatelessWidget {
   }
 
   // ======================== فوتر جدید ========================
-  Widget _buildFooter(bool isSmallScreen) {
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: Colors.white.withOpacity(0.15),
-            width: 1.5,
-          ),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
-              ),
-            ),
-            child: Text(
-              '●  نسخه ۲.۰  ●',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: isSmallScreen ? 10 : 11,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildFooter(bool isSmallScreen) {
+  //   return Container(
+  //     padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+  //     decoration: BoxDecoration(
+  //       border: Border(
+  //         top: BorderSide(
+  //           color: Colors.white.withOpacity(0.15),
+  //           width: 1.5,
+  //         ),
+  //       ),
+  //     ),
+  //     child: Row(
+  //       mainAxisAlignment: MainAxisAlignment.center,
+  //       children: [
+  //         Container(
+  //           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+  //           decoration: BoxDecoration(
+  //             color: Colors.white.withOpacity(0.08),
+  //             borderRadius: BorderRadius.circular(20),
+  //             border: Border.all(
+  //               color: Colors.white.withOpacity(0.1),
+  //               width: 1,
+  //             ),
+  //           ),
+  //           child: Text(
+  //             '●  نسخه ۲.۰  ●',
+  //             style: TextStyle(
+  //               color: Colors.white.withOpacity(0.6),
+  //               fontSize: isSmallScreen ? 10 : 11,
+  //               fontWeight: FontWeight.w500,
+  //               letterSpacing: 1.5,
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
-  // ======================== Logout Dialog ========================
+  // ======================== دیالوگ خروج با استایل جدید ========================
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -489,6 +443,7 @@ class Sidebar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // آیکون خروج
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

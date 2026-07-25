@@ -4,6 +4,7 @@ import 'sidebar.dart';
 import 'navbar.dart';
 import 'pages/home_page.dart';
 import 'pages/customers_page.dart';
+import 'pages/admins_page.dart'; // Import your Admins page
 import 'pages/suppliers_page.dart';
 import 'pages/raw_materials_page.dart';
 import 'pages/sales_page.dart'; // Import your sales page

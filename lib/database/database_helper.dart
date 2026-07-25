@@ -43,7 +43,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 6, // ← CHANGED TO VERSION 6!
+        version: 8,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) {
@@ -68,7 +68,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 6, // ← CHANGED TO VERSION 6!
+        version: 8,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) {
@@ -143,78 +143,101 @@ class DatabaseHelper {
       if (oldVersion < 4) {
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN location TEXT');
-          print('✅ Added location column!');
-        } catch (e) {
-          print('⚠️ location column already exists or error: $e');
-        }
-        
+        } catch (e) { print('⚠️ location: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN material_type TEXT');
-          print('✅ Added material_type column!');
-        } catch (e) {
-          print('⚠️ material_type column already exists or error: $e');
-        }
-        
-        print('✅ Database upgraded to version 4 successfully!');
+        } catch (e) { print('⚠️ material_type: $e'); }
+        print('✅ Version 4 upgrade done!');
       }
 
       if (oldVersion < 5) {
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN date TEXT');
-          print('✅ Added date column!');
-        } catch (e) { print('⚠️ date column: $e'); }
-        
+        } catch (e) { print('⚠️ date: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN unit TEXT');
-          print('✅ Added unit column!');
-        } catch (e) { print('⚠️ unit column: $e'); }
-        
+        } catch (e) { print('⚠️ unit: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN unit_price TEXT');
-          print('✅ Added unit_price column!');
-        } catch (e) { print('⚠️ unit_price column: $e'); }
-        
+        } catch (e) { print('⚠️ unit_price: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN product TEXT');
-          print('✅ Added product column!');
-        } catch (e) { print('⚠️ product column: $e'); }
-        
+        } catch (e) { print('⚠️ product: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN commission TEXT');
-          print('✅ Added commission column!');
-        } catch (e) { print('⚠️ commission column: $e'); }
-        
+        } catch (e) { print('⚠️ commission: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN transfer_cost TEXT');
-          print('✅ Added transfer_cost column!');
-        } catch (e) { print('⚠️ transfer_cost column: $e'); }
-        
+        } catch (e) { print('⚠️ transfer_cost: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN miscellaneous TEXT');
-          print('✅ Added miscellaneous column!');
-        } catch (e) { print('⚠️ miscellaneous column: $e'); }
-        
+        } catch (e) { print('⚠️ miscellaneous: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN final_price TEXT');
-          print('✅ Added final_price column!');
-        } catch (e) { print('⚠️ final_price column: $e'); }
-        
-        print('✅ Database upgraded to version 5 successfully!');
+        } catch (e) { print('⚠️ final_price: $e'); }
+        print('✅ Version 5 upgrade done!');
       }
 
-      // ★★★ NEW: Version 6 - Add غرفه داری and بارچلانی ★★★
       if (oldVersion < 6) {
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN ghurfedari TEXT');
-          print('✅ Added غرفه داری column!');
-        } catch (e) { print('⚠️ ghurfedari column: $e'); }
-        
+        } catch (e) { print('⚠️ ghurfedari: $e'); }
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN barchalani TEXT');
-          print('✅ Added بارچلانی column!');
-        } catch (e) { print('⚠️ barchalani column: $e'); }
+        } catch (e) { print('⚠️ barchalani: $e'); }
+        print('✅ Version 6 upgrade done!');
+      }
+
+      if (oldVersion < 7) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN invoice_id INTEGER');
+        } catch (e) { print('⚠️ invoice_id: $e'); }
+        print('✅ Version 7 upgrade done!');
+      }
+
+      // ★★★ VERSION 8: DROP OLD TABLES AND CREATE NEW ONE ★★★
+      if (oldVersion < 8) {
+        // Drop old invoice tables if they exist
+        try {
+          await db.execute('DROP TABLE IF EXISTS invoices');
+          print('✅ Dropped old invoices table');
+        } catch (e) { print('⚠️ Drop invoices: $e'); }
         
-        print('✅ Database upgraded to version 6 successfully!');
+        try {
+          await db.execute('DROP TABLE IF EXISTS invoice_items');
+          print('✅ Dropped old invoice_items table');
+        } catch (e) { print('⚠️ Drop invoice_items: $e'); }
+        
+        // Create ONE clean invoice table
+        await db.execute('''
+          CREATE TABLE raw_material_invoices(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT UNIQUE NOT NULL,
+            supplier_id INTEGER,
+            supplier_name TEXT,
+            date TEXT,
+            location TEXT,
+            name TEXT,
+            material_type TEXT,
+            thickness TEXT,
+            net_weight REAL,
+            gross_weight REAL,
+            unit TEXT,
+            unit_price REAL,
+            product REAL,
+            commission REAL,
+            transfer_cost REAL,
+            miscellaneous REAL,
+            ghurfedari REAL,
+            barchalani REAL,
+            final_price REAL,
+            material_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        ''');
+        print('✅ raw_material_invoices table created with ALL fields!');
+        
+        print('✅ Database upgraded to version 8!');
       }
       
       print('✅ Database upgraded successfully!');
@@ -225,6 +248,7 @@ class DatabaseHelper {
   }
 
   Future<void> _createTables(Database db) async {
+    // Users table
     await db.execute('''
       CREATE TABLE users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,6 +261,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Products table
     await db.execute('''
       CREATE TABLE products(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -248,6 +273,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Suppliers table
     await db.execute('''
       CREATE TABLE suppliers(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,6 +285,7 @@ class DatabaseHelper {
       )
     ''');
 
+    // Raw Materials table
     await db.execute('''
       CREATE TABLE raw_materials(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -279,8 +306,37 @@ class DatabaseHelper {
         final_price TEXT,
         ghurfedari TEXT,
         barchalani TEXT,
+        invoice_id INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+      )
+    ''');
+
+    // ★★★ ONE INVOICE TABLE - ALL FIELDS ★★★
+    await db.execute('''
+      CREATE TABLE raw_material_invoices(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT UNIQUE NOT NULL,
+        supplier_id INTEGER,
+        supplier_name TEXT,
+        date TEXT,
+        location TEXT,
+        name TEXT,
+        material_type TEXT,
+        thickness TEXT,
+        net_weight REAL,
+        gross_weight REAL,
+        unit TEXT,
+        unit_price REAL,
+        product REAL,
+        commission REAL,
+        transfer_cost REAL,
+        miscellaneous REAL,
+        ghurfedari REAL,
+        barchalani REAL,
+        final_price REAL,
+        material_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
   }
@@ -457,12 +513,10 @@ class DatabaseHelper {
     try {
       final db = await database;
       final result = await db.query('raw_materials', orderBy: 'name ASC');
-      
       print('📦 Raw materials fetched: ${result.length}');
       if (result.isNotEmpty) {
         print('📦 First material keys: ${result.first.keys}');
       }
-      
       return result;
     } catch (e) {
       print('❌ Error getting raw materials: $e');
@@ -506,6 +560,71 @@ class DatabaseHelper {
       );
     } catch (e) {
       print('❌ Error deleting raw material: $e');
+      return -1;
+    }
+  }
+
+  // ============ INVOICES - ONE TABLE ============
+  Future<List<Map<String, dynamic>>> getInvoices() async {
+    try {
+      final db = await database;
+      return await db.query('raw_material_invoices', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting invoices: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getInvoiceById(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'raw_material_invoices',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (result.isNotEmpty) return result.first;
+      return null;
+    } catch (e) {
+      print('❌ Error getting invoice: $e');
+      return null;
+    }
+  }
+
+  Future<int> insertInvoice(Map<String, dynamic> invoice) async {
+    try {
+      final db = await database;
+      return await db.insert('raw_material_invoices', invoice);
+    } catch (e) {
+      print('❌ Error inserting invoice: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteInvoice(int id) async {
+    try {
+      final db = await database;
+      return await db.delete(
+        'raw_material_invoices',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      print('❌ Error deleting invoice: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteInvoiceByMaterialId(int materialId) async {
+    try {
+      final db = await database;
+      return await db.delete(
+        'raw_material_invoices',
+        where: 'material_id = ?',
+        whereArgs: [materialId],
+      );
+    } catch (e) {
+      print('❌ Error deleting invoice by material: $e');
       return -1;
     }
   }

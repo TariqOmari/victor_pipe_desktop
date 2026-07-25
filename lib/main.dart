@@ -19,6 +19,7 @@ class MyApp extends StatelessWidget {
       title: 'Victor Pipe Management',
       theme: ThemeData(
         useMaterial3: true,
+        fontFamily: 'Vazir',  // ← ADD THIS LINE
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFCB001D),
         ),
@@ -37,7 +38,6 @@ class MyApp extends StatelessWidget {
               },
             ),
       },
-      // ============ ADD THIS ============
       locale: const Locale('fa', 'IR'),
       supportedLocales: const [
         Locale('fa', 'IR'),

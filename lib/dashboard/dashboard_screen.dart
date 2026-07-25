@@ -8,6 +8,10 @@ import 'pages/raw_materials_page.dart';
 import 'pages/sales_page.dart'; // Import your sales page
 import 'pages/daily_expenses_page.dart'; // Import your daily expenses page
 import 'pages/customers_companies_page.dart'; // Import your customers and companies page
+import 'pages/production_management_page.dart'; // Import your production management page
+import 'pages/reports_page.dart'; // Import your reports page
+import 'pages/capital_page.dart'; // Import your capital management page
+import 'pages/exchange_page.dart'; // Import your exchange management page
 // Import other pages as you create them
 
 class DashboardScreen extends StatefulWidget {
@@ -30,12 +34,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const SalesPage(),          // index 4: Sales
     const DailyExpensesPage(),  // index 5: Daily Expenses
     const CustomersCompaniesPage(), // index 6: Customers and Companies
-    // Add more pages here as you create them
-    // const InventoryPage(),   // index 5
-    // const FinancePage(),     // index 6
-    // const ReportsPage(),     // index 7
-    // const UsersPage(),       // index 8
-    // const SettingsPage(),    // index 9
+    const ProductionManagementPage(), // index 7: Production Management
+    const ReportsPage(),        // index 8: Reports
+    const CapitalPage(),        // index 9: Capital Management
+    const ExchangePage(),       // index 10: Exchange Management
+
+
   ];
 
   @override

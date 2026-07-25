@@ -67,14 +67,14 @@ class Sidebar extends StatelessWidget {
                   context: context,
                   index: 1,
                   icon: Icons.people_alt_outlined,
-                  title: 'مشتریان',
+                  title: 'مدیریت مشتریان',
                   isSelected: selectedIndex == 1,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 2,
                   icon: Icons.local_shipping_outlined,
-                  title: 'فروشندگان',
+                  title: 'مدیریت فروشندگان',
                   isSelected: selectedIndex == 2,
                 ),
                 _buildMenuItem(
@@ -85,10 +85,17 @@ class Sidebar extends StatelessWidget {
                   isSelected: selectedIndex == 3,
                 ),
                 _buildMenuItem(
+                context: context,
+                index: 7, // ایندکس جدید
+                icon: Icons.factory_rounded,
+                title: 'مدیریت تولید',
+                isSelected: selectedIndex == 7,
+                ),
+                _buildMenuItem(
                   context: context,
                   index: 4,
                   icon: Icons.trending_up_rounded,
-                  title: 'فروشات',
+                  title: 'مدیریت فروشات',
                   isSelected: selectedIndex == 4,
                 ),
                 _buildMenuItem(
@@ -105,6 +112,27 @@ class Sidebar extends StatelessWidget {
                 title: 'مشتریان و شرکت‌ها',
                  isSelected: selectedIndex == 6,
                 ),
+                _buildMenuItem(
+                context: context,
+                icon: Icons.report_rounded,
+                index: 8,
+                title: 'گزارشات',
+                isSelected: selectedIndex == 8,
+              ),
+              _buildMenuItem(
+               context: context,
+               index: 9,
+               icon: Icons.account_balance_rounded,
+               title: 'سرمایه',
+               isSelected: selectedIndex == 9,
+              ),
+              _buildMenuItem(
+               context: context,
+               index: 10,
+               icon: Icons.currency_exchange_rounded,
+               title: 'صرافی',
+               isSelected: selectedIndex == 10,
+              ),
                 
                 // Divider با استایل جدید
                 Padding(
@@ -133,7 +161,7 @@ class Sidebar extends StatelessWidget {
           ),
 
           // Footer با استایل جدید
-          _buildFooter(isSmallScreen),
+          // _buildFooter(isSmallScreen),
         ],
       ),
     );
@@ -350,44 +378,44 @@ class Sidebar extends StatelessWidget {
   }
 
   // ======================== فوتر جدید ========================
-  Widget _buildFooter(bool isSmallScreen) {
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: Colors.white.withOpacity(0.15),
-            width: 1.5,
-          ),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
-              ),
-            ),
-            child: Text(
-              '●  نسخه ۲.۰  ●',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: isSmallScreen ? 10 : 11,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildFooter(bool isSmallScreen) {
+  //   return Container(
+  //     padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+  //     decoration: BoxDecoration(
+  //       border: Border(
+  //         top: BorderSide(
+  //           color: Colors.white.withOpacity(0.15),
+  //           width: 1.5,
+  //         ),
+  //       ),
+  //     ),
+  //     child: Row(
+  //       mainAxisAlignment: MainAxisAlignment.center,
+  //       children: [
+  //         Container(
+  //           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+  //           decoration: BoxDecoration(
+  //             color: Colors.white.withOpacity(0.08),
+  //             borderRadius: BorderRadius.circular(20),
+  //             border: Border.all(
+  //               color: Colors.white.withOpacity(0.1),
+  //               width: 1,
+  //             ),
+  //           ),
+  //           child: Text(
+  //             '●  نسخه ۲.۰  ●',
+  //             style: TextStyle(
+  //               color: Colors.white.withOpacity(0.6),
+  //               fontSize: isSmallScreen ? 10 : 11,
+  //               fontWeight: FontWeight.w500,
+  //               letterSpacing: 1.5,
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   // ======================== دیالوگ خروج با استایل جدید ========================
   void _showLogoutDialog(BuildContext context) {

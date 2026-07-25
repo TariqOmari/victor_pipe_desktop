@@ -21,6 +21,7 @@ dependencies:
   intl: ^0.20.2
   printing: ^5.11.1
   pdf: ^3.10.4
+  image_picker: ^1.0.4  # ← ADD THIS LINE
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

@@ -1,3 +1,4 @@
+// lib/database/database_helper.dart
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
@@ -43,7 +44,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 8,
+        version: 9,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) {
@@ -68,7 +69,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 8,
+        version: 9,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) {
@@ -195,9 +196,7 @@ class DatabaseHelper {
         print('✅ Version 7 upgrade done!');
       }
 
-      // ★★★ VERSION 8: DROP OLD TABLES AND CREATE NEW ONE ★★★
       if (oldVersion < 8) {
-        // Drop old invoice tables if they exist
         try {
           await db.execute('DROP TABLE IF EXISTS invoices');
           print('✅ Dropped old invoices table');
@@ -208,7 +207,6 @@ class DatabaseHelper {
           print('✅ Dropped old invoice_items table');
         } catch (e) { print('⚠️ Drop invoice_items: $e'); }
         
-        // Create ONE clean invoice table
         await db.execute('''
           CREATE TABLE raw_material_invoices(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,6 +237,17 @@ class DatabaseHelper {
         
         print('✅ Database upgraded to version 8!');
       }
+
+      // ★★★ VERSION 9: ADD PROFILE_PIC COLUMN ★★★
+      if (oldVersion < 9) {
+        try {
+          await db.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT');
+          print('✅ Added profile_pic column to users table');
+        } catch (e) {
+          print('⚠️ Error adding profile_pic: $e');
+        }
+        print('✅ Database upgraded to version 9!');
+      }
       
       print('✅ Database upgraded successfully!');
     } catch (e) {
@@ -248,7 +257,7 @@ class DatabaseHelper {
   }
 
   Future<void> _createTables(Database db) async {
-    // Users table
+    // Users table with profile_pic
     await db.execute('''
       CREATE TABLE users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,11 +266,11 @@ class DatabaseHelper {
         full_name TEXT NOT NULL,
         email TEXT,
         role TEXT DEFAULT 'admin',
+        profile_pic TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
 
-    // Products table
     await db.execute('''
       CREATE TABLE products(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -273,7 +282,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Suppliers table
     await db.execute('''
       CREATE TABLE suppliers(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,7 +293,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // Raw Materials table
     await db.execute('''
       CREATE TABLE raw_materials(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,7 +319,6 @@ class DatabaseHelper {
       )
     ''');
 
-    // ★★★ ONE INVOICE TABLE - ALL FIELDS ★★★
     await db.execute('''
       CREATE TABLE raw_material_invoices(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -348,6 +354,16 @@ class DatabaseHelper {
       'full_name': 'مدیر سیستم',
       'email': 'admin@victorpipe.com',
       'role': 'admin',
+      'profile_pic': null,
+    });
+    
+    await db.insert('users', {
+      'username': 'reza',
+      'password': 'reza123',
+      'full_name': 'رضا احمدی',
+      'email': 'reza@victorpipe.com',
+      'role': 'admin',
+      'profile_pic': null,
     });
     
     await db.insert('products', {
@@ -405,6 +421,116 @@ class DatabaseHelper {
     } catch (e) {
       print('❌ Error getting users: $e');
       return [];
+    }
+  }
+
+  // ============ ADMIN MANAGEMENT - ALL METHODS ============
+  Future<List<Map<String, dynamic>>> getAdmins() async {
+    try {
+      final db = await database;
+      return await db.query(
+        'users',
+        where: 'role = ?',
+        whereArgs: ['admin'],
+        orderBy: 'full_name ASC',
+      );
+    } catch (e) {
+      print('❌ Error getting admins: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getAdminById(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'users',
+        where: 'id = ? AND role = ?',
+        whereArgs: [id, 'admin'],
+      );
+      if (result.isNotEmpty) return result.first;
+      return null;
+    } catch (e) {
+      print('❌ Error getting admin: $e');
+      return null;
+    }
+  }
+
+  Future<int> insertAdmin(Map<String, dynamic> admin) async {
+    try {
+      final db = await database;
+      final existing = await db.query(
+        'users',
+        where: 'username = ?',
+        whereArgs: [admin['username']],
+      );
+      if (existing.isNotEmpty) {
+        throw Exception('نام کاربری قبلاً ثبت شده است');
+      }
+      return await db.insert('users', admin);
+    } catch (e) {
+      print('❌ Error inserting admin: $e');
+      rethrow;
+    }
+  }
+
+  Future<int> updateAdmin(int id, Map<String, dynamic> admin) async {
+    try {
+      final db = await database;
+      final existing = await db.query(
+        'users',
+        where: 'username = ? AND id != ?',
+        whereArgs: [admin['username'], id],
+      );
+      if (existing.isNotEmpty) {
+        throw Exception('نام کاربری قبلاً ثبت شده است');
+      }
+      return await db.update(
+        'users',
+        admin,
+        where: 'id = ? AND role = ?',
+        whereArgs: [id, 'admin'],
+      );
+    } catch (e) {
+      print('❌ Error updating admin: $e');
+      rethrow;
+    }
+  }
+
+  Future<int> deleteAdmin(int id) async {
+    try {
+      final db = await database;
+      final admins = await db.query(
+        'users',
+        where: 'role = ?',
+        whereArgs: ['admin'],
+      );
+      if (admins.length <= 1) {
+        throw Exception('حداقل یک مدیر باید در سیستم وجود داشته باشد');
+      }
+      return await db.delete(
+        'users',
+        where: 'id = ? AND role = ?',
+        whereArgs: [id, 'admin'],
+      );
+    } catch (e) {
+      print('❌ Error deleting admin: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> isAdminExists(String username) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'users',
+        where: 'username = ?',
+        whereArgs: [username],
+      );
+      return result.isNotEmpty;
+    } catch (e) {
+      print('❌ Error checking admin: $e');
+      return false;
     }
   }
 
@@ -564,7 +690,7 @@ class DatabaseHelper {
     }
   }
 
-  // ============ INVOICES - ONE TABLE ============
+  // ============ INVOICES ============
   Future<List<Map<String, dynamic>>> getInvoices() async {
     try {
       final db = await database;

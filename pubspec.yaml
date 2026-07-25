@@ -10,32 +10,46 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # ============ LOCALIZATION (For Date Picker) ============
   flutter_localizations:
     sdk: flutter
   
-  # Database packages
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.4.2
   path: ^1.8.3
   path_provider: ^2.1.0
-  
-  # State management
   provider: ^6.0.5
-  
-  # Utilities - FIXED VERSION!
-  intl: ^0.20.2  # ← CHANGED FROM 0.18.0 TO 0.20.2!
-  
-  # Icons
+  intl: ^0.20.2
+  printing: ^5.11.1
+  pdf: ^3.10.4
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-    
   flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/companylogo.png
+  fonts:
+    - family: Vazir
+      fonts:
+        - asset: assets/fonts/Vazirmatn-Thin.ttf
+          weight: 100
+        - asset: assets/fonts/Vazirmatn-ExtraLight.ttf
+          weight: 200
+        - asset: assets/fonts/Vazirmatn-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Vazirmatn-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Vazirmatn-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Vazirmatn-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Vazirmatn-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Vazirmatn-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Vazirmatn-Black.ttf
+          weight: 900

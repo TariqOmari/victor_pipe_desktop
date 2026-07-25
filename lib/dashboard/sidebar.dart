@@ -70,7 +70,7 @@ class Sidebar extends StatelessWidget {
                   context: context,
                   index: 1,
                   icon: Icons.people_alt_outlined,
-                  title: 'مشتریان',
+                  title: 'مدیریت مشتریان',
                   isSelected: selectedIndex == 1,
                 ),
                 // Suppliers
@@ -78,7 +78,7 @@ class Sidebar extends StatelessWidget {
                   context: context,
                   index: 2,
                   icon: Icons.local_shipping_outlined,
-                  title: 'فروشندگان',
+                  title: 'مدیریت فروشندگان',
                   isSelected: selectedIndex == 2,
                 ),
                 // Raw Materials
@@ -89,12 +89,11 @@ class Sidebar extends StatelessWidget {
                   title: 'مدیریت مواد خام',
                   isSelected: selectedIndex == 3,
                 ),
-                // Sales
                 _buildMenuItem(
                   context: context,
                   index: 4,
                   icon: Icons.trending_up_rounded,
-                  title: 'فروشات',
+                  title: 'مدیریت فروشات',
                   isSelected: selectedIndex == 4,
                 ),
                 // Daily Expenses
@@ -107,11 +106,11 @@ class Sidebar extends StatelessWidget {
                 ),
                 // Customers & Companies
                 _buildMenuItem(
-                  context: context,
-                  index: 6,
-                  icon: Icons.business_center_outlined,
-                  title: 'مشتریان و شرکت‌ها',
-                  isSelected: selectedIndex == 6,
+                context: context,
+                index: 6,  // ایندکس جدید
+                icon: Icons.people_alt_outlined,
+                title: 'مشتریان و شرکت‌ها',
+                 isSelected: selectedIndex == 6,
                 ),
                 
                 // Admins Management
@@ -149,7 +148,7 @@ class Sidebar extends StatelessWidget {
             ),
           ),
 
-          // Footer
+          // Footer با استایل جدید
           _buildFooter(isSmallScreen),
         ],
       ),
@@ -424,7 +423,7 @@ class Sidebar extends StatelessWidget {
     );
   }
 
-  // ======================== Footer ========================
+  // ======================== فوتر جدید ========================
   Widget _buildFooter(bool isSmallScreen) {
     return Container(
       padding: EdgeInsets.all(isSmallScreen ? 12 : 16),

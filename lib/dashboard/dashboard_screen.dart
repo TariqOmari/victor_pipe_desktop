@@ -6,10 +6,10 @@ import 'pages/home_page.dart';
 import 'pages/customers_page.dart';
 import 'pages/suppliers_page.dart';
 import 'pages/raw_materials_page.dart';
-import 'pages/sales_page.dart';
-import 'pages/daily_expenses_page.dart';
-import 'pages/customers_companies_page.dart';
-import 'pages/admins_page.dart'; // ← FIXED PATH
+import 'pages/sales_page.dart'; // Import your sales page
+import 'pages/daily_expenses_page.dart'; // Import your daily expenses page
+import 'pages/customers_companies_page.dart'; // Import your customers and companies page
+// Import other pages as you create them
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -24,14 +24,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Pages list including Admins
   final List<Widget> pages = [
-    const HomePage(),
-    const CustomersPage(),
-    const SuppliersPage(),
-    const RawMaterialsPage(),
-    const SalesPage(),
-    const DailyExpensesPage(),
-    const CustomersCompaniesPage(),
-    // Admins page
+    const HomePage(),           // index 0: Dashboard
+    const CustomersPage(),      // index 1: Customers
+    const SuppliersPage(),      // index 2: Suppliers
+    const RawMaterialsPage(),   // index 3: Raw Materials
+    const SalesPage(),          // index 4: Sales
+    const DailyExpensesPage(),  // index 5: Daily Expenses
+    const CustomersCompaniesPage(), // index 6: Customers and Companies
+    // Add more pages here as you create them
+    // const InventoryPage(),   // index 5
+    // const FinancePage(),     // index 6
+    // const ReportsPage(),     // index 7
+    // const UsersPage(),       // index 8
+    // const SettingsPage(),    // index 9
   ];
 
   @override

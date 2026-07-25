@@ -176,7 +176,11 @@ class _LoginScreenState extends State<LoginScreen> {
         : (isTablet ? 440 : 480);
     
     final double containerPadding = isMobile ? 24 : 40;
-    final double logoSize = isMobile ? 80 : 120;
+    
+    // ✅ لوگو بزرگتر
+    final double logoWidth = isMobile ? 160 : 220;
+    final double logoHeight = isMobile ? 90 : 120;
+    
     final double titleSize = isMobile ? 18 : 22;
     final double buttonHeight = isMobile ? 48 : 54;
     final double fontSize = isMobile ? 14 : 17;
@@ -188,17 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
         body: Container(
           width: double.infinity,
           height: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white,
-                const Color(0xFFCB001D).withOpacity(0.02),
-                Colors.white,
-              ],
-            ),
-          ),
+          color: Colors.white,
           child: Center(
             child: SingleChildScrollView(
               padding: EdgeInsets.all(isMobile ? 12 : 20),
@@ -210,20 +204,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(isMobile ? 16 : 24),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFCB001D).withOpacity(0.08),
-                      blurRadius: 60,
-                      offset: const Offset(0, 20),
-                      spreadRadius: 5,
+                      color: const Color(0xFFCB001D).withOpacity(0.06),
+                      blurRadius: 40,
+                      offset: const Offset(0, 10),
+                      spreadRadius: 2,
                     ),
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withOpacity(0.03),
                       blurRadius: 20,
                       offset: const Offset(0, 5),
                     ),
                   ],
                   border: Border.all(
-                    color: const Color(0xFFCB001D).withOpacity(0.06),
-                    width: 1.5,
+                    color: const Color(0xFFCB001D).withOpacity(0.08),
+                    width: 1,
                   ),
                 ),
                 child: Column(
@@ -232,12 +226,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     // وضعیت اتصال
                     _buildConnectionStatus(isMobile),
                     
-                    const SizedBox(height: 24),
-                    
-                    // لوگو
-                    _buildLogo(logoSize, isMobile),
-                    
                     const SizedBox(height: 20),
+                    
+                    // ✅ لوگوی بزرگ مستطیلی
+                    _buildLogo(logoWidth, logoHeight, isMobile),
+                    
+                    const SizedBox(height: 16),
                     
                     // عنوان
                     _buildTitle(titleSize, isMobile),
@@ -255,7 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 8),
                     
                     // فراموشی رمز
-                    _buildForgotPassword(isMobile),
+                    // _buildForgotPassword(isMobile),
                     
                     const SizedBox(height: 12),
                     
@@ -265,7 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 24),
                     
                     // فوتر
-                    _buildFooter(isMobile),
+                    // _buildFooter(isMobile),
                   ],
                 ),
               ),
@@ -328,14 +322,14 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ======================== لوگو ========================
-  Widget _buildLogo(double size, bool isMobile) {
+  // ======================== لوگوی مستطیلی بزرگ ========================
+  Widget _buildLogo(double width, double height, bool isMobile) {
     return Container(
-      width: size,
-      height: size,
+      width: width,
+      height: height,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(size / 2),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFFCB001D).withOpacity(0.12),
@@ -349,9 +343,13 @@ class _LoginScreenState extends State<LoginScreen> {
             offset: const Offset(0, -2),
           ),
         ],
+        border: Border.all(
+          color: const Color(0xFFCB001D).withOpacity(0.10),
+          width: 1.5,
+        ),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(size / 2),
+        borderRadius: BorderRadius.circular(16),
         child: Image.asset(
           'assets/images/companylogo.png',
           fit: BoxFit.contain,
@@ -366,7 +364,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(size / 2),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Center(
                 child: Column(
@@ -376,17 +374,34 @@ class _LoginScreenState extends State<LoginScreen> {
                       'VICTOR',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: isMobile ? 14 : 18,
+                        fontSize: isMobile ? 20 : 28,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
+                        letterSpacing: 3,
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       'PIPE',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.9),
-                        fontSize: isMobile ? 10 : 14,
+                        fontSize: isMobile ? 14 : 20,
                         fontWeight: FontWeight.w700,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 60,
+                      height: 3,
+                      color: Colors.white.withOpacity(0.3),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'صنعت',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: isMobile ? 10 : 14,
+                        fontWeight: FontWeight.w400,
                         letterSpacing: 1,
                       ),
                     ),
@@ -405,7 +420,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       children: [
         Text(
-          "ویکتور پایپ صنعت",
+          "فابریکه تولیدی ویکتور پایپ",
           style: TextStyle(
             fontSize: fontSize,
             fontWeight: FontWeight.w800,
@@ -557,29 +572,29 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ======================== فراموشی رمز ========================
-  Widget _buildForgotPassword(bool isMobile) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton(
-        onPressed: () {
-          _showSnackbar('با پشتیبانی تماس بگیرید', Colors.blue);
-        },
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        child: Text(
-          "رمز عبور خود را فراموش کرده‌اید؟",
-          style: TextStyle(
-            color: const Color(0xFFCB001D),
-            fontWeight: FontWeight.w500,
-            fontSize: isMobile ? 11 : 12,
-          ),
-        ),
-      ),
-    );
-  }
+  // Widget _buildForgotPassword(bool isMobile) {
+  //   return Align(
+  //     alignment: Alignment.centerLeft,
+  //     child: TextButton(
+  //       onPressed: () {
+  //         _showSnackbar('با پشتیبانی تماس بگیرید', Colors.blue);
+  //       },
+  //       style: TextButton.styleFrom(
+  //         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+  //         minimumSize: Size.zero,
+  //         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  //       ),
+  //       child: Text(
+  //         "رمز عبور خود را فراموش کرده‌اید؟",
+  //         style: TextStyle(
+  //           color: const Color(0xFFCB001D),
+  //           fontWeight: FontWeight.w500,
+  //           fontSize: isMobile ? 11 : 12,
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
 
   // ======================== دکمه ورود ========================
   Widget _buildLoginButton(double height, double fontSize, bool isMobile) {
@@ -629,52 +644,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ======================== فوتر ========================
-  Widget _buildFooter(bool isMobile) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 12 : 16,
-        vertical: isMobile ? 6 : 8,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F8F8),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.shade200,
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 4,
-            height: 4,
-            decoration: const BoxDecoration(
-              color: Color(0xFFCB001D),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            "نسخه ۲.۰ - سامانه مدیریت ویکتور پایپ",
-            style: TextStyle(
-              color: const Color(0xFF999999),
-              fontSize: isMobile ? 10 : 11,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 4,
-            height: 4,
-            decoration: const BoxDecoration(
-              color: Color(0xFFCB001D),
-              shape: BoxShape.circle,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

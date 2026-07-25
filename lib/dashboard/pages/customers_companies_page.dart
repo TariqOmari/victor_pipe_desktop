@@ -537,7 +537,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
 
   // ======================== نمایش سوابق معاملات ========================
   void _showTransactionHistory(Map<String, dynamic> entity, bool isCustomer) {
-    final transactions = entity['transactions'] ?? [];
+    final transactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
     final title = isCustomer ? 'سوابق معاملات مشتری' : 'سوابق معاملات شرکت';
 
     showDialog(
@@ -655,10 +655,16 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   Widget _buildTransactionStats(List<Map<String, dynamic>> transactions) {
-    final total = transactions.fold<int>(
-      0,
-      (sum, t) => sum + (t['amount'] as int),
-    );
+    int total = 0;
+    for (var t in transactions) {
+      final amount = t['amount'];
+      if (amount is int) {
+        total += amount;
+      } else if (amount is double) {
+        total += amount.toInt();
+      }
+    }
+    
     final completed = transactions.where((t) => t['status'] == 'تکمیل شده').length;
     final pending = transactions.where((t) => t['status'] == 'در انتظار').length;
 
@@ -875,259 +881,377 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
+  // ======================== کارت حرفه‌ای مشتریان و شرکت‌ها ========================
   Widget _buildEntityCard(Map<String, dynamic> entity, bool isCustomer) {
-    final transactions = entity['transactions'] ?? [];
+    final transactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
     final totalTransactions = transactions.length;
-    final totalAmount = transactions.fold<int>(
-      0,
-      (sum, t) => sum + (t['amount'] as int),
-    );
+    
+    int totalAmount = 0;
+    for (var t in transactions) {
+      final amount = t['amount'];
+      if (amount is int) {
+        totalAmount += amount;
+      } else if (amount is double) {
+        totalAmount += amount.toInt();
+      }
+    }
+
+    // رنگ‌های متفاوت برای مشتری و شرکت
+    final Color primaryColor = isCustomer 
+        ? const Color(0xFF2563EB) // آبی برای مشتریان
+        : const Color(0xFF7C3AED); // بنفش برای شرکت‌ها
+    
+    final Color lightColor = isCustomer
+        ? Colors.blue.shade50
+        : Colors.purple.shade50;
+    
+    final IconData mainIcon = isCustomer ? Icons.person_rounded : Icons.business_center_rounded;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
+        border: Border.all(
+          color: primaryColor.withOpacity(0.15),
+          width: 1.5,
+        ),
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCB001D).withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isCustomer ? Icons.person : Icons.business,
-                  color: const Color(0xFFCB001D),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entity['name'],
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    if (entity['nickname'] != null && entity['nickname'].isNotEmpty)
-                      Text(
-                        'تخلص: ${entity['nickname']}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isCustomer
-                      ? Colors.blue.withOpacity(0.1)
-                      : Colors.purple.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  isCustomer ? 'حقیقی' : 'حقوقی',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: isCustomer ? Colors.blue : Colors.purple,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.phone_outlined,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      entity['phone'] ?? '-',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.email_outlined,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      entity['email'] ?? '-',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (entity['address'] != null && entity['address'].isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.location_on_outlined,
-                    size: 14,
-                    color: Colors.grey.shade500,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      entity['address'],
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+          // ===== هدر کارت =====
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: primaryColor.withOpacity(0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
               ),
             ),
-          const SizedBox(height: 12),
-          Divider(
-            color: Colors.grey.shade100,
+            child: Row(
+              children: [
+                // آواتار
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [primaryColor, primaryColor.withOpacity(0.7)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      entity['name'][0],
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              entity['name'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (entity['nickname'] != null && entity['nickname'].isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'تخلص: ${entity['nickname']}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isCustomer
+                                  ? Colors.blue.withOpacity(0.12)
+                                  : Colors.purple.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isCustomer ? Icons.person_outline : Icons.business_outlined,
+                                  size: 12,
+                                  color: primaryColor,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isCustomer ? 'حقیقی' : 'حقوقی',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: primaryColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  size: 12,
+                                  color: Colors.green.shade700,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$totalTransactions معامله',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '$totalTransactions معامله',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w600,
+
+          // ===== بدنه کارت =====
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // اطلاعات تماس
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildInfoRow(
+                        icon: Icons.phone_outlined,
+                        value: entity['phone'] ?? '-',
+                        color: primaryColor,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      totalAmount > 0
-                          ? '${totalAmount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')} ریال'
-                          : 'بدون معامله',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: totalAmount > 0
-                            ? Colors.green.shade700
-                            : Colors.grey.shade500,
-                        fontWeight: FontWeight.w600,
+                    Expanded(
+                      child: _buildInfoRow(
+                        icon: Icons.email_outlined,
+                        value: entity['email'] ?? '-',
+                        color: primaryColor,
                       ),
                     ),
+                  ],
+                ),
+                if (entity['address'] != null && entity['address'].isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _buildInfoRow(
+                    icon: Icons.location_on_outlined,
+                    value: entity['address'],
+                    color: primaryColor,
                   ),
                 ],
-              ),
-              Row(
-                children: [
-                  TextButton.icon(
-                    onPressed: () => _showTransactionHistory(entity, isCustomer),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(
-                      Icons.history_outlined,
-                      size: 16,
-                      color: const Color(0xFFCB001D),
-                    ),
-                    label: Text(
-                      'سوابق',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: const Color(0xFFCB001D),
-                        fontWeight: FontWeight.w600,
+                
+                const SizedBox(height: 14),
+                Divider(
+                  color: Colors.grey.shade200,
+                  height: 1,
+                ),
+                const SizedBox(height: 12),
+
+                // ===== پایین کارت =====
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // مجموع مبلغ
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.attach_money_rounded,
+                            size: 16,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            totalAmount > 0
+                                ? '${totalAmount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')} ریال'
+                                : 'بدون معامله',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: totalAmount > 0 ? primaryColor : Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => isCustomer
-                        ? _editCustomer(entity)
-                        : _editCompany(entity),
-                    icon: Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Colors.grey.shade600,
+
+                    // دکمه‌های عملیات
+                    Row(
+                      children: [
+                        // دکمه سوابق
+                        TextButton.icon(
+                          onPressed: () => _showTransactionHistory(entity, isCustomer),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            backgroundColor: primaryColor.withOpacity(0.06),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: Icon(
+                            Icons.history_rounded,
+                            size: 16,
+                            color: primaryColor,
+                          ),
+                          label: Text(
+                            'سوابق',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: primaryColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // دکمه ویرایش
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: Colors.grey.shade100,
+                          child: IconButton(
+                            onPressed: () => isCustomer
+                                ? _editCustomer(entity)
+                                : _editCompany(entity),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        // دکمه حذف
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: Colors.red.shade50,
+                          child: IconButton(
+                            onPressed: () => isCustomer
+                                ? _deleteCustomer(entity)
+                                : _deleteCompany(entity),
+                            icon: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 14,
+                              color: Colors.red.shade400,
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ),
+                      ],
                     ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  IconButton(
-                    onPressed: () => isCustomer
-                        ? _deleteCustomer(entity)
-                        : _deleteCompany(entity),
-                    icon: Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: Colors.grey.shade600,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String value,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            icon,
+            size: 14,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1482,15 +1606,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 20,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  color: Colors.transparent,
                 ),
                 child: isEmpty
                     ? Center(
@@ -1527,7 +1643,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                         ),
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Column(
                           children: [
                             if (_selectedTab == 'customers')

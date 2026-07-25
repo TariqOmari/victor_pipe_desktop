@@ -1,4 +1,3 @@
-// lib/database/database_helper.dart
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
@@ -189,56 +188,6 @@ class DatabaseHelper {
         print('✅ Version 6 upgrade done!');
       }
 
-      if (oldVersion < 7) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN invoice_id INTEGER');
-        } catch (e) { print('⚠️ invoice_id: $e'); }
-        print('✅ Version 7 upgrade done!');
-      }
-
-      if (oldVersion < 8) {
-        try {
-          await db.execute('DROP TABLE IF EXISTS invoices');
-          print('✅ Dropped old invoices table');
-        } catch (e) { print('⚠️ Drop invoices: $e'); }
-        
-        try {
-          await db.execute('DROP TABLE IF EXISTS invoice_items');
-          print('✅ Dropped old invoice_items table');
-        } catch (e) { print('⚠️ Drop invoice_items: $e'); }
-        
-        await db.execute('''
-          CREATE TABLE raw_material_invoices(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_number TEXT UNIQUE NOT NULL,
-            supplier_id INTEGER,
-            supplier_name TEXT,
-            date TEXT,
-            location TEXT,
-            name TEXT,
-            material_type TEXT,
-            thickness TEXT,
-            net_weight REAL,
-            gross_weight REAL,
-            unit TEXT,
-            unit_price REAL,
-            product REAL,
-            commission REAL,
-            transfer_cost REAL,
-            miscellaneous REAL,
-            ghurfedari REAL,
-            barchalani REAL,
-            final_price REAL,
-            material_id INTEGER,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        ''');
-        print('✅ raw_material_invoices table created with ALL fields!');
-        
-        print('✅ Database upgraded to version 8!');
-      }
-
-      // ★★★ VERSION 9: ADD PROFILE_PIC COLUMN ★★★
       if (oldVersion < 9) {
         try {
           await db.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT');
@@ -313,36 +262,8 @@ class DatabaseHelper {
         final_price TEXT,
         ghurfedari TEXT,
         barchalani TEXT,
-        invoice_id INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE raw_material_invoices(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_number TEXT UNIQUE NOT NULL,
-        supplier_id INTEGER,
-        supplier_name TEXT,
-        date TEXT,
-        location TEXT,
-        name TEXT,
-        material_type TEXT,
-        thickness TEXT,
-        net_weight REAL,
-        gross_weight REAL,
-        unit TEXT,
-        unit_price REAL,
-        product REAL,
-        commission REAL,
-        transfer_cost REAL,
-        miscellaneous REAL,
-        ghurfedari REAL,
-        barchalani REAL,
-        final_price REAL,
-        material_id INTEGER,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
   }
@@ -424,7 +345,7 @@ class DatabaseHelper {
     }
   }
 
-  // ============ ADMIN MANAGEMENT - ALL METHODS ============
+  // ============ ADMIN MANAGEMENT ============
   Future<List<Map<String, dynamic>>> getAdmins() async {
     try {
       final db = await database;
@@ -686,71 +607,6 @@ class DatabaseHelper {
       );
     } catch (e) {
       print('❌ Error deleting raw material: $e');
-      return -1;
-    }
-  }
-
-  // ============ INVOICES ============
-  Future<List<Map<String, dynamic>>> getInvoices() async {
-    try {
-      final db = await database;
-      return await db.query('raw_material_invoices', orderBy: 'created_at DESC');
-    } catch (e) {
-      print('❌ Error getting invoices: $e');
-      return [];
-    }
-  }
-
-  Future<Map<String, dynamic>?> getInvoiceById(int id) async {
-    try {
-      final db = await database;
-      final result = await db.query(
-        'raw_material_invoices',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      if (result.isNotEmpty) return result.first;
-      return null;
-    } catch (e) {
-      print('❌ Error getting invoice: $e');
-      return null;
-    }
-  }
-
-  Future<int> insertInvoice(Map<String, dynamic> invoice) async {
-    try {
-      final db = await database;
-      return await db.insert('raw_material_invoices', invoice);
-    } catch (e) {
-      print('❌ Error inserting invoice: $e');
-      return -1;
-    }
-  }
-
-  Future<int> deleteInvoice(int id) async {
-    try {
-      final db = await database;
-      return await db.delete(
-        'raw_material_invoices',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    } catch (e) {
-      print('❌ Error deleting invoice: $e');
-      return -1;
-    }
-  }
-
-  Future<int> deleteInvoiceByMaterialId(int materialId) async {
-    try {
-      final db = await database;
-      return await db.delete(
-        'raw_material_invoices',
-        where: 'material_id = ?',
-        whereArgs: [materialId],
-      );
-    } catch (e) {
-      print('❌ Error deleting invoice by material: $e');
       return -1;
     }
   }

@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:printing/printing.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
 import '../../database/database_helper.dart';
 
@@ -15,7 +12,6 @@ class RawMaterialsPage extends StatefulWidget {
 class _RawMaterialsPageState extends State<RawMaterialsPage> {
   List<Map<String, dynamic>> materials = [];
   List<Map<String, dynamic>> suppliers = [];
-  List<Map<String, dynamic>> invoices = [];
   bool isLoading = true;
   final DatabaseHelper _db = DatabaseHelper();
 
@@ -38,11 +34,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     try {
       final materialsData = await _db.getRawMaterials();
       final suppliersData = await _db.getSuppliers();
-      final invoicesData = await _db.getInvoices();
       setState(() {
         materials = materialsData;
         suppliers = suppliersData;
-        invoices = invoicesData;
         isLoading = false;
         _selectedIds.clear();
         _currentPage = 1;
@@ -67,7 +61,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   }
 
   int get _totalPages => (materials.length / _itemsPerPage).ceil();
-
+  
   void _changePage(int newPage) {
     if (newPage >= 1 && newPage <= _totalPages) {
       setState(() {
@@ -249,655 +243,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     return cards;
   }
 
-  // ============ GENERATE INVOICE ============
-  Future<void> _generateInvoice(Map<String, dynamic> material) async {
-    try {
-      final random = DateTime.now().millisecondsSinceEpoch % 100000;
-      final invoiceNumber = random.toString().padLeft(5, '0');
-      
-      final supplier = suppliers.firstWhere(
-        (s) => s['id'] == material['supplier_id'],
-        orElse: () => {},
-      );
-      
-      final invoiceData = {
-        'invoice_number': invoiceNumber,
-        'supplier_id': material['supplier_id'],
-        'supplier_name': supplier['name'] ?? '',
-        'date': material['date'] ?? DateTime.now().toString().split(' ')[0],
-        'location': material['location'] ?? '',
-        'name': material['name'] ?? '',
-        'material_type': material['material_type'] ?? '',
-        'thickness': material['thickness'] ?? '',
-        'net_weight': double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0,
-        'gross_weight': double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0,
-        'unit': material['unit'] ?? '',
-        'unit_price': double.tryParse(material['unit_price']?.toString() ?? '0') ?? 0,
-        'product': double.tryParse(material['product']?.toString() ?? '0') ?? 0,
-        'commission': double.tryParse(material['commission']?.toString() ?? '0') ?? 0,
-        'transfer_cost': double.tryParse(material['transfer_cost']?.toString() ?? '0') ?? 0,
-        'miscellaneous': double.tryParse(material['miscellaneous']?.toString() ?? '0') ?? 0,
-        'ghurfedari': double.tryParse(material['ghurfedari']?.toString() ?? '0') ?? 0,
-        'barchalani': double.tryParse(material['barchalani']?.toString() ?? '0') ?? 0,
-        'final_price': double.tryParse(material['final_price']?.toString() ?? '0') ?? 0,
-        'material_id': material['id'],
-      };
-      
-      final result = await _db.insertInvoice(invoiceData);
-      
-      if (result != -1) {
-        await _db.updateRawMaterial(material['id'], {
-          ...material,
-          'invoice_id': result,
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ فاکتور با موفقیت ایجاد شد'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        
-        _showInvoiceModal(context, invoiceNumber, invoiceData, supplier);
-        _loadData();
-      }
-    } catch (e) {
-      print('❌ Invoice error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ خطا در ایجاد فاکتور: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // ============ GENERATE PDF WITH PERSIAN SUPPORT ============
- // ============ GENERATE PDF WITH PERSIAN SUPPORT ============
-// ============ GENERATE PDF WITH ALL FIELDS ============
-// ============ GENERATE PDF WITH ALL FIELDS (TABLE ONLY) ============
-Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNumber) async {
-  try {
-    // ============ LOAD VAZIR FONT FOR PDF ============
-    final ByteData fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
-    final Uint8List fontBytes = fontData.buffer.asUint8List();
-    final pw.Font vazirFont = pw.Font.ttf(fontBytes.buffer.asByteData());
-    
-    final pdf = pw.Document();
-    
-    // Load company logo
-    final ByteData logoData = await rootBundle.load('assets/images/companylogo.png');
-    final Uint8List logoBytes = logoData.buffer.asUint8List();
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
-          return pw.Directionality(
-            textDirection: pw.TextDirection.rtl,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                // Header with Logo
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Image(
-                          pw.MemoryImage(logoBytes),
-                          width: 60,
-                          height: 60,
-                        ),
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'ویکتور پایپ صنعت',
-                          style: pw.TextStyle(
-                            font: vazirFont,
-                            fontSize: 18,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.red,
-                          ),
-                        ),
-                        pw.Text(
-                          'سامانه مدیریت یکپارچه',
-                          style: pw.TextStyle(
-                            font: vazirFont,
-                            fontSize: 10,
-                            color: PdfColors.grey700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text(
-                          'Invoice',
-                          style: pw.TextStyle(
-                            font: vazirFont,
-                            fontSize: 22,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.red,
-                          ),
-                        ),
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'شماره: $invoiceNumber',
-                          style: pw.TextStyle(
-                            font: vazirFont,
-                            fontSize: 12,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        pw.Text(
-                          'تاریخ: ${invoice['date'] ?? '-'}',
-                          style: pw.TextStyle(
-                            font: vazirFont,
-                            fontSize: 11,
-                            color: PdfColors.grey700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                pw.Divider(thickness: 2, color: PdfColors.red),
-
-                // Supplier Info
-                pw.SizedBox(height: 12),
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: pw.BorderRadius.circular(4),
-                  ),
-                  child: pw.Row(
-                    children: [
-                      pw.Expanded(
-                        child: pw.Text(
-                          'فروشنده: ${invoice['supplier_name'] ?? '-'}',
-                          style: pw.TextStyle(font: vazirFont),
-                        ),
-                      ),
-                      pw.Expanded(
-                        child: pw.Text(
-                          'محل تخلیه: ${invoice['location'] ?? '-'}',
-                          style: pw.TextStyle(font: vazirFont),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                pw.SizedBox(height: 16),
-
-                // ============ TABLE HEADER WITH ALL FIELDS (RED) ============
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(6),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.red,
-                    borderRadius: pw.BorderRadius.circular(4),
-                  ),
-                  child: pw.Row(
-                    children: [
-                      pw.Expanded(flex: 2, child: pw.Text('نام مواد', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8))),
-                      pw.Expanded(flex: 1, child: pw.Text('نوع', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('واحد', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('ضخامت', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('وزن خالص', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('وزن ناخالص', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('قیمت واحد', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('محصول', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('کمیشن', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('کرایه', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('متفرقه', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('غرفه داری', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('بارچلانی', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text('قیمت نهایی', style: pw.TextStyle(font: vazirFont, fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8), textAlign: pw.TextAlign.center)),
-                    ],
-                  ),
-                ),
-
-                // ============ TABLE ROW WITH ALL FIELDS ============
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(6),
-                  child: pw.Row(
-                    children: [
-                      pw.Expanded(flex: 2, child: pw.Text(invoice['name'] ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8))),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['material_type'] ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['unit'] ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['thickness'] ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['net_weight']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['gross_weight']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['unit_price']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['product']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['commission']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['transfer_cost']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['miscellaneous']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['ghurfedari']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(invoice['barchalani']?.toString() ?? '-', style: pw.TextStyle(font: vazirFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                      pw.Expanded(flex: 1, child: pw.Text(
-                        '${invoice['final_price'] ?? 0}',
-                        style: pw.TextStyle(
-                          font: vazirFont,
-                          fontWeight: pw.FontWeight.bold,
-                          fontSize: 8,
-                          color: PdfColors.red,
-                        ),
-                        textAlign: pw.TextAlign.center,
-                      )),
-                    ],
-                  ),
-                ),
-
-                pw.SizedBox(height: 16),
-
-                // Footer
-                pw.Divider(thickness: 1, color: PdfColors.grey300),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('امضا: _________________', style: pw.TextStyle(font: vazirFont, fontSize: 10)),
-                    pw.Text(
-                      'تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}',
-                      style: pw.TextStyle(font: vazirFont, fontSize: 9, color: PdfColors.grey600),
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 4),
-                pw.Center(
-                  child: pw.Text(
-                    'ویکتور پایپ صنعت - سامانه مدیریت یکپارچه',
-                    style: pw.TextStyle(font: vazirFont, fontSize: 8, color: PdfColors.grey600),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-
-    // Print or save PDF
-    await Printing.sharePdf(
-      bytes: await pdf.save(),
-      filename: 'invoice_$invoiceNumber.pdf',
-    );
-  } catch (e) {
-    print('PDF Error: $e');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('❌ خطا در ایجاد PDF: $e'),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-}
-
-  // ============ SHOW INVOICE MODAL ============
-  void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice, Map<String, dynamic> supplier) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        child: Container(
-          width: 900,
-          constraints: const BoxConstraints(maxHeight: 650),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2), width: 2),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 45,
-                        height: 45,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFFCB001D), width: 2),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: Image.asset(
-                            'assets/images/companylogo.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Center(
-                                child: Text(
-                                  'VP',
-                                  style: TextStyle(
-                                    color: Color(0xFFCB001D),
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('ویکتور پایپ صنعت', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                          SizedBox(height: 2),
-                          Text('سامانه مدیریت یکپارچه', style: TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        ],
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-                        decoration: BoxDecoration(color: const Color(0xFFCB001D), borderRadius: BorderRadius.circular(4)),
-                        child: Text('Invoice', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                        child: Text('شماره: $invoiceNumber', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12)),
-                      ),
-                      Text('تاریخ: ${invoice['date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                    ],
-                  ),
-                ],
-              ),
-              
-              Container(height: 2, margin: const EdgeInsets.symmetric(vertical: 8), color: const Color(0xFFCB001D)),
-              
-              // Supplier Info
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8F8F8),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.grey.shade200, width: 1),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          const Icon(Icons.business, color: Color(0xFFCB001D), size: 14),
-                          const SizedBox(width: 4),
-                          const Text('فروشنده:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              invoice['supplier_name'] ?? '-',
-                              style: const TextStyle(fontSize: 10),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          const Icon(Icons.location_on, color: Color(0xFFCB001D), size: 14),
-                          const SizedBox(width: 4),
-                          const Text('محل تخلیه:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              invoice['location'] ?? '-',
-                              style: const TextStyle(fontSize: 10),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              
-              // Table
-              Flexible(
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFCB001D),
-                          borderRadius: BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(4)),
-                        ),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              _buildTH('نام مواد', 80),
-                              _buildTH('نوع', 50),
-                              _buildTH('واحد', 45),
-                              _buildTH('ضخامت', 45),
-                              _buildTH('وزن خالص', 60),
-                              _buildTH('وزن ناخالص', 60),
-                              _buildTH('قیمت واحد', 60),
-                              _buildTH('محصول', 50),
-                              _buildTH('کمیشن', 50),
-                              _buildTH('کرایه', 50),
-                              _buildTH('متفرقه', 50),
-                              _buildTH('غرفه داری', 50),
-                              _buildTH('بارچلانی', 50),
-                              _buildTH('قیمت نهایی', 65),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                              child: Row(
-                                children: [
-                                  _buildTD(invoice['name'] ?? '-', 80),
-                                  _buildTD(invoice['material_type'] ?? '-', 50),
-                                  _buildTD(invoice['unit'] ?? '-', 45),
-                                  _buildTD(invoice['thickness'] ?? '-', 45),
-                                  _buildTD(invoice['net_weight']?.toString() ?? '-', 60),
-                                  _buildTD(invoice['gross_weight']?.toString() ?? '-', 60),
-                                  _buildTD(invoice['unit_price']?.toString() ?? '-', 60),
-                                  _buildTD(invoice['product']?.toString() ?? '-', 50),
-                                  _buildTD(invoice['commission']?.toString() ?? '-', 50),
-                                  _buildTD(invoice['transfer_cost']?.toString() ?? '-', 50),
-                                  _buildTD(invoice['miscellaneous']?.toString() ?? '-', 50),
-                                  _buildTD(invoice['ghurfedari']?.toString() ?? '-', 50),
-                                  _buildTD(invoice['barchalani']?.toString() ?? '-', 50),
-                                  _buildTD(invoice['final_price']?.toString() ?? '-', 65, isBold: true, isRed: true),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 8),
-              
-              // Summary
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCB001D).withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.15), width: 1),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        _buildSummaryItem('وزن خالص:', invoice['net_weight']?.toString() ?? '0', invoice['unit'] ?? ''),
-                        const SizedBox(width: 16),
-                        _buildSummaryItem('وزن ناخالص:', invoice['gross_weight']?.toString() ?? '0', invoice['unit'] ?? ''),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('مبلغ قابل پرداخت', style: TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        Text(
-                          '${invoice['final_price'] ?? 0} افغانی',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              
-              const SizedBox(height: 8),
-              
-              // Footer
-              Container(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: Colors.grey.shade300, width: 1)),
-                ),
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('امضا: _________________', style: TextStyle(fontSize: 9, color: Color(0xFF888888))),
-                    Text(
-                      'تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}',
-                      style: const TextStyle(fontSize: 8, color: Color(0xFF888888)),
-                    ),
-                  ],
-                ),
-              ),
-              
-              const SizedBox(height: 4),
-              const Center(
-                child: Text(
-                  'ویکتور پایپ صنعت - سامانه مدیریت یکپارچه',
-                  style: TextStyle(fontSize: 7, color: Color(0xFF888888)),
-                ),
-              ),
-              
-              const SizedBox(height: 8),
-              
-              // ============ BUTTONS WITH PRINT & PDF ============
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('بستن', style: TextStyle(fontSize: 12)),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _generatePDFInvoice(invoice, invoiceNumber);
-                    },
-                    icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.white),
-                    label: const Text('PDF', style: TextStyle(fontSize: 12, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _generatePDFInvoice(invoice, invoiceNumber);
-                    },
-                    icon: const Icon(Icons.print, size: 18, color: Colors.white),
-                    label: const Text('چاپ', style: TextStyle(fontSize: 12, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFCB001D),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ============ TABLE HELPERS ============
-  Widget _buildTH(String text, double width) {
-    return SizedBox(
-      width: width,
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-          fontSize: 8,
-        ),
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
-
-  Widget _buildTD(String text, double width, {bool isBold = false, bool isRed = false}) {
-    return SizedBox(
-      width: width,
-      child: Text(
-        text,
-        style: TextStyle(
-          fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-          color: isRed ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
-          fontSize: 8,
-        ),
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem(String label, String value, String unit) {
-    return Row(
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11)),
-        const SizedBox(width: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-        const SizedBox(width: 2),
-        Text(unit, style: const TextStyle(fontSize: 9, color: Color(0xFF888888))),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -962,8 +307,6 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
                 _buildStatCard('کل مواد', materials.length.toString()),
                 const SizedBox(width: 12),
                 _buildStatCard('فروشندگان', suppliers.length.toString()),
-                const SizedBox(width: 12),
-                _buildStatCard('فاکتورها', invoices.length.toString(), Icons.receipt, Colors.orange),
               ],
             ),
             const SizedBox(height: 12),
@@ -1009,7 +352,7 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
                                 child: SingleChildScrollView(
                                   scrollDirection: Axis.horizontal,
                                   child: SizedBox(
-                                    width: 1800,
+                                    width: 1680, // Increased width to accommodate action buttons
                                     child: ListView.builder(
                                       physics: const NeverScrollableScrollPhysics(),
                                       itemCount: _paginatedMaterials.length + 1,
@@ -1039,8 +382,7 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
                                                 _buildHeaderCell('غرفه داری', 60),
                                                 _buildHeaderCell('بارچلانی', 60),
                                                 _buildHeaderCell('قیمت نهایی', 80),
-                                                _buildHeaderCell('فاکتور', 65),
-                                                const SizedBox(width: 70),
+                                                _buildHeaderCell('عملیات', 80),
                                               ],
                                             ),
                                           );
@@ -1048,7 +390,6 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
 
                                         final material = _paginatedMaterials[index - 1];
                                         final isSelected = _selectedIds.contains(material['id'] as int);
-                                        final hasInvoice = material['invoice_id'] != null;
 
                                         return Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1083,56 +424,41 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
                                               _buildDataCell(material['ghurfedari'] ?? '-', 60),
                                               _buildDataCell(material['barchalani'] ?? '-', 60),
                                               _buildDataCell(material['final_price'] ?? '-', 80, isBold: true, isRed: true),
+                                              // Action buttons
                                               SizedBox(
-                                                width: 65,
-                                                child: hasInvoice
-                                                    ? IconButton(
-                                                        icon: const Icon(Icons.receipt, color: Colors.orange, size: 18),
-                                                        padding: EdgeInsets.zero,
-                                                        constraints: const BoxConstraints(),
-                                                        onPressed: () {
-                                                          final invoice = invoices.firstWhere(
-                                                            (inv) => inv['id'] == material['invoice_id'],
-                                                            orElse: () => {},
-                                                          );
-                                                          final supplier = suppliers.firstWhere(
-                                                            (s) => s['id'] == material['supplier_id'],
-                                                            orElse: () => {},
-                                                          );
-                                                          _showInvoiceModal(context, invoice['invoice_number'] ?? '---', invoice, supplier);
-                                                        },
-                                                      )
-                                                    : SizedBox(
-                                                        width: 50,
-                                                        height: 24,
-                                                        child: ElevatedButton(
-                                                          onPressed: () { _generateInvoice(material); },
-                                                          style: ElevatedButton.styleFrom(
-                                                            backgroundColor: Colors.green,
-                                                            padding: EdgeInsets.zero,
-                                                            minimumSize: const Size(40, 22),
-                                                          ),
-                                                          child: const Text('ایجاد', style: TextStyle(fontSize: 8, color: Colors.white)),
-                                                        ),
+                                                width: 80,
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    IconButton(
+                                                      icon: Icon(
+                                                        Icons.edit_outlined,
+                                                        color: const Color(0xFFCB001D),
+                                                        size: 18,
                                                       ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  IconButton(
-                                                    icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
-                                                    padding: EdgeInsets.zero,
-                                                    constraints: const BoxConstraints(),
-                                                    onPressed: () { _showEditDialog(context, material); },
-                                                  ),
-                                                  IconButton(
-                                                    icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
-                                                    padding: EdgeInsets.zero,
-                                                    constraints: const BoxConstraints(),
-                                                    onPressed: () { _showDeleteDialog(context, material); },
-                                                  ),
-                                                ],
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      onPressed: () {
+                                                        _showEditDialog(context, material);
+                                                      },
+                                                      tooltip: 'ویرایش',
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    IconButton(
+                                                      icon: Icon(
+                                                        Icons.delete_outline,
+                                                        color: Colors.red.shade400,
+                                                        size: 18,
+                                                      ),
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      onPressed: () {
+                                                        _showDeleteDialog(context, material);
+                                                      },
+                                                      tooltip: 'حذف',
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ],
                                           ),
@@ -1799,17 +1125,10 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
                     if (result != -1) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('✅ ماده خام اضافه شد. در حال ایجاد فاکتور...'),
+                          content: Text('✅ ماده خام با موفقیت اضافه شد'),
                           backgroundColor: Colors.green,
                         ),
                       );
-                      
-                      final newMaterial = await _db.getRawMaterials();
-                      if (newMaterial.isNotEmpty) {
-                        final latestMaterial = newMaterial.last;
-                        await _generateInvoice(latestMaterial);
-                      }
-                      
                       _loadData();
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1823,7 +1142,7 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCB001D),
                   ),
-                  child: const Text('ذخیره و ایجاد فاکتور'),
+                  child: const Text('ذخیره'),
                 ),
               ],
             ),
@@ -1855,10 +1174,6 @@ Future<void> _generatePDFInvoice(Map<String, dynamic> invoice, String invoiceNum
             ),
             ElevatedButton(
               onPressed: () async {
-                // Delete invoice first if exists
-                if (material['invoice_id'] != null) {
-                  await _db.deleteInvoice(material['invoice_id']);
-                }
                 final result = await _db.deleteRawMaterial(material['id']);
                 Navigator.pop(context);
                 if (result != -1) {

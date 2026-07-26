@@ -23,6 +23,7 @@ dependencies:
   pdf: ^3.10.4
   image_picker: ^1.0.4  # ← ADD THIS LINE
   cupertino_icons: ^1.0.8
+  persian: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -33,6 +34,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/companylogo.png
+    - assets/fonts/
   fonts:
     - family: Vazir
       fonts:

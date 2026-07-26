@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import '../../database/database_helper.dart';
+import '../../utils/date_converter.dart';
 
 class SalesPage extends StatefulWidget {
   const SalesPage({super.key});
@@ -8,755 +14,1038 @@ class SalesPage extends StatefulWidget {
 }
 
 class _SalesPageState extends State<SalesPage> {
-  // ======================== داده‌های مشتریان ========================
-  final List<Map<String, dynamic>> _customers = [
-    {
-      'id': 1,
-      'name': 'علی رضایی',
-      'phone': '۰۹۱۲۳۴۵۶۷۸۹',
-      'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
-      'company': 'ساختمانی رضایی',
-    },
-    {
-      'id': 2,
-      'name': 'شرکت نفت جنوب',
-      'phone': '۰۲۱۸۸۷۶۵۴۳۲',
-      'address': 'اهواز، کیلومتر ۱۵ جاده ساحلی',
-      'company': 'نفت جنوب',
-    },
-    {
-      'id': 3,
-      'name': 'مهندس کریمی',
-      'phone': '۰۹۱۷۶۵۴۳۲۱۰',
-      'address': 'اصفهان، خیابان چهارباغ، پلاک ۴۵',
-      'company': 'مهندسی کریمی',
-    },
-    {
-      'id': 4,
-      'name': 'پیمانکاران عمران',
-      'phone': '۰۲۱۴۴۳۲۱۸۷۶',
-      'address': 'شیراز، بلوار جمهوری، پلاک ۷۸',
-      'company': 'عمران سازان',
-    },
-  ];
-
-  // ======================== داده‌های فروش ========================
-  List<Map<String, dynamic>> _salesData = [
-    {
-      'id': 'S-1001',
-      'customerId': 1,
-      'customer': 'علی رضایی',
-      'phone': '۰۹۱۲۳۴۵۶۷۸۹',
-      'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
-      'product': 'لوله پلی‌اتیلن ۲۵۰',
-      'quantity': 150,
-      'unit': 'متر',
-      'price': 450000,
-      'total': 67500000,
-      'status': 'تکمیل شده',
-      'date': '۱۴۰۵/۰۵/۰۱',
-    },
-    {
-      'id': 'S-1002',
-      'customerId': 2,
-      'customer': 'شرکت نفت جنوب',
-      'phone': '۰۲۱۸۸۷۶۵۴۳۲',
-      'address': 'اهواز، کیلومتر ۱۵ جاده ساحلی',
-      'product': 'اتصالات جوشی',
-      'quantity': 80,
-      'unit': 'عدد',
-      'price': 320000,
-      'total': 25600000,
-      'status': 'در انتظار',
-      'date': '۱۴۰۵/۰۵/۰۲',
-    },
-    {
-      'id': 'S-1003',
-      'customerId': 3,
-      'customer': 'مهندس کریمی',
-      'phone': '۰۹۱۷۶۵۴۳۲۱۰',
-      'address': 'اصفهان، خیابان چهارباغ، پلاک ۴۵',
-      'product': 'لوله فولادی ۴ اینچ',
-      'quantity': 200,
-      'unit': 'متر',
-      'price': 580000,
-      'total': 116000000,
-      'status': 'ارسال شده',
-      'date': '۱۴۰۵/۰۵/۰۳',
-    },
-    {
-      'id': 'S-1004',
-      'customerId': 4,
-      'customer': 'پیمانکاران عمران',
-      'phone': '۰۲۱۴۴۳۲۱۸۷۶',
-      'address': 'شیراز، بلوار جمهوری، پلاک ۷۸',
-      'product': 'کمربند فلنج',
-      'quantity': 45,
-      'unit': 'عدد',
-      'price': 175000,
-      'total': 7875000,
-      'status': 'لغو شده',
-      'date': '۱۴۰۵/۰۵/۰۴',
-    },
-  ];
-
+  final DatabaseHelper _db = DatabaseHelper();
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _customers = [];
+  List<Map<String, dynamic>> _companies = [];
+  List<Map<String, dynamic>> _sales = [];
+  int _currentPage = 0;
+  int _rowsPerPage = 10;
+  final Set<String> _selectedInvoices = {};
+  List<Map<String, dynamic>> _partyOptions = [];
   String _searchQuery = '';
   String _selectedFilter = 'همه';
-  int? _selectedCustomerId;
-
-  // ======================== کنترل‌های فرم ========================
-  final TextEditingController _customerNameController = TextEditingController();
-  final TextEditingController _customerPhoneController = TextEditingController();
-  final TextEditingController _customerAddressController = TextEditingController();
-  final TextEditingController _customerCompanyController = TextEditingController();
-  final TextEditingController _productController = TextEditingController();
-  final TextEditingController _quantityController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  @override
   void dispose() {
-    _customerNameController.dispose();
-    _customerPhoneController.dispose();
-    _customerAddressController.dispose();
-    _customerCompanyController.dispose();
-    _productController.dispose();
-    _quantityController.dispose();
-    _priceController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  // ======================== متدهای مدیریت مشتری ========================
-  void _addCustomer() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'افزودن مشتری جدید',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        content: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTextField(
-                controller: _customerNameController,
-                label: 'نام مشتری',
-                icon: Icons.person_outline,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _customerPhoneController,
-                label: 'شماره تماس',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _customerAddressController,
-                label: 'آدرس',
-                icon: Icons.location_on_outlined,
-                maxLines: 2,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _customerCompanyController,
-                label: 'شرکت',
-                icon: Icons.business_outlined,
-              ),
-            ],
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _clearCustomerForm();
-              Navigator.pop(context);
-            },
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_customerNameController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('لطفاً نام مشتری را وارد کنید'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              setState(() {
-                _customers.add({
-                  'id': _customers.length + 1,
-                  'name': _customerNameController.text,
-                  'phone': _customerPhoneController.text,
-                  'address': _customerAddressController.text,
-                  'company': _customerCompanyController.text,
-                });
-              });
-              _clearCustomerForm();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('مشتری با موفقیت افزوده شد'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCB001D),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('افزودن مشتری'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final customers = await _db.getCustomers();
+      final companies = await _db.getCompanies();
+      final sales = await _db.getSalesInvoices();
+      final options = <Map<String, dynamic>>[];
+      for (final customer in customers) {
+        options.add({
+          'id': customer['id'],
+          'name': customer['name'],
+          'phone': customer['phone'],
+          'address': customer['address'],
+          'company': customer['type'],
+          'source': 'customer',
+        });
+      }
+      for (final company in companies) {
+        options.add({
+          'id': company['id'],
+          'name': company['name'],
+          'phone': company['phone'],
+          'address': company['address'],
+          'company': company['name'],
+          'source': 'company',
+        });
+      }
+      options.sort((a, b) => (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()));
+      if (!mounted) return;
+      setState(() {
+        _customers = customers;
+        _companies = companies;
+        _sales = sales;
+        _partyOptions = options;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('خطا در بارگذاری فروش‌ها', Colors.red);
+    }
   }
 
-  void _editCustomer(Map<String, dynamic> customer) {
-    _customerNameController.text = customer['name'];
-    _customerPhoneController.text = customer['phone'] ?? '';
-    _customerAddressController.text = customer['address'] ?? '';
-    _customerCompanyController.text = customer['company'] ?? '';
+  Future<void> _showAddSaleDialog() async {
+    final customerNameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final addressController = TextEditingController();
+    final companyController = TextEditingController();
+    final productController = TextEditingController();
+    final genderController = TextEditingController();
+    final sizeController = TextEditingController();
+    final thicknessController = TextEditingController();
+    final weightPerUnitController = TextEditingController();
+    final unitCountController = TextEditingController();
+    final totalWeightController = TextEditingController();
+    final timeController = TextEditingController(text: _formatTimeOfDay(TimeOfDay.now()));
+    final unitController = TextEditingController(text: 'کیلو');
+    final unitPriceController = TextEditingController();
+    final totalPriceController = TextEditingController();
+    final finalPriceController = TextEditingController();
+    final priceRateController = TextEditingController(text: '1');
+    final loadingController = TextEditingController();
+    final transferController = TextEditingController();
+    final clearanceController = TextEditingController();
+    final discountController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final afnEquivalentController = TextEditingController();
+    final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
+    final paidAmountController = TextEditingController();
+    String selectedPaymentMethod = 'cash'; // 'cash', 'loan_full', 'loan_partial'
+    String selectedCurrency = 'USD';
+    String selectedType = 'فروش';
+    Map<String, dynamic>? selectedParty;
+    String selectedEnglishDate = PersianDateConverter.getEnglishDate(DateTime.now());
+    String selectedEnglishTime = _formatTimeOfDay(TimeOfDay.now());
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'ویرایش مشتری',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        content: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTextField(
-                controller: _customerNameController,
-                label: 'نام مشتری',
-                icon: Icons.person_outline,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _customerPhoneController,
-                label: 'شماره تماس',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _customerAddressController,
-                label: 'آدرس',
-                icon: Icons.location_on_outlined,
-                maxLines: 2,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _customerCompanyController,
-                label: 'شرکت',
-                icon: Icons.business_outlined,
-              ),
-            ],
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _clearCustomerForm();
-              Navigator.pop(context);
-            },
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_customerNameController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('لطفاً نام مشتری را وارد کنید'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              setState(() {
-                final index = _customers.indexWhere((c) => c['id'] == customer['id']);
-                if (index != -1) {
-                  _customers[index] = {
-                    'id': customer['id'],
-                    'name': _customerNameController.text,
-                    'phone': _customerPhoneController.text,
-                    'address': _customerAddressController.text,
-                    'company': _customerCompanyController.text,
-                  };
-                }
-              });
-              _clearCustomerForm();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('مشتری با موفقیت ویرایش شد'),
-                  backgroundColor: Colors.blue,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCB001D),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('ذخیره تغییرات'),
-          ),
-        ],
-      ),
-    );
-  }
+    void updateTotals() {
+      final weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
+      final unitCount = double.tryParse(unitCountController.text) ?? 0;
+      final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+      final priceRate = double.tryParse(priceRateController.text) ?? 1;
+      final loadingCost = double.tryParse(loadingController.text) ?? 0;
+      final transferCost = double.tryParse(transferController.text) ?? 0;
+      final clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+      final discount = double.tryParse(discountController.text) ?? 0;
+      final totalWeight = weightPerUnit * unitCount;
+      final totalPrice = totalWeight * unitPrice;
 
-  void _deleteCustomer(Map<String, dynamic> customer) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'حذف مشتری',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        content: Text(
-          'آیا از حذف مشتری "${customer['name']}" مطمئن هستید؟',
-          style: const TextStyle(fontSize: 14),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _customers.removeWhere((c) => c['id'] == customer['id']);
-                // حذف فروش‌های مرتبط با این مشتری
-                _salesData.removeWhere((s) => s['customerId'] == customer['id']);
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('مشتری با موفقیت حذف شد'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('حذف'),
-          ),
-        ],
-      ),
-    );
-  }
+      totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+      totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
 
-  void _clearCustomerForm() {
-    _customerNameController.clear();
-    _customerPhoneController.clear();
-    _customerAddressController.clear();
-    _customerCompanyController.clear();
-  }
+      if (selectedCurrency == 'USD') {
+        afnEquivalentController.text = totalPrice > 0 ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) : '';
+      } else {
+        afnEquivalentController.text = totalPrice > 0 ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) : '';
+      }
 
-  // ======================== متدهای مدیریت فروش ========================
-  void _addSale() {
-    _selectedCustomerId = null;
-    _productController.clear();
-    _quantityController.clear();
-    _priceController.clear();
+      final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+      finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
+    }
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            title: const Text(
-              'ثبت فروش جدید',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            content: SizedBox(
-              width: 550,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // انتخاب مشتری
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: _selectedCustomerId,
-                        hint: const Text(
-                          'انتخاب مشتری',
-                          style: TextStyle(color: Colors.grey),
-                        ),
+        builder: (context, setDialogState) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Text('ثبت فروش جدید', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
+              content: SizedBox(
+                width: 700,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionTitle('مدیریت فروشات'),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<Map<String, dynamic>>(
+                        value: selectedParty,
                         isExpanded: true,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        items: _customers.map((customer) {
-                          return DropdownMenuItem<int>(
-                            value: customer['id'],
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.person_outline,
-                                  size: 18,
-                                  color: Color(0xFFCB001D),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        customer['name'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      if (customer['company'] != null &&
-                                          customer['company'].isNotEmpty)
-                                        Text(
-                                          customer['company'],
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
+                        decoration: const InputDecoration(labelText: 'انتخاب مشتری / شرکت', border: OutlineInputBorder()),
+                        items: _partyOptions.map((option) {
+                          return DropdownMenuItem<Map<String, dynamic>>(
+                            value: option,
+                            child: Text('${option['name']} (${option['source'] == 'company' ? 'شرکت' : 'مشتری'})'),
                           );
                         }).toList(),
                         onChanged: (value) {
-                          setStateDialog(() {
-                            _selectedCustomerId = value;
+                          if (value == null) return;
+                          setDialogState(() {
+                            selectedParty = value;
+                            customerNameController.text = value['name']?.toString() ?? '';
+                            phoneController.text = value['phone']?.toString() ?? '';
+                            addressController.text = value['address']?.toString() ?? '';
+                            companyController.text = value['company']?.toString() ?? '';
                           });
                         },
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // نمایش اطلاعات مشتری انتخاب شده
-                  if (_selectedCustomerId != null)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCB001D).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFFCB001D).withOpacity(0.2),
-                        ),
-                      ),
-                      child: Column(
+                      const SizedBox(height: 12),
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.phone_outlined,
-                                size: 16,
-                                color: Color(0xFFCB001D),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'شماره تماس: ${_customers.firstWhere((c) => c['id'] == _selectedCustomerId)['phone'] ?? 'نامشخص'}',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.location_on_outlined,
-                                size: 16,
-                                color: Color(0xFFCB001D),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'آدرس: ${_customers.firstWhere((c) => c['id'] == _selectedCustomerId)['address'] ?? 'نامشخص'}',
-                                  style: const TextStyle(fontSize: 12),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
+                          Expanded(child: _buildTextField(controller: customerNameController, label: 'نام مشتری', icon: Icons.person_outline)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: companyController, label: 'نام شرکت', icon: Icons.business_outlined)),
                         ],
                       ),
-                    ),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: _productController,
-                    label: 'نام محصول',
-                    icon: Icons.inventory_2_outlined,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _quantityController,
-                          label: 'تعداد',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                        ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: phoneController, label: 'شماره تماس', icon: Icons.phone_outlined, keyboardType: TextInputType.phone)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: addressController, label: 'آدرس', icon: Icons.location_on_outlined)),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: _priceController,
-                          label: 'قیمت واحد (ریال)',
-                          icon: Icons.attach_money_outlined,
-                          keyboardType: TextInputType.number,
-                        ),
+                      const SizedBox(height: 16),
+                      _buildSectionTitle('مشخصات محصول'),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: productController, label: 'نام محصول', icon: Icons.inventory_2_outlined)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: genderController, label: 'نوع جنس', icon: Icons.category_outlined)),
+                        ],
                       ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: sizeController, label: 'سایز', icon: Icons.straighten)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: thicknessController, label: 'ضخامت', icon: Icons.height)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: weightPerUnitController, label: 'وزن فی خاده (کیلوگرم)', icon: Icons.scale_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: unitCountController, label: 'تعداد خاده', icon: Icons.numbers, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: totalWeightController, label: 'مجموع وزن (کیلوگرم)', icon: Icons.monitor_weight_outlined, keyboardType: TextInputType.number, readOnly: true)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: unitController, label: 'واحد', icon: Icons.scale, readOnly: true)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSectionTitle('اطلاعات مالی'),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: unitController, label: 'واحد', icon: Icons.widgets_outlined, readOnly: true)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: unitPriceController, label: 'قیمت واحد (هر کیلو)', icon: Icons.attach_money_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: totalPriceController, label: 'مجموع قیمت', icon: Icons.receipt_long_outlined, keyboardType: TextInputType.number, readOnly: true)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: priceRateController, label: 'نرخ ارز (از سیستم/ورود دستی)', icon: Icons.currency_exchange, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(controller: afnEquivalentController, label: 'معادل افغانی', icon: Icons.currency_exchange, readOnly: true),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: loadingController, label: 'هزینه بارگیری', icon: Icons.local_shipping_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: transferController, label: 'هزینه انتقال', icon: Icons.drive_eta_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: clearanceController, label: 'هزینه تخلیه', icon: Icons.fact_check_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: discountController, label: 'تخفیف', icon: Icons.discount_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _buildTextField(controller: finalPriceController, label: 'قیمت نهایی', icon: Icons.payments_outlined, keyboardType: TextInputType.number, readOnly: true)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: dateController, label: 'تاریخ شمسی', icon: Icons.date_range_outlined, readOnly: true, onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                dateController.text = PersianDateConverter.gregorianToJalali(picked);
+                                selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
+                              });
+                            }
+                          })),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildTextField(controller: timeController, label: 'ساعت بارگیری', icon: Icons.access_time_outlined, readOnly: true, onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.now(),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                timeController.text = _formatTimeOfDay(picked);
+                                selectedEnglishTime = _formatTimeOfDay(picked);
+                              });
+                            }
+                          })),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: selectedCurrency,
+                        decoration: const InputDecoration(labelText: 'ارز نهایی', border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'USD', child: Text('دالر (USD)')),
+                          DropdownMenuItem(value: 'AFN', child: Text('افغانی (AFN)')),
+                        ],
+                        onChanged: (value) => setDialogState(() {
+                          selectedCurrency = value ?? 'USD';
+                          updateTotals();
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: selectedType,
+                        decoration: const InputDecoration(labelText: 'نوع معامله', border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'فروش', child: Text('فروش')),
+                          DropdownMenuItem(value: 'پیش‌فاکتور', child: Text('پیش‌فاکتور')),
+                        ],
+                        onChanged: (value) => setDialogState(() => selectedType = value ?? 'فروش'),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: selectedPaymentMethod,
+                        decoration: const InputDecoration(labelText: 'روش پرداخت', border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'cash', child: Text('نقد')),
+                          DropdownMenuItem(value: 'loan_full', child: Text('قرض (کامل)')),
+                          DropdownMenuItem(value: 'loan_partial', child: Text('قرض (نقد جزئی)')),
+                        ],
+                        onChanged: (value) => setDialogState(() => selectedPaymentMethod = value ?? 'cash'),
+                      ),
+                      if (selectedPaymentMethod == 'loan_partial') const SizedBox(height: 12),
+                      if (selectedPaymentMethod == 'loan_partial') _buildTextField(controller: paidAmountController, label: 'مبلغ پرداختی اولیه', icon: Icons.payments_outlined, keyboardType: TextInputType.number),
+                      const SizedBox(height: 12),
+                      _buildTextField(controller: descriptionController, label: 'توضیحات', icon: Icons.notes_outlined, maxLines: 2),
                     ],
                   ),
-                ],
-              ),
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'انصراف',
-                  style: TextStyle(color: Colors.grey),
                 ),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  if (_selectedCustomerId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('لطفاً مشتری را انتخاب کنید'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
-                  if (_productController.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('لطفاً نام محصول را وارد کنید'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
-                  final customer = _customers.firstWhere(
-                    (c) => c['id'] == _selectedCustomerId,
-                  );
-                  final quantity = int.tryParse(_quantityController.text) ?? 0;
-                  final price = int.tryParse(_priceController.text) ?? 0;
-                  final total = quantity * price;
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+                ElevatedButton(
+                  onPressed: () async {
+                    final customerName = customerNameController.text.trim();
+                    final phone = phoneController.text.trim();
+                    final address = addressController.text.trim();
+                    final company = companyController.text.trim();
+                    final product = productController.text.trim();
+                    if (customerName.isEmpty || product.isEmpty) {
+                      _showSnackbar('نام مشتری و محصول الزامی است', Colors.red);
+                      return;
+                    }
+                    final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+                    final totalPrice = double.tryParse(totalPriceController.text) ?? 0;
+                    final discount = double.tryParse(discountController.text) ?? 0;
+                    final loadingCost = double.tryParse(loadingController.text) ?? 0;
+                    final transferCost = double.tryParse(transferController.text) ?? 0;
+                    final clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+                    final priceRate = double.tryParse(priceRateController.text) ?? 1;
+                    final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+                    final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
 
-                  setState(() {
-                    _salesData.add({
-                      'id': 'S-${1000 + _salesData.length + 1}',
-                      'customerId': _selectedCustomerId,
-                      'customer': customer['name'],
-                      'phone': customer['phone'] ?? '',
-                      'address': customer['address'] ?? '',
-                      'product': _productController.text,
-                      'quantity': quantity,
-                      'unit': 'متر',
-                      'price': price,
-                      'total': total,
-                      'status': 'در انتظار',
-                      'date': DateTime.now().toPersianDate(),
+                    final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+                    final currencyType = selectedCurrency;
+                    final usdEquivalent = currencyType == 'USD' ? finalPrice : (priceRate <= 0 ? finalPrice : finalPrice / priceRate);
+                    final afnEquivalent = currencyType == 'AFN' ? finalPrice : (finalPrice * (priceRate <= 0 ? 1 : priceRate));
+                    final invoiceNumber = await _buildInvoiceNumber();
+                    final remainingAmount = selectedPaymentMethod == 'cash'
+                        ? 0
+                        : (finalPrice - paidAmount) < 0
+                            ? 0
+                            : finalPrice - paidAmount;
+                    final payload = {
+                      'invoice_number': invoiceNumber,
+                      'customer_name': customerName,
+                      'customer_phone': phone,
+                      'customer_address': address,
+                      'customer_company': company,
+                      'product_name': product,
+                      'gender': genderController.text.trim(),
+                      'size': sizeController.text.trim(),
+                      'thickness': thicknessController.text.trim(),
+                      'weight': totalWeightController.text.trim(),
+                      'weight_per_unit': weightPerUnitController.text.trim(),
+                      'unit_count': unitCountController.text.trim(),
+                      'total_weight': totalWeightController.text.trim(),
+                      'unit': unitController.text.trim(),
+                      'unit_price': unitPrice,
+                      'total_price': totalPrice,
+                      'price_rate': priceRate,
+                      'currency': currencyType,
+                      'usd_equivalent': usdEquivalent,
+                      'afn_equivalent': afnEquivalent,
+                      'loading_cost': loadingCost,
+                      'transfer_cost': transferCost,
+                      'clearance_cost': clearanceCost,
+                      'discount': discount,
+                      'loading_time': timeController.text.trim(),
+                      'loading_time_en': selectedEnglishTime,
+                      'final_price': finalPrice,
+                      'payment_method': selectedPaymentMethod,
+                      'loan_type': selectedPaymentMethod == 'loan_full' ? 'full' : selectedPaymentMethod == 'loan_partial' ? 'partial' : 'cash',
+                      'paid_amount': selectedPaymentMethod == 'cash' ? finalPrice : paidAmount,
+                      'remaining_amount': remainingAmount,
+                      'description': descriptionController.text.trim(),
+                      'sale_type': selectedType,
+                      'date': dateController.text.trim(),
+                      'date_en': selectedEnglishDate,
+                    };
+                    final id = await _db.insertSalesInvoice(payload);
+                    if (id == -1) {
+                      _showSnackbar('ثبت فروش با خطا مواجه شد', Colors.red);
+                      return;
+                    }
+
+                    // If payment method is loan, create a sell_loans entry
+                    if (selectedPaymentMethod != 'cash') {
+                      final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
+                      final totalAmount = finalPrice;
+                      final remaining = (totalAmount - paidAmount) < 0 ? 0 : (totalAmount - paidAmount);
+                      final loanPayload = {
+                        'sale_invoice_id': id,
+                        'invoice_number': invoiceNumber,
+                        'customer_name': customerName,
+                        'customer_company': company,
+                        'total_amount': totalAmount,
+                        'paid_amount': paidAmount,
+                        'remaining_amount': remaining,
+                        'loan_type': selectedPaymentMethod == 'loan_full' ? 'full' : 'partial',
+                        'currency': currencyType,
+                        'date': dateController.text.trim(),
+                        'date_en': selectedEnglishDate,
+                      };
+                      if (loanPayload.isEmpty) {
+                        print('⚠️ loanPayload empty');
+                      }
+                      final loanId = await _db.insertSellLoan(loanPayload);
+                      if (loanId == -1) {
+                        _showSnackbar('خطا در ذخیره قرض', Colors.red);
+                      } else {
+                        if (paidAmount > 0) {
+                          await _db.insertSellLoanPayment({
+                            'loan_id': loanId,
+                            'amount': paidAmount,
+                            'note': 'پرداخت اولیه هنگام ثبت فروش',
+                            'date': dateController.text.trim(),
+                            'date_en': selectedEnglishDate,
+                          });
+                        }
+                      }
+                    }
+
+                    Navigator.pop(context);
+                    await _loadData();
+                    _showInvoiceModal(context, invoiceNumber, {
+                      ...payload,
+                      'supplier_name': customerName,
+                      'location': address,
                     });
-                  });
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('فروش با موفقیت ثبت شد'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCB001D),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                    _showSnackbar('فروش با موفقیت ثبت و ذخیره شد', Colors.green);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white),
+                  child: const Text('ثبت فروش'),
                 ),
-                child: const Text('ثبت فروش'),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  void _editSale(Map<String, dynamic> sale) {
-    // پیاده‌سازی ویرایش فروش
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('ویرایش فروش در حال توسعه...'),
-        backgroundColor: Colors.blue,
+  void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        child: Container(
+          width: 950,
+          constraints: const BoxConstraints(maxHeight: 700),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2), width: 2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 45,
+                        height: 45,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFFCB001D), width: 2),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.asset(
+                            'assets/images/companylogo.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const Center(child: Text('VP', style: TextStyle(color: Color(0xFFCB001D), fontSize: 16, fontWeight: FontWeight.w900))),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('ویکتور پایپ صنعت', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                          SizedBox(height: 2),
+                          Text('سامانه مدیریت یکپارچه', style: TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                        decoration: BoxDecoration(color: const Color(0xFFCB001D), borderRadius: BorderRadius.circular(4)),
+                        child: const Text('Invoice', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                        child: Text('شماره: $invoiceNumber', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12)),
+                      ),
+                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text('تاریخ (شمسی): ${invoice['date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        Text('Date (EN): ${invoice['date_en'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        if (invoice['loading_time'] != null && invoice['loading_time'].toString().isNotEmpty) Text('ساعت بارگیری: ${invoice['loading_time']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        if (invoice['loading_time_en'] != null && invoice['loading_time_en'].toString().isNotEmpty) Text('Loading (EN): ${invoice['loading_time_en']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                      ]),
+                    ],
+                  ),
+                ],
+              ),
+              Container(height: 2, margin: const EdgeInsets.symmetric(vertical: 8), color: const Color(0xFFCB001D)),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade200, width: 1)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(children: [
+                        const Icon(Icons.business, color: Color(0xFFCB001D), size: 14),
+                        const SizedBox(width: 4),
+                        const Text('مشتری:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text(invoice['supplier_name'] ?? invoice['customer_name'] ?? '-', style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
+                      ]),
+                    ),
+                    Expanded(
+                      child: Row(children: [
+                        const Icon(Icons.location_on, color: Color(0xFFCB001D), size: 14),
+                        const SizedBox(width: 4),
+                        const Text('محل تخلیه:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text(invoice['location'] ?? invoice['customer_address'] ?? '-', style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (invoice['payment_method'] != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: const Color(0xFFF1F8FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2))),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('روش پرداخت: ${invoice['payment_method'] == 'cash' ? 'نقد' : invoice['payment_method'] == 'loan_full' ? 'قرض کامل' : 'قرض جزئی'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                    if (invoice['payment_method'] != 'cash') ...[
+                      const SizedBox(height: 4),
+                      Text('نوع قرض: ${invoice['loan_type'] == 'full' ? 'تمام' : invoice['loan_type'] == 'partial' ? 'جزئی' : '-'}', style: const TextStyle(fontSize: 10)),
+                      Text('پرداخت شده: ${_formatCurrency(invoice['paid_amount'])} ${invoice['currency'] ?? ''}', style: const TextStyle(fontSize: 10)),
+                      Text('باقی‌مانده: ${_formatCurrency(invoice['remaining_amount'])} ${invoice['currency'] ?? ''}', style: const TextStyle(fontSize: 10)),
+                    ],
+                  ]),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Flexible(
+                child: Container(
+                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300, width: 1), borderRadius: BorderRadius.circular(4)),
+                  child: Column(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                      decoration: const BoxDecoration(color: Color(0xFFCB001D), borderRadius: BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(4))),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          _buildInvoiceHeaderCell('نام مشتری', 80),
+                          _buildInvoiceHeaderCell('شرکت', 70),
+                          _buildInvoiceHeaderCell('محصول', 90),
+                          _buildInvoiceHeaderCell('جنس', 60),
+                          _buildInvoiceHeaderCell('سایز', 60),
+                          _buildInvoiceHeaderCell('ضخامت', 60),
+                          _buildInvoiceHeaderCell('وزن', 60),
+                          _buildInvoiceHeaderCell('وزن خاده', 70),
+                          _buildInvoiceHeaderCell('تعداد خاده', 70),
+                          _buildInvoiceHeaderCell('مجموع وزن', 70),
+                          _buildInvoiceHeaderCell('قیمت واحد', 70),
+                          _buildInvoiceHeaderCell('مجموع قیمت', 70),
+                          _buildInvoiceHeaderCell('تخفیف', 60),
+                          _buildInvoiceHeaderCell('قیمت نهایی', 80),
+                        ]),
+                      ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                            child: Row(children: [
+                              _buildInvoiceDataCell(invoice['customer_name'] ?? '-', 80),
+                              _buildInvoiceDataCell(invoice['customer_company'] ?? '-', 70),
+                              _buildInvoiceDataCell(invoice['product_name'] ?? '-', 90),
+                              _buildInvoiceDataCell(invoice['gender'] ?? '-', 60),
+                              _buildInvoiceDataCell(invoice['size'] ?? '-', 60),
+                              _buildInvoiceDataCell(invoice['thickness'] ?? '-', 60),
+                              _buildInvoiceDataCell(invoice['weight'] ?? '-', 60),
+                              _buildInvoiceDataCell(invoice['weight_per_unit'] ?? '-', 70),
+                              _buildInvoiceDataCell(invoice['unit_count'] ?? '-', 70),
+                              _buildInvoiceDataCell(invoice['total_weight'] ?? '-', 70),
+                              _buildInvoiceDataCell(_formatCurrency(invoice['unit_price']), 70),
+                              _buildInvoiceDataCell(_formatCurrency(invoice['total_price']), 70),
+                              _buildInvoiceDataCell(_formatCurrency(invoice['discount']), 60),
+                              _buildInvoiceDataCell(_formatCurrency(invoice['final_price']), 80, isBold: true, isRed: true),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.04), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.15), width: 1)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(children: [
+                      _buildInvoiceSummaryItem('قیمت پایه:', _formatCurrency(invoice['total_price']), ''),
+                      const SizedBox(width: 12),
+                      _buildInvoiceSummaryItem('هزینه بارگیری:', _formatCurrency(invoice['loading_cost']), ''),
+                      const SizedBox(width: 12),
+                      _buildInvoiceSummaryItem('هزینه انتقال:', _formatCurrency(invoice['transfer_cost']), ''),
+                      const SizedBox(width: 12),
+                      _buildInvoiceSummaryItem('هزینه تخلیه:', _formatCurrency(invoice['clearance_cost']), ''),
+                    ]),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      const Text('مبلغ قابل پرداخت', style: TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                      Text('${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? 'USD'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFCB001D))),
+                    ]),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade300, width: 1))),
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  const Text('امضا: _________________', style: TextStyle(fontSize: 9, color: Color(0xFF888888))),
+                  Text('تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: const TextStyle(fontSize: 8, color: Color(0xFF888888))),
+                ]),
+              ),
+              const SizedBox(height: 4),
+              const Center(child: Text('ویکتور پایپ صنعت - سامانه مدیریت یکپارچه', style: TextStyle(fontSize: 7, color: Color(0xFF888888)))),
+              const SizedBox(height: 8),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('بستن', style: TextStyle(fontSize: 12))),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _generatePdfInvoice(invoice, invoiceNumber);
+                  },
+                  icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.white),
+                  label: const Text('PDF', style: TextStyle(fontSize: 12, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _generatePdfInvoice(invoice, invoiceNumber);
+                  },
+                  icon: const Icon(Icons.print, size: 18, color: Colors.white),
+                  label: const Text('چاپ', style: TextStyle(fontSize: 12, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
+                ),
+              ]),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  void _deleteSale(Map<String, dynamic> sale) {
-    showDialog(
+  Future<void> _generatePdfInvoice(Map<String, dynamic> invoice, String invoiceNumber) async {
+    late final pw.Font ttf;
+    try {
+      final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
+      ttf = pw.Font.ttf(fontData);
+    } catch (_) {
+      ttf = pw.Font.helvetica();
+    }
+
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (context) {
+          return pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.red, width: 1.8),
+                    borderRadius: pw.BorderRadius.circular(10),
+                  ),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                        pw.Text('ویکتور پایپ صنعت', style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+                        pw.SizedBox(height: 4),
+                        pw.Text('سامانه مدیریت یکپارچه', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
+                      ]),
+                      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: pw.BoxDecoration(color: PdfColors.red, borderRadius: pw.BorderRadius.circular(6)),
+                          child: pw.Text('Invoice', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text('شماره: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('تاریخ (شمسی): ${invoice['date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text('Date (EN): ${invoice['date_en'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text('روش پرداخت: ${invoice['payment_method'] == 'cash' ? 'نقد' : 'قرض'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (invoice['payment_method'] != 'cash') pw.Text('نوع قرض: ${invoice['loan_type'] == 'full' ? 'تمام' : 'جزئی'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (invoice['payment_method'] != 'cash') pw.Text('پرداخت شده: ${_formatCurrency(invoice['paid_amount'])} ${invoice['currency'] ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (invoice['payment_method'] != 'cash') pw.Text('باقی‌مانده: ${_formatCurrency(invoice['remaining_amount'])} ${invoice['currency'] ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (invoice['loading_time'] != null && invoice['loading_time'].toString().isNotEmpty) pw.Text('ساعت بارگیری: ${invoice['loading_time']}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (invoice['loading_time_en'] != null && invoice['loading_time_en'].toString().isNotEmpty) pw.Text('Loading (EN): ${invoice['loading_time_en']}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                      ]),
+                    ],
+                  ),
+                ),
+                pw.SizedBox(height: 12),
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
+                  child: pw.Row(children: [
+                    pw.Expanded(child: pw.Text('مشتری: ${invoice['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('شرکت: ${invoice['customer_company'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('محل تخلیه: ${invoice['location'] ?? invoice['customer_address'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                  ]),
+                ),
+                pw.SizedBox(height: 16),
+                pw.Table.fromTextArray(
+                  headers: ['نام مشتری', 'شرکت', 'محصول', 'جنس', 'سایز', 'ضخامت', 'وزن', 'وزن/واحد', 'تعداد واحد', 'مجموع وزن', 'قیمت واحد', 'قیمت پایه', 'تخفیف', 'قیمت نهایی'],
+                  data: [
+                    [
+                      invoice['customer_name'] ?? '-',
+                      invoice['customer_company'] ?? '-',
+                      invoice['product_name'] ?? '-',
+                      invoice['gender'] ?? '-',
+                      invoice['size'] ?? '-',
+                      invoice['thickness'] ?? '-',
+                      invoice['weight'] ?? '-',
+                      invoice['weight_per_unit'] ?? '-',
+                      invoice['unit_count'] ?? '-',
+                      invoice['total_weight'] ?? '-',
+                      _formatCurrency(invoice['unit_price']),
+                      _formatCurrency(invoice['total_price']),
+                      _formatCurrency(invoice['discount']),
+                      '${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? 'USD'}',
+                    ],
+                  ],
+                  headerStyle: pw.TextStyle(font: ttf, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
+                  cellStyle: pw.TextStyle(font: ttf, fontSize: 8),
+                  cellAlignment: pw.Alignment.center,
+                  border: pw.TableBorder.symmetric(outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5), inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+                ),
+                pw.SizedBox(height: 16),
+                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                    pw.Text('هزینه بارگیری: ${_formatCurrency(invoice['loading_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('هزینه انتقال: ${_formatCurrency(invoice['transfer_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('هزینه تخلیه: ${_formatCurrency(invoice['clearance_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                  ]),
+                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                    pw.Text('قیمت پایه: ${_formatCurrency(invoice['total_price'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('تخفیف: ${_formatCurrency(invoice['discount'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('مبلغ قابل پرداخت: ${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                  ]),
+                ]),
+                pw.Spacer(),
+                pw.Divider(color: PdfColors.grey300, thickness: 0.5),
+                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                  pw.Text('امضا: ______________________', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  pw.Text('تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                ]),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+  }
+
+  Widget _buildInvoiceHeaderCell(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 8), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+    );
+  }
+
+  Widget _buildInvoiceDataCell(String text, double width, {bool isBold = false, bool isRed = false}) {
+    return SizedBox(
+      width: width,
+      child: Text(text, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: isRed ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E), fontSize: 8), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+    );
+  }
+
+  Widget _buildInvoiceSummaryItem(String label, String value, String unit) {
+    return Row(children: [Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11)), const SizedBox(width: 4), Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)), const SizedBox(width: 2), Text(unit, style: const TextStyle(fontSize: 9, color: Color(0xFF888888)))]);
+  }
+
+  Future<void> _deleteSale(Map<String, dynamic> sale) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'حذف فروش',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        content: Text(
-          'آیا از حذف فروش "${sale['id']}" مطمئن هستید؟',
-          style: const TextStyle(fontSize: 14),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        title: const Text('حذف فاکتور'),
+        content: Text('آیا از حذف فاکتور ${sale['invoice_number']} مطمئن هستید؟'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _salesData.removeWhere((s) => s['id'] == sale['id']);
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('فروش با موفقیت حذف شد'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('حذف'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700), child: const Text('حذف')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final result = await _db.deleteSalesInvoice(sale['id']);
+    if (result == -1) {
+      _showSnackbar('حذف فاکتور با خطا مواجه شد', Colors.red);
+      return;
+    }
+    await _loadData();
+    _showSnackbar('فاکتور با موفقیت حذف شد', Colors.red);
+  }
+
+  Future<String> _buildInvoiceNumber() async {
+    final nextNumber = await _db.getNextSalesInvoiceNumber();
+    return nextNumber.toString().padLeft(5, '0');
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)));
+  }
+
+  Widget _invoiceInfoRow(String title, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 2, child: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700))),
+          const SizedBox(width: 8),
+          Expanded(flex: 3, child: Text(value?.toString() ?? '-', style: const TextStyle(color: Color(0xFF1A1A1A)))),
         ],
       ),
     );
   }
 
-  // ======================== ویجت کمکی ========================
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool readOnly = false,
+    void Function(String)? onChanged,
+    VoidCallback? onTap,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      readOnly: readOnly,
+      onChanged: onChanged,
+      onTap: onTap,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade600),
         prefixIcon: Icon(icon, color: const Color(0xFFCB001D), size: 20),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
     );
   }
 
-  // ======================== ویجت‌های اصلی ========================
+  String _formatCurrency(dynamic value) {
+    final number = value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '0') ?? 0;
+    return number.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  }
+
+  void _showSnackbar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: color, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Container(width: 44, height: 44, decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.08), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.receipt_long, color: Color(0xFFCB001D), size: 28)),
+            const SizedBox(width: 12),
+            const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('مدیریت فروشات', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))), Text('ثبت، ذخیره و پیش‌نمایش فاکتورهای فروش', style: TextStyle(fontSize: 13, color: Colors.grey))]),
+          ],
+        ),
+        ElevatedButton.icon(onPressed: _showAddSaleDialog, icon: const Icon(Icons.add_circle_outline), label: const Text('ثبت فروش جدید'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12))),
+      ],
+    );
+  }
+
+  Widget _buildQuickStats() {
+    final totalSales = _sales.fold<double>(0, (sum, item) => sum + (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0));
+    final totalInvoices = _sales.length;
+    return Row(
+      children: [
+        _buildStatCard('جمع فروش', _formatCurrency(totalSales), Icons.attach_money_outlined, const Color(0xFFCB001D)),
+        const SizedBox(width: 12),
+        _buildStatCard('تعداد فاکتور', totalInvoices.toString(), Icons.receipt_long_outlined, Colors.blue.shade700),
+        const SizedBox(width: 12),
+        _buildStatCard('ارز USD', _formatCurrency(_sales.fold<double>(0, (sum, item) => sum + ((item['currency'] == 'USD' ? (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0) : 0)))), Icons.currency_exchange, Colors.green.shade700),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))]),
+        child: Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)), const SizedBox(height: 4), Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)))]))]),
+      ),
+    );
+  }
+
+  Widget _buildFilterAndSearch() {
+    final filters = ['همه', 'فروش', 'پیش‌فاکتور'];
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))]),
+      child: Row(children: [Expanded(child: TextField(controller: _searchController, onChanged: (value) => setState(() => _searchQuery = value), decoration: InputDecoration(hintText: 'جستجو بر اساس مشتری یا شماره فاکتور...', prefixIcon: Icon(Icons.search, color: Colors.grey.shade400), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2))))), const SizedBox(width: 12), ...filters.map((filter) => Padding(padding: const EdgeInsets.only(left: 8), child: FilterChip(label: Text(filter, style: TextStyle(color: _selectedFilter == filter ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w600)), selected: _selectedFilter == filter, onSelected: (selected) => setState(() => _selectedFilter = filter), selectedColor: const Color(0xFFCB001D), backgroundColor: Colors.grey.shade100, checkmarkColor: Colors.white)))]),
+    );
+  }
+
+  Widget _buildSalesTable(List<Map<String, dynamic>> data) {
+    final totalPages = (data.length / _rowsPerPage).ceil();
+    final start = (_currentPage * _rowsPerPage).clamp(0, data.length);
+    final paged = data.skip(start).take(_rowsPerPage).toList();
+    final allSelectedOnPage = paged.isNotEmpty && paged.every((s) => _selectedInvoices.contains((s['invoice_number'] ?? '').toString()));
+
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))]),
+      child: Column(children: [
+        Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: const BorderRadius.only(topLeft: Radius.circular(14), topRight: Radius.circular(14))), child: Row(children: [SizedBox(width: 40, child: Checkbox(value: allSelectedOnPage, onChanged: (v) {
+              setState(() {
+                if (v == true) {
+                  for (final s in paged) {
+                    final id = (s['invoice_number'] ?? '').toString();
+                    if (id.isNotEmpty) _selectedInvoices.add(id);
+                  }
+                } else {
+                  for (final s in paged) {
+                    final id = (s['invoice_number'] ?? '').toString();
+                    _selectedInvoices.remove(id);
+                  }
+                }
+              });
+            })), const SizedBox(width: 8), const Expanded(flex: 1, child: Text('شماره')), const SizedBox(width: 8), const Expanded(flex: 2, child: Text('مشتری')), const Expanded(flex: 2, child: Text('محصول')), const Expanded(flex: 1, child: Text('جمع نهایی')), const Expanded(flex: 1, child: Text('تاریخ')), const Expanded(flex: 1, child: Text('عملیات'))])),
+        Expanded(child: paged.isEmpty ? const Center(child: Text('هیچ فاکتوری ثبت نشده است', style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: paged.length, itemBuilder: (context, index) {
+          final sale = paged[index];
+          final inv = (sale['invoice_number'] ?? '').toString();
+          final checked = _selectedInvoices.contains(inv);
+          return InkWell(onTap: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1))), child: Row(children: [SizedBox(width: 40, child: Checkbox(value: checked, onChanged: (v) {
+                setState(() {
+                  if (v == true) {
+                    _selectedInvoices.add(inv);
+                  } else {
+                    _selectedInvoices.remove(inv);
+                  }
+                });
+              })), Expanded(flex: 1, child: Text(inv.isNotEmpty ? inv : '-', style: const TextStyle(fontWeight: FontWeight.w700))), Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sale['customer_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w700)), Text(sale['customer_company'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))])), Expanded(flex: 2, child: Text(sale['product_name'] ?? '-', style: const TextStyle(fontSize: 13))), Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price']), style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFCB001D)))), Expanded(flex: 1, child: Text(sale['date'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), Expanded(flex: 1, child: Row(children: [IconButton(onPressed: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)), IconButton(onPressed: () => _deleteSale(sale), icon: const Icon(Icons.delete_outline, color: Colors.red))]))])));})),
+        // Pagination controls
+        Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Row(children: [Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}'), const SizedBox(width: 12), IconButton(onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null, icon: const Icon(Icons.chevron_left)), IconButton(onPressed: (_currentPage + 1) < totalPages ? () => setState(() => _currentPage++) : null, icon: const Icon(Icons.chevron_right)), const SizedBox(width: 12), DropdownButton<int>(value: _rowsPerPage, items: const [DropdownMenuItem(value: 5, child: Text('5')), DropdownMenuItem(value: 10, child: Text('10')), DropdownMenuItem(value: 20, child: Text('20')), DropdownMenuItem(value: 50, child: Text('50'))], onChanged: (v) => setState(() { _rowsPerPage = v ?? 10; _currentPage = 0; })),]),
+          Row(children: [Text('انتخاب شده: ${_selectedInvoices.length}'), const SizedBox(width: 12), ElevatedButton(onPressed: _selectedInvoices.isEmpty ? null : () { /* placeholder for bulk actions */ }, child: const Text('عملیات جمعی'))])
+        ])),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filteredData = _salesData.where((sale) {
-      final matchesSearch = sale['id'].contains(_searchQuery) ||
-          sale['customer'].contains(_searchQuery) ||
-          sale['product'].contains(_searchQuery);
-      final matchesFilter = _selectedFilter == 'همه' ||
-          sale['status'] == _selectedFilter;
+    final filteredData = _sales.where((sale) {
+      final search = _searchQuery.toLowerCase();
+      final matchesSearch = (sale['invoice_number'] ?? '').toString().toLowerCase().contains(search) || (sale['customer_name'] ?? '').toString().toLowerCase().contains(search) || (sale['product_name'] ?? '').toString().toLowerCase().contains(search);
+      final matchesFilter = _selectedFilter == 'همه' || (sale['sale_type'] ?? 'فروش') == _selectedFilter;
       return matchesSearch && matchesFilter;
     }).toList();
 
@@ -764,573 +1053,10 @@ class _SalesPageState extends State<SalesPage> {
       backgroundColor: Colors.grey.shade50,
       body: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 24),
-            _buildQuickStats(),
-            const SizedBox(height: 24),
-            _buildFilterAndSearch(),
-            const SizedBox(height: 20),
-            Expanded(child: _buildSalesTable(filteredData)),
-          ],
-        ),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildHeader(), const SizedBox(height: 20), _buildQuickStats(), const SizedBox(height: 20), _buildFilterAndSearch(), const SizedBox(height: 16), Expanded(child: _buildSalesTable(filteredData))]),
       ),
     );
-  }
-
-  // ======================== هدر ========================
-  Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFFCB001D).withOpacity(0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.trending_up_rounded,
-                color: Color(0xFFCB001D),
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 14),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'مدیریت فروشات',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                Text(
-                  'مدیریت و پیگیری سفارشات فروش و مشتریان',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            ElevatedButton.icon(
-              onPressed: _addCustomer,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFFCB001D),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                side: const BorderSide(color: Color(0xFFCB001D)),
-                elevation: 0,
-              ),
-              icon: const Icon(Icons.person_add_alt_1, size: 20),
-              label: const Text(
-                'افزودن مشتری',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton.icon(
-              onPressed: _addSale,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFCB001D),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                elevation: 0,
-              ),
-              icon: const Icon(Icons.add, size: 20),
-              label: const Text(
-                'ثبت فروش جدید',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // ======================== کارت‌های آمار ========================
-  Widget _buildQuickStats() {
-    final totalSales = _salesData.fold<int>(
-      0,
-      (sum, sale) => sum + (sale['total'] as int),
-    );
-    final totalOrders = _salesData.length;
-    final pendingOrders = _salesData.where((s) => s['status'] == 'در انتظار').length;
-    final shippedOrders = _salesData.where((s) => s['status'] == 'ارسال شده').length;
-
-    return Row(
-      children: [
-        _buildStatCard(
-          title: 'کل فروش',
-          value: totalSales.toString().replaceAllMapped(
-            RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-            (Match m) => '${m[1]},',
-          ),
-          icon: Icons.attach_money,
-          color: const Color(0xFFCB001D),
-          subtitle: 'مجموع فروش کل',
-        ),
-        const SizedBox(width: 16),
-        _buildStatCard(
-          title: 'تعداد سفارشات',
-          value: totalOrders.toString(),
-          icon: Icons.receipt_long,
-          color: Colors.blue.shade700,
-          subtitle: 'کل سفارشات ثبت شده',
-        ),
-        const SizedBox(width: 16),
-        _buildStatCard(
-          title: 'در انتظار تایید',
-          value: pendingOrders.toString(),
-          icon: Icons.pending_actions,
-          color: Colors.orange.shade700,
-          subtitle: 'نیاز به بررسی',
-        ),
-        const SizedBox(width: 16),
-        _buildStatCard(
-          title: 'ارسال شده',
-          value: shippedOrders.toString(),
-          icon: Icons.local_shipping,
-          color: Colors.green.shade700,
-          subtitle: 'در مسیر تحویل',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required String subtitle,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 18),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 11,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ======================== فیلتر و جستجو ========================
-  Widget _buildFilterAndSearch() {
-    final filters = ['همه', 'تکمیل شده', 'در انتظار', 'ارسال شده', 'لغو شده'];
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) => setState(() => _searchQuery = value),
-              decoration: InputDecoration(
-                hintText: 'جستجو بر اساس شناسه، مشتری یا محصول...',
-                hintStyle: TextStyle(
-                  color: Colors.grey.shade400,
-                  fontSize: 13,
-                ),
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: Colors.grey.shade400,
-                  size: 22,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 0),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          ...filters.map((filter) {
-            final isSelected = _selectedFilter == filter;
-            return Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: FilterChip(
-                label: Text(
-                  filter,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.grey.shade700,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    fontSize: 12,
-                  ),
-                ),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() => _selectedFilter = filter);
-                },
-                backgroundColor: Colors.grey.shade100,
-                selectedColor: const Color(0xFFCB001D),
-                checkmarkColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  side: BorderSide(
-                    color: isSelected
-                        ? const Color(0xFFCB001D)
-                        : Colors.grey.shade200,
-                  ),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  // ======================== جدول فروشات ========================
-  Widget _buildSalesTable(List<Map<String, dynamic>> data) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(14),
-                topRight: Radius.circular(14),
-              ),
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200, width: 1),
-              ),
-            ),
-            child: Row(
-              children: const [
-                Expanded(flex: 1, child: Text('شناسه')),
-                Expanded(flex: 2, child: Text('مشتری')),
-                Expanded(flex: 2, child: Text('شماره تماس')),
-                Expanded(flex: 2, child: Text('محصول')),
-                Expanded(flex: 1, child: Text('تعداد')),
-                Expanded(flex: 1, child: Text('قیمت کل')),
-                Expanded(flex: 1, child: Text('تاریخ')),
-                Expanded(flex: 1, child: Text('وضعیت')),
-                Expanded(flex: 1, child: Text('عملیات')),
-              ],
-            ),
-          ),
-          Expanded(
-            child: data.isEmpty
-                ? const Center(
-                    child: Text(
-                      'هیچ فروشی یافت نشد',
-                      style: TextStyle(color: Colors.grey, fontSize: 14),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: data.length,
-                    itemBuilder: (context, index) {
-                      final sale = data[index];
-                      return _buildTableRow(sale);
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTableRow(Map<String, dynamic> sale) {
-    Color statusColor;
-    IconData statusIcon;
-    switch (sale['status']) {
-      case 'تکمیل شده':
-        statusColor = Colors.green.shade700;
-        statusIcon = Icons.check_circle_rounded;
-        break;
-      case 'در انتظار':
-        statusColor = Colors.orange.shade700;
-        statusIcon = Icons.pending_rounded;
-        break;
-      case 'ارسال شده':
-        statusColor = Colors.blue.shade700;
-        statusIcon = Icons.local_shipping_rounded;
-        break;
-      case 'لغو شده':
-        statusColor = Colors.red.shade700;
-        statusIcon = Icons.cancel_rounded;
-        break;
-      default:
-        statusColor = Colors.grey.shade600;
-        statusIcon = Icons.help_rounded;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade100, width: 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 1,
-            child: Text(
-              sale['id'],
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  sale['customer'],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-                if (sale['address'] != null && sale['address'].isNotEmpty)
-                  Text(
-                    sale['address'],
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              sale['phone'] ?? '-',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF333333),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              sale['product'],
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF333333),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Text(
-              '${sale['quantity']} ${sale['unit']}',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF333333),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Text(
-              '${sale['total'].toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Text(
-              sale['date'],
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(statusIcon, color: statusColor, size: 12),
-                  const SizedBox(width: 4),
-                  Text(
-                    sale['status'],
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  onPressed: () => _editSale(sale),
-                  icon: Icon(
-                    Icons.edit_outlined,
-                    color: Colors.grey.shade600,
-                    size: 18,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  onPressed: () => _deleteSale(sale),
-                  icon: Icon(
-                    Icons.delete_outline_rounded,
-                    color: Colors.grey.shade600,
-                    size: 18,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ======================== اکستنشن تاریخ ========================
-extension DateExtension on DateTime {
-  String toPersianDate() {
-    // اینجا می‌توانید تاریخ شمسی را پیاده‌سازی کنید
-    // برای نمونه از تاریخ میلادی استفاده می‌کنیم
-    return '${year}/${month.toString().padLeft(2, '0')}/${day.toString().padLeft(2, '0')}';
   }
 }

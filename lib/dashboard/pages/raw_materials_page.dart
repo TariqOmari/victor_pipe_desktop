@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../database/database_helper.dart';
+import '../../utils/date_converter.dart';
 
 class RawMaterialsPage extends StatefulWidget {
   const RawMaterialsPage({super.key});
@@ -9,11 +10,14 @@ class RawMaterialsPage extends StatefulWidget {
   State<RawMaterialsPage> createState() => _RawMaterialsPageState();
 }
 
-class _RawMaterialsPageState extends State<RawMaterialsPage> {
+class _RawMaterialsPageState extends State<RawMaterialsPage>
+    with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> materials = [];
   List<Map<String, dynamic>> suppliers = [];
   bool isLoading = true;
   final DatabaseHelper _db = DatabaseHelper();
+
+  late TabController _tabController;
 
   // Pagination
   int _currentPage = 1;
@@ -23,10 +27,20 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   // Selection
   final Set<int> _selectedIds = {};
 
+  // Class level variable for English date
+  String? selectedEnglishDate;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -47,64 +61,292 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     }
   }
 
-  List<Map<String, dynamic>> get _paginatedMaterials {
-    final start = (_currentPage - 1) * _itemsPerPage;
-    final end = start + _itemsPerPage;
-    if (start >= materials.length) {
-      _currentPage = 1;
-      return materials.take(_itemsPerPage).toList();
+  // ============ GET UNIT TOTALS ============
+  Map<String, double> _getUnitTotals() {
+    Map<String, double> totals = {};
+    for (var material in materials) {
+      String unit = material['unit'] ?? 'نامشخص';
+      double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
+      totals[unit] = (totals[unit] ?? 0) + grossWeight;
     }
-    return materials.sublist(
-      start,
-      end > materials.length ? materials.length : end,
+    return totals;
+  }
+
+  // ============ CUT FROM UNIT TOTAL ============
+  Future<void> _showCutUnitDialog(String unit, double totalWeight) async {
+    final weightController = TextEditingController();
+    String selectedType = 'تخلیه شده';
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('کسر از موجودی ${unit == 'نامشخص' ? '' : '(' + unit + ')'}'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'مجموع موجودی این واحد:',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$totalWeight $unit',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFCB001D),
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'نوع کسر',
+                  border: OutlineInputBorder(),
+                ),
+                value: selectedType,
+                items: const [
+                  DropdownMenuItem(value: 'تخلیه شده', child: Text('تخلیه شده')),
+                  DropdownMenuItem(value: 'قطع شده', child: Text('قطع شده')),
+                ],
+                onChanged: (value) {
+                  if (value != null) selectedType = value;
+                },
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: weightController,
+                decoration: const InputDecoration(
+                  labelText: 'مقدار کسر',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final weight = double.tryParse(weightController.text) ?? 0;
+                if (weight <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('مقدار معتبر وارد کنید'), backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+
+                if (weight > totalWeight) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('موجودی کافی نیست!'), backgroundColor: Colors.red),
+                  );
+                  return;
+                }
+
+                // Find all items with this unit
+                final itemsToUpdate = materials.where((m) => m['unit'] == unit).toList();
+                
+                // Calculate total weight of all items with this unit
+                double totalUnitWeight = 0;
+                for (var item in itemsToUpdate) {
+                  totalUnitWeight += double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
+                }
+
+                // Distribute the cut proportionally
+                for (var item in itemsToUpdate) {
+                  double currentWeight = double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
+                  double ratio = currentWeight / totalUnitWeight;
+                  double cutAmount = weight * ratio;
+                  double newWeight = currentWeight - cutAmount;
+                  
+                  final updatedMaterial = Map<String, dynamic>.from(item);
+                  updatedMaterial['gross_weight'] = newWeight.toStringAsFixed(2);
+                  await _db.updateRawMaterial(item['id'], updatedMaterial);
+                }
+
+                Navigator.pop(context);
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✅ $weight $unit ${selectedType == 'تخلیه شده' ? 'تخلیه' : 'قطع'} شد از مجموع ${itemsToUpdate.length} آیتم'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+                _loadData();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+              ),
+              child: const Text('تایید'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  int get _totalPages => (materials.length / _itemsPerPage).ceil();
-  
-  void _changePage(int newPage) {
-    if (newPage >= 1 && newPage <= _totalPages) {
-      setState(() {
-        _currentPage = newPage;
-        _selectedIds.clear();
-      });
+  // ============ BUILD UNIT CARDS (TAB 2 - STOCK OVERVIEW) ============
+  List<Widget> _buildUnitStockCards() {
+    Map<String, double> unitTotals = _getUnitTotals();
+
+    if (unitTotals.isEmpty) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFFCB001D).withOpacity(0.06),
+              width: 1,
+            ),
+          ),
+          child: const Text(
+            'هیچ ماده خامی در انبار نیست',
+            style: TextStyle(
+              color: Color(0xFF888888),
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ];
     }
-  }
 
-  void _changeItemsPerPage(int? newSize) {
-    if (newSize != null) {
-      setState(() {
-        _itemsPerPage = newSize;
-        _currentPage = 1;
-        _selectedIds.clear();
-      });
-    }
-  }
-
-  void _toggleSelection(int id) {
-    setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
-      } else {
-        _selectedIds.add(id);
-      }
+    List<Widget> cards = [];
+    unitTotals.forEach((unit, total) {
+      // Get items count for this unit
+      int itemCount = materials.where((m) => m['unit'] == unit).length;
+      
+      cards.add(
+        Container(
+          width: 220,
+          margin: const EdgeInsets.only(left: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            border: Border.all(
+              color: const Color(0xFFCB001D).withOpacity(0.15),
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCB001D).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.scale,
+                      color: Color(0xFFCB001D),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      unit == 'نامشخص' ? 'بدون واحد' : unit,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1A2E),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'مجموع موجودی:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                  Text(
+                    total.toStringAsFixed(0),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Color(0xFFCB001D),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'تعداد آیتم‌ها: $itemCount',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                  // Cut Button
+                  InkWell(
+                    onTap: () => _showCutUnitDialog(unit, total),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.cut, color: Colors.orange, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'کسر',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
     });
+
+    return cards;
   }
 
-  void _toggleSelectAll() {
-    setState(() {
-      final currentIds = _paginatedMaterials.map((m) => m['id'] as int).toList();
-      final allSelected = currentIds.every((id) => _selectedIds.contains(id));
-      if (allSelected) {
-        _selectedIds.removeAll(currentIds);
-      } else {
-        _selectedIds.addAll(currentIds);
-      }
-    });
-  }
-
-  // ============ BUILD UNIT CARDS ============
-  List<Widget> _buildUnitCards() {
+  // ============ BUILD UNIT SUMMARY CARDS (TAB 1) ============
+  List<Widget> _buildUnitSummaryCards() {
     Map<String, Map<String, double>> unitTotals = {};
     
     for (var material in materials) {
@@ -243,304 +485,318 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     return cards;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Container(
-        padding: const EdgeInsets.all(20),
+  // ============ BUILD STOCK TABLE (Tab 2) - ONLY CARDS, NO DETAILS TABLE ============
+  Widget _buildStockTable() {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
+    }
+
+    Map<String, double> unitTotals = _getUnitTotals();
+
+    if (materials.isEmpty) {
+      return const Center(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('مدیریت مواد خام', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                    SizedBox(height: 2),
-                    Text('مدیریت و کنترل مواد اولیه انبار', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                  ],
+            Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey),
+            SizedBox(height: 12),
+            Text('هیچ ماده خامی در انبار نیست', style: TextStyle(fontSize: 14, color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'موجودی بر اساس واحد:',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+          ),
+          const SizedBox(height: 12),
+          // Stock Cards - Responsive grid
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _buildUnitStockCards(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============ BUILD MAIN TABLE (Tab 1) ============
+  Widget _buildMainTable() {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
+    }
+
+    if (materials.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.warehouse_outlined, size: 48, color: Colors.grey),
+            SizedBox(height: 12),
+            Text('هیچ ماده خامی یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
                 ),
-                Row(
+                child: Column(
                   children: [
-                    if (_selectedIds.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCB001D).withOpacity(0.05),
+                        border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 40),
+                          const SizedBox(width: 6),
+                          _buildHeaderCell('شماره', 60),
+                          _buildHeaderCell('نام مواد', 90),
+                          _buildHeaderCell('تاریخ', 100),
+                          _buildHeaderCell('واحد', 60),
+                          _buildHeaderCell('وزن خالص', 65),
+                          _buildHeaderCell('وزن ناخالص', 65),
+                          _buildHeaderCell('قیمت واحد', 65),
+                          _buildHeaderCell('محصول', 60),
+                          _buildHeaderCell('کمیشن', 60),
+                          _buildHeaderCell('کرایه', 60),
+                          _buildHeaderCell('متفرقه', 60),
+                          _buildHeaderCell('غرفه داری', 60),
+                          _buildHeaderCell('بارچلانی', 60),
+                          _buildHeaderCell('نوع خرید', 70),
+                          _buildHeaderCell('قیمت نهایی', 80),
+                          _buildHeaderCell('عملیات', 80),
+                        ],
+                      ),
+                    ),
+                    ..._paginatedMaterials.map((material) {
+                      final isSelected = _selectedIds.contains(material['id'] as int);
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFCB001D).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
+                          color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
+                          border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${_selectedIds.length} انتخاب شده',
-                              style: const TextStyle(color: Color(0xFFCB001D), fontSize: 11, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      onPressed: () { _showAddDialog(context); },
-                      icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                      label: const Text('افزودن ماده خام', style: TextStyle(color: Colors.white, fontSize: 12)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFCB001D),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Stats
-            Row(
-              children: [
-                _buildStatCard('کل مواد', materials.length.toString()),
-                const SizedBox(width: 12),
-                _buildStatCard('فروشندگان', suppliers.length.toString()),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Unit-based totals cards
-            if (materials.isNotEmpty) ...[
-              const Text('خلاصه انبار موجود بر اساس واحد:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-              const SizedBox(height: 6),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: _buildUnitCards()),
-              ),
-            ],
-            const SizedBox(height: 14),
-
-            // List
-            Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
-                  : materials.isEmpty
-                      ? const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.warehouse_outlined, size: 48, color: Colors.grey),
-                              SizedBox(height: 12),
-                              Text('هیچ ماده خامی یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                            ],
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
-                                  ],
-                                  border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
-                                ),
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: SizedBox(
-                                    width: 1680, // Increased width to accommodate action buttons
-                                    child: ListView.builder(
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      itemCount: _paginatedMaterials.length + 1,
-                                      itemBuilder: (context, index) {
-                                        if (index == 0) {
-                                          return Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFCB001D).withOpacity(0.05),
-                                              border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                const SizedBox(width: 40),
-                                                const SizedBox(width: 6),
-                                                _buildHeaderCell('شماره', 60),
-                                                _buildHeaderCell('نام مواد', 90),
-                                                _buildHeaderCell('تاریخ', 65),
-                                                _buildHeaderCell('واحد', 60),
-                                                _buildHeaderCell('وزن خالص', 65),
-                                                _buildHeaderCell('وزن ناخالص', 65),
-                                                _buildHeaderCell('قیمت واحد', 65),
-                                                _buildHeaderCell('محصول', 60),
-                                                _buildHeaderCell('کمیشن', 60),
-                                                _buildHeaderCell('کرایه', 60),
-                                                _buildHeaderCell('متفرقه', 60),
-                                                _buildHeaderCell('غرفه داری', 60),
-                                                _buildHeaderCell('بارچلانی', 60),
-                                                _buildHeaderCell('قیمت نهایی', 80),
-                                                _buildHeaderCell('عملیات', 80),
-                                              ],
-                                            ),
-                                          );
-                                        }
-
-                                        final material = _paginatedMaterials[index - 1];
-                                        final isSelected = _selectedIds.contains(material['id'] as int);
-
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
-                                            border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              SizedBox(
-                                                width: 40,
-                                                child: Checkbox(
-                                                  value: isSelected,
-                                                  onChanged: (_) => _toggleSelection(material['id'] as int),
-                                                  activeColor: const Color(0xFFCB001D),
-                                                  checkColor: Colors.white,
-                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              _buildDataCell(material['id'].toString(), 60),
-                                              _buildDataCell(material['name'] ?? '-', 90),
-                                              _buildDataCell(material['date'] ?? '-', 65),
-                                              _buildDataCell(material['unit'] ?? '-', 60),
-                                              _buildDataCell(material['net_weight'] ?? '-', 65),
-                                              _buildDataCell(material['gross_weight'] ?? '-', 65),
-                                              _buildDataCell(material['unit_price'] ?? '-', 65),
-                                              _buildDataCell(material['product'] ?? '-', 60),
-                                              _buildDataCell(material['commission'] ?? '-', 60),
-                                              _buildDataCell(material['transfer_cost'] ?? '-', 60),
-                                              _buildDataCell(material['miscellaneous'] ?? '-', 60),
-                                              _buildDataCell(material['ghurfedari'] ?? '-', 60),
-                                              _buildDataCell(material['barchalani'] ?? '-', 60),
-                                              _buildDataCell(material['final_price'] ?? '-', 80, isBold: true, isRed: true),
-                                              // Action buttons
-                                              SizedBox(
-                                                width: 80,
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: Icon(
-                                                        Icons.edit_outlined,
-                                                        color: const Color(0xFFCB001D),
-                                                        size: 18,
-                                                      ),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      onPressed: () {
-                                                        _showEditDialog(context, material);
-                                                      },
-                                                      tooltip: 'ویرایش',
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    IconButton(
-                                                      icon: Icon(
-                                                        Icons.delete_outline,
-                                                        color: Colors.red.shade400,
-                                                        size: 18,
-                                                      ),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      onPressed: () {
-                                                        _showDeleteDialog(context, material);
-                                                      },
-                                                      tooltip: 'حذف',
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
+                            SizedBox(
+                              width: 40,
+                              child: Checkbox(
+                                value: isSelected,
+                                onChanged: (_) => _toggleSelection(material['id'] as int),
+                                activeColor: const Color(0xFFCB001D),
+                                checkColor: Colors.white,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                             ),
-
-                            // Pagination
+                            const SizedBox(width: 6),
+                            _buildDataCell(material['id'].toString(), 60),
+                            _buildDataCell(material['name'] ?? '-', 90),
                             Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: const BorderRadius.only(
-                                  bottomLeft: Radius.circular(12),
-                                  bottomRight: Radius.circular(12),
-                                ),
-                                border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              width: 100,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Row(
-                                    children: [
-                                      const Text('نمایش:', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: DropdownButtonHideUnderline(
-                                          child: DropdownButton<int>(
-                                            value: _itemsPerPage,
-                                            onChanged: _changeItemsPerPage,
-                                            items: _pageSizeOptions.map((size) {
-                                              return DropdownMenuItem<int>(
-                                                value: size,
-                                                child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
-                                              );
-                                            }).toList(),
-                                            dropdownColor: Colors.white,
-                                            icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                                    ],
+                                  Text(
+                                    material['date_en'] ?? '-',
+                                    style: const TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1A1A2E),
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  Row(
-                                    children: [
-                                      Text('صفحه $_currentPage از $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                                      const SizedBox(width: 12),
-                                      IconButton(
-                                        icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        onPressed: _currentPage < _totalPages ? () => _changePage(_currentPage + 1) : null,
-                                      ),
-                                    ],
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    material['date'] ?? '-',
+                                    style: const TextStyle(
+                                      fontSize: 7,
+                                      color: Color(0xFFCB001D),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _buildDataCell(material['unit'] ?? '-', 60),
+                            _buildDataCell(material['net_weight'] ?? '-', 65),
+                            _buildDataCell(material['gross_weight'] ?? '-', 65),
+                            _buildDataCell(material['unit_price'] ?? '-', 65),
+                            _buildDataCell(material['product'] ?? '-', 60),
+                            _buildDataCell(material['commission'] ?? '-', 60),
+                            _buildDataCell(material['transfer_cost'] ?? '-', 60),
+                            _buildDataCell(material['miscellaneous'] ?? '-', 60),
+                            _buildDataCell(material['ghurfedari'] ?? '-', 60),
+                            _buildDataCell(material['barchalani'] ?? '-', 60),
+                            Container(
+                              width: 70,
+                              child: _buildPurchaseTypeChip(material['purchase_type']),
+                            ),
+                            _buildDataCell(material['final_price'] ?? '-', 80, isBold: true, isRed: true),
+                            SizedBox(
+                              width: 80,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => _showEditDialog(context, material),
+                                    tooltip: 'ویرایش',
+                                  ),
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => _showDeleteDialog(context, material),
+                                    tooltip: 'حذف',
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
             ),
-          ],
+          ),
         ),
-      ),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(12),
+              bottomRight: Radius.circular(12),
+            ),
+            border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Text('نمایش:', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: _itemsPerPage,
+                        onChanged: _changeItemsPerPage,
+                        items: _pageSizeOptions.map((size) {
+                          return DropdownMenuItem<int>(
+                            value: size,
+                            child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
+                          );
+                        }).toList(),
+                        dropdownColor: Colors.white,
+                        icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ],
+              ),
+              Row(
+                children: [
+                  Text('صفحه $_currentPage از $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentPage < _totalPages ? () => _changePage(_currentPage + 1) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
+  }
+
+  List<Map<String, dynamic>> get _paginatedMaterials {
+    final start = (_currentPage - 1) * _itemsPerPage;
+    final end = start + _itemsPerPage;
+    if (start >= materials.length) {
+      _currentPage = 1;
+      return materials.take(_itemsPerPage).toList();
+    }
+    return materials.sublist(
+      start,
+      end > materials.length ? materials.length : end,
+    );
+  }
+
+  int get _totalPages => (materials.length / _itemsPerPage).ceil();
+  
+  void _changePage(int newPage) {
+    if (newPage >= 1 && newPage <= _totalPages) {
+      setState(() {
+        _currentPage = newPage;
+        _selectedIds.clear();
+      });
+    }
+  }
+
+  void _changeItemsPerPage(int? newSize) {
+    if (newSize != null) {
+      setState(() {
+        _itemsPerPage = newSize;
+        _currentPage = 1;
+        _selectedIds.clear();
+      });
+    }
+  }
+
+  void _toggleSelection(int id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
   }
 
   Widget _buildHeaderCell(String text, double width) {
@@ -577,13 +833,41 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     );
   }
 
-  String _getSupplierName(int? supplierId) {
-    if (supplierId == null) return '-';
-    final supplier = suppliers.firstWhere(
-      (s) => s['id'] == supplierId,
-      orElse: () => {},
+  Widget _buildPurchaseTypeChip(String? purchaseType) {
+    final type = purchaseType ?? 'نامشخص';
+    final isDirect = type == 'مستقیم';
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDirect ? Colors.green.withOpacity(0.15) : Colors.orange.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDirect ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isDirect ? Icons.check_circle : Icons.remove_circle,
+            color: isDirect ? Colors.green : Colors.orange,
+            size: 12,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            type,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: isDirect ? Colors.green.shade700 : Colors.orange.shade700,
+            ),
+          ),
+        ],
+      ),
     );
-    return supplier['name'] ?? '-';
   }
 
   Widget _buildStatCard(String title, String value, [IconData? icon, Color? color]) {
@@ -645,8 +929,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     final ghurfedariController = TextEditingController();
     final barchalaniController = TextEditingController();
     final finalPriceController = TextEditingController();
-
+    
+    String? selectedPurchaseType;
     String? selectedSupplierId;
+    String? selectedDate;
 
     void _updateFinalPrice() {
       double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
@@ -679,26 +965,16 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Supplier Dropdown
                       DropdownButtonFormField<String>(
                         decoration: const InputDecoration(
                           labelText: 'انتخاب فروشنده *',
                           labelStyle: TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
+                          border: OutlineInputBorder(),
                           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         value: selectedSupplierId,
                         items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('انتخاب فروشنده...'),
-                          ),
+                          const DropdownMenuItem<String>(value: null, child: Text('انتخاب فروشنده...')),
                           ...suppliers.map((supplier) {
                             return DropdownMenuItem<String>(
                               value: supplier['id'].toString(),
@@ -713,20 +989,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Date
                       TextFormField(
                         controller: dateController,
                         decoration: InputDecoration(
                           labelText: 'تاریخ *',
                           labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
+                          border: OutlineInputBorder(),
                           suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
@@ -738,88 +1006,58 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                             lastDate: DateTime(2030),
                           );
                           if (picked != null) {
-                            dateController.text = '${picked.year}/${picked.month}/${picked.day}';
+                            String persianDate = PersianDateConverter.gregorianToJalali(picked);
+                            String englishDate = PersianDateConverter.getEnglishDate(picked);
+                            setStateDialog(() {
+                              dateController.text = persianDate;
+                              selectedDate = persianDate;
+                              selectedEnglishDate = englishDate;
+                            });
                           }
                         },
+                        readOnly: true,
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Name
                       TextField(
                         controller: nameController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'نام مواد ارسالی *',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Location
                       TextField(
                         controller: locationController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'محل تخلیه *',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Material Type
                       TextField(
                         controller: materialTypeController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'نوع مواد *',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Unit
                       DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'واحد *',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         value: unitController.text.isNotEmpty ? unitController.text : null,
                         items: const [
                           DropdownMenuItem<String>(value: 'کیلوگرم', child: Text('کیلوگرم (Kg)')),
                           DropdownMenuItem<String>(value: 'تن', child: Text('تن (Ton)')),
                           DropdownMenuItem<String>(value: 'متر', child: Text('متر (M)')),
-                          DropdownMenuItem<String>(value: 'سانتی‌متر', child: Text('سانتی‌متر (Cm)')),
-                          DropdownMenuItem<String>(value: 'لیتر', child: Text('لیتر (L)')),
                           DropdownMenuItem<String>(value: 'عدد', child: Text('عدد (Pcs)')),
+                          DropdownMenuItem<String>(value: 'لیتر', child: Text('لیتر (L)')),
                         ],
                         onChanged: (value) {
                           setStateDialog(() {
@@ -828,62 +1066,43 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Thickness
                       TextField(
                         controller: thicknessController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'ضخامت *',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Product
-                      TextField(
-                        controller: productController,
-                        decoration: InputDecoration(
-                          labelText: 'قیمت محصول (افغانی)',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(
+                          labelText: 'نوع خرید *',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => _updateFinalPrice(),
+                        value: selectedPurchaseType,
+                        items: const [
+                          DropdownMenuItem<String>(value: null, child: Text('انتخاب نوع خرید...')),
+                          DropdownMenuItem<String>(value: 'مستقیم', child: Text('مستقیم')),
+                          DropdownMenuItem<String>(value: 'غیر مستقیم', child: Text('غیر مستقیم')),
+                        ],
+                        onChanged: (value) {
+                          setStateDialog(() {
+                            selectedPurchaseType = value;
+                          });
+                        },
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Net & Gross Weight
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: netWeightController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'وزن خالص *',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                             ),
@@ -892,17 +1111,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                           Expanded(
                             child: TextField(
                               controller: grossWeightController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'وزن ناخالص *',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -911,44 +1123,37 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Unit Price
                       TextField(
                         controller: unitPriceController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'قیمت واحد (افغانی) *',
-                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Color(0xFFCB001D)),
-                            borderRadius: BorderRadius.all(Radius.circular(8)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         keyboardType: TextInputType.number,
                         onChanged: (_) => _updateFinalPrice(),
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Commission & Transfer
+                      TextField(
+                        controller: productController,
+                        decoration: const InputDecoration(
+                          labelText: 'قیمت محصول (افغانی)',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (_) => _updateFinalPrice(),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: commissionController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'کمیشن (افغانی)',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -958,17 +1163,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                           Expanded(
                             child: TextField(
                               controller: transferCostController,
-                              decoration: InputDecoration(
-                                labelText: 'کرایه انتقالات (افغانی)',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: const InputDecoration(
+                                labelText: 'کرایه (افغانی)',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -977,24 +1175,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      
-                      // غرفه داری & بارچلانی
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: ghurfedariController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'غرفه داری (افغانی)',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1004,17 +1193,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                           Expanded(
                             child: TextField(
                               controller: barchalaniController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'بارچلانی (افغانی)',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1023,24 +1205,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      
-                      // Miscellaneous & Final Price
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: miscellaneousController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'متفرقه (افغانی)',
-                                labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1053,25 +1226,13 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                               enabled: false,
                               decoration: InputDecoration(
                                 labelText: 'قیمت تمام شد (افغانی)',
-                                labelStyle: const TextStyle(
-                                  color: Color(0xFFCB001D),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: Color(0xFFCB001D)),
-                                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                                ),
-                                fillColor: const Color(0xFFF5F0EB),
+                                border: OutlineInputBorder(),
+                                fillColor: Color(0xFFF5F0EB),
                                 filled: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 13,
                                 color: Color(0xFFCB001D),
                               ),
                             ),
@@ -1085,16 +1246,13 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888))),
+                  child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    if (selectedSupplierId == null || nameController.text.isEmpty) {
+                    if (selectedSupplierId == null || nameController.text.isEmpty || selectedPurchaseType == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('لطفاً تمام فیلدهای ضروری را پر کنید'),
-                          backgroundColor: Colors.red,
-                        ),
+                        const SnackBar(content: Text('لطفاً تمام فیلدهای ضروری را پر کنید'), backgroundColor: Colors.red),
                       );
                       return;
                     }
@@ -1108,6 +1266,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                       'net_weight': netWeightController.text,
                       'gross_weight': grossWeightController.text,
                       'date': dateController.text,
+                      'date_en': selectedEnglishDate,
                       'unit': unitController.text,
                       'unit_price': unitPriceController.text,
                       'product': productController.text,
@@ -1116,6 +1275,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                       'miscellaneous': miscellaneousController.text,
                       'ghurfedari': ghurfedariController.text,
                       'barchalani': barchalaniController.text,
+                      'purchase_type': selectedPurchaseType,
                       'final_price': finalPriceController.text,
                     };
 
@@ -1124,18 +1284,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
                     if (result != -1) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('✅ ماده خام با موفقیت اضافه شد'),
-                          backgroundColor: Colors.green,
-                        ),
+                        const SnackBar(content: Text('✅ ماده خام با موفقیت اضافه شد'), backgroundColor: Colors.green),
                       );
                       _loadData();
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('❌ خطا در افزودن ماده خام'),
-                          backgroundColor: Colors.red,
-                        ),
+                        const SnackBar(content: Text('❌ خطا در افزودن ماده خام'), backgroundColor: Colors.red),
                       );
                     }
                   },
@@ -1166,11 +1320,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
         child: AlertDialog(
           title: const Text('حذف ماده خام'),
           content: Text('آیا از حذف ماده خام "${material['name']}" مطمئن هستید؟'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888))),
+              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -1189,6 +1342,107 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('حذف'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('مدیریت مواد خام', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                    SizedBox(height: 2),
+                    Text('مدیریت و کنترل مواد اولیه انبار', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  onPressed: () { _showAddDialog(context); },
+                  icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                  label: const Text('افزودن ماده خام', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCB001D),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Stats
+            Row(
+              children: [
+                _buildStatCard('کل مواد', materials.length.toString()),
+                const SizedBox(width: 12),
+                _buildStatCard('فروشندگان', suppliers.length.toString()),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Unit-based totals cards - Summary (Tab 1 style)
+            if (materials.isNotEmpty) ...[
+              const Text('خلاصه انبار موجود بر اساس واحد:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: _buildUnitSummaryCards()),
+              ),
+            ],
+            const SizedBox(height: 14),
+
+            // Tabs Container
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    TabBar(
+                      controller: _tabController,
+                      tabs: const [
+                        Tab(text: '📦 مدیریت مواد خام'),
+                        Tab(text: '📊 موجودی مواد خام'),
+                      ],
+                      labelColor: const Color(0xFFCB001D),
+                      unselectedLabelColor: Colors.grey,
+                      indicatorColor: const Color(0xFFCB001D),
+                      indicatorWeight: 3,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildMainTable(),
+                          _buildStockTable(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

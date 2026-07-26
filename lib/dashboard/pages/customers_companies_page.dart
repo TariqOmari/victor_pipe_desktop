@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../database/database_helper.dart';
 
 class CustomersCompaniesPage extends StatefulWidget {
   const CustomersCompaniesPage({super.key});
@@ -8,81 +10,10 @@ class CustomersCompaniesPage extends StatefulWidget {
 }
 
 class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
-  // ======================== داده‌های مشتریان ========================
-  final List<Map<String, dynamic>> _customers = [
-    {
-      'id': 1,
-      'name': 'علی رضایی',
-      'nickname': 'رضایی',
-      'phone': '۰۹۱۲۳۴۵۶۷۸۹',
-      'email': 'ali.rezaei@email.com',
-      'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
-      'type': 'حقیقی',
-      'transactions': [
-        {'date': '۱۴۰۵/۰۵/۰۱', 'product': 'لوله پلی‌اتیلن ۲۵۰', 'amount': 67500000, 'status': 'تکمیل شده'},
-        {'date': '۱۴۰۵/۰۴/۲۰', 'product': 'اتصالات جوشی', 'amount': 25600000, 'status': 'تکمیل شده'},
-      ],
-    },
-    {
-      'id': 2,
-      'name': 'محمد کریمی',
-      'nickname': 'کریمی',
-      'phone': '۰۹۱۷۶۵۴۳۲۱۰',
-      'email': 'mohammad.karimi@email.com',
-      'address': 'اصفهان، خیابان چهارباغ، پلاک ۴۵',
-      'type': 'حقیقی',
-      'transactions': [
-        {'date': '۱۴۰۵/۰۵/۰۳', 'product': 'لوله فولادی ۴ اینچ', 'amount': 116000000, 'status': 'ارسال شده'},
-      ],
-    },
-    {
-      'id': 3,
-      'name': 'سارا حسینی',
-      'nickname': 'حسینی',
-      'phone': '۰۹۱۳۶۵۴۷۸۹۰',
-      'email': 'sara.hosseini@email.com',
-      'address': 'شیراز، بلوار جمهوری، پلاک ۷۸',
-      'type': 'حقیقی',
-      'transactions': [],
-    },
-  ];
-
-  // ======================== داده‌های شرکت‌ها ========================
-  final List<Map<String, dynamic>> _companies = [
-    {
-      'id': 1,
-      'name': 'شرکت نفت جنوب',
-      'phone': '۰۲۱۸۸۷۶۵۴۳۲',
-      'email': 'info@soothoil.com',
-      'address': 'اهواز، کیلومتر ۱۵ جاده ساحلی',
-      'type': 'حقوقی',
-      'transactions': [
-        {'date': '۱۴۰۵/۰۵/۰۲', 'product': 'اتصالات جوشی', 'amount': 25600000, 'status': 'در انتظار'},
-        {'date': '۱۴۰۵/۰۴/۱۵', 'product': 'کمربند فلنج', 'amount': 7875000, 'status': 'تکمیل شده'},
-        {'date': '۱۴۰۵/۰۳/۲۸', 'product': 'لوله پلی‌اتیلن', 'amount': 45000000, 'status': 'ارسال شده'},
-      ],
-    },
-    {
-      'id': 2,
-      'name': 'پیمانکاران عمران',
-      'phone': '۰۲۱۴۴۳۲۱۸۷۶',
-      'email': 'info@omran.com',
-      'address': 'شیراز، بلوار جمهوری، پلاک ۷۸',
-      'type': 'حقوقی',
-      'transactions': [
-        {'date': '۱۴۰۵/۰۵/۰۴', 'product': 'کمربند فلنج', 'amount': 7875000, 'status': 'لغو شده'},
-      ],
-    },
-    {
-      'id': 3,
-      'name': 'ساختمانی رضایی',
-      'phone': '۰۲۱۵۵۴۴۳۲۱',
-      'email': 'info@rezaei.com',
-      'address': 'مشهد، خیابان امامت، پلاک ۱۲',
-      'type': 'حقوقی',
-      'transactions': [],
-    },
-  ];
+  final DatabaseHelper _db = DatabaseHelper();
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _customers = [];
+  List<Map<String, dynamic>> _companies = [];
 
   String _searchQuery = '';
   String _selectedTab = 'customers';
@@ -93,12 +24,20 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   final TextEditingController _customerPhoneController = TextEditingController();
   final TextEditingController _customerEmailController = TextEditingController();
   final TextEditingController _customerAddressController = TextEditingController();
+  final TextEditingController _customerTypeController = TextEditingController();
 
   // کنترل‌های فرم شرکت
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _companyPhoneController = TextEditingController();
   final TextEditingController _companyEmailController = TextEditingController();
   final TextEditingController _companyAddressController = TextEditingController();
+  final TextEditingController _companyTypeController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
 
   @override
   void dispose() {
@@ -107,11 +46,64 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     _customerPhoneController.dispose();
     _customerEmailController.dispose();
     _customerAddressController.dispose();
+    _customerTypeController.dispose();
     _companyNameController.dispose();
     _companyPhoneController.dispose();
     _companyEmailController.dispose();
     _companyAddressController.dispose();
+    _companyTypeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final customers = await _db.getCustomers();
+      final companies = await _db.getCompanies();
+      if (!mounted) return;
+      setState(() {
+        _customers = customers.map((item) {
+          final transactions = _decodeTransactions(item['transactions']);
+          return {
+            ...item,
+            'transactions': transactions,
+          };
+        }).toList();
+        _companies = companies.map((item) {
+          final transactions = _decodeTransactions(item['transactions']);
+          return {
+            ...item,
+            'transactions': transactions,
+          };
+        }).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('خطا در بارگذاری داده‌ها', Colors.red);
+    }
+  }
+
+  List<Map<String, dynamic>> _decodeTransactions(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded.map<Map<String, dynamic>>((item) {
+            if (item is Map) {
+              return Map<String, dynamic>.from(item);
+            }
+            return {'date': '', 'product': '', 'amount': 0, 'status': ''};
+          }).toList();
+        }
+      } catch (_) {}
+    }
+    return [];
+  }
+
+  String _encodeTransactions(List<Map<String, dynamic>> transactions) {
+    return jsonEncode(transactions);
   }
 
   // ======================== متدهای مدیریت مشتری ========================
@@ -121,90 +113,61 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     _customerPhoneController.clear();
     _customerEmailController.clear();
     _customerAddressController.clear();
+    _customerTypeController.clear();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'ثبت مشتری جدید',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
+        title: const Text('ثبت مشتری جدید', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(
-                controller: _customerNameController,
-                label: 'نام کامل',
-                icon: Icons.person_outline,
-                hint: 'نام و نام خانوادگی',
-              ),
+              _buildTextField(controller: _customerNameController, label: 'نام کامل', icon: Icons.person_outline, hint: 'نام و نام خانوادگی'),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerNicknameController,
-                label: 'تخلص',
-                icon: Icons.badge_outlined,
-                hint: 'تخلص یا نام مستعار',
-              ),
+              _buildTextField(controller: _customerNicknameController, label: 'تخلص', icon: Icons.badge_outlined, hint: 'تخلص یا نام مستعار'),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerPhoneController,
-                label: 'شماره تماس',
-                icon: Icons.phone_outlined,
-                hint: '۰۹۱۲۳۴۵۶۷۸۹',
-                keyboardType: TextInputType.phone,
-              ),
+              _buildTextField(controller: _customerPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, hint: '۰۹۱۲۳۴۵۶۷۸۹', keyboardType: TextInputType.phone),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerEmailController,
-                label: 'ایمیل',
-                icon: Icons.email_outlined,
-                hint: 'example@email.com',
-                keyboardType: TextInputType.emailAddress,
-              ),
+              _buildTextField(controller: _customerEmailController, label: 'ایمیل', icon: Icons.email_outlined, hint: 'example@email.com', keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerAddressController,
-                label: 'آدرس',
-                icon: Icons.location_on_outlined,
-                hint: 'آدرس کامل',
-                maxLines: 2,
-              ),
+              _buildTextField(controller: _customerAddressController, label: 'آدرس', icon: Icons.location_on_outlined, hint: 'آدرس کامل', maxLines: 2),
+              const SizedBox(height: 10),
+              _buildTextField(controller: _customerTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقیقی یا حقوقی'),
             ],
           ),
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            onPressed: () {
-              if (_customerNameController.text.isEmpty) {
+            onPressed: () async {
+              if (_customerNameController.text.trim().isEmpty) {
                 _showSnackbar('لطفاً نام مشتری را وارد کنید', Colors.red);
                 return;
               }
+              final type = _customerTypeController.text.trim().isEmpty ? 'حقیقی' : _customerTypeController.text.trim();
+              final payload = {
+                'name': _customerNameController.text.trim(),
+                'nickname': _customerNicknameController.text.trim(),
+                'phone': _customerPhoneController.text.trim(),
+                'email': _customerEmailController.text.trim(),
+                'address': _customerAddressController.text.trim(),
+                'type': type,
+                'transactions': _encodeTransactions([]),
+              };
+              final id = await _db.insertCustomer(payload);
+              if (id == -1) {
+                _showSnackbar('ثبت مشتری با خطا مواجه شد', Colors.red);
+                return;
+              }
+              if (!mounted) return;
               setState(() {
                 _customers.add({
-                  'id': _customers.length + 1,
-                  'name': _customerNameController.text,
-                  'nickname': _customerNicknameController.text,
-                  'phone': _customerPhoneController.text,
-                  'email': _customerEmailController.text,
-                  'address': _customerAddressController.text,
-                  'type': 'حقیقی',
-                  'transactions': [],
+                  ...payload,
+                  'id': id,
+                  'transactions': <Map<String, dynamic>>[],
                 });
               });
               Navigator.pop(context);
@@ -219,92 +182,69 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   void _editCustomer(Map<String, dynamic> customer) {
-    _customerNameController.text = customer['name'];
-    _customerNicknameController.text = customer['nickname'] ?? '';
-    _customerPhoneController.text = customer['phone'] ?? '';
-    _customerEmailController.text = customer['email'] ?? '';
-    _customerAddressController.text = customer['address'] ?? '';
+    _customerNameController.text = customer['name']?.toString() ?? '';
+    _customerNicknameController.text = customer['nickname']?.toString() ?? '';
+    _customerPhoneController.text = customer['phone']?.toString() ?? '';
+    _customerEmailController.text = customer['email']?.toString() ?? '';
+    _customerAddressController.text = customer['address']?.toString() ?? '';
+    _customerTypeController.text = customer['type']?.toString() ?? '';
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'ویرایش مشتری',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
+        title: const Text('ویرایش مشتری', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(
-                controller: _customerNameController,
-                label: 'نام کامل',
-                icon: Icons.person_outline,
-              ),
+              _buildTextField(controller: _customerNameController, label: 'نام کامل', icon: Icons.person_outline),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerNicknameController,
-                label: 'تخلص',
-                icon: Icons.badge_outlined,
-              ),
+              _buildTextField(controller: _customerNicknameController, label: 'تخلص', icon: Icons.badge_outlined),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerPhoneController,
-                label: 'شماره تماس',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
+              _buildTextField(controller: _customerPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, keyboardType: TextInputType.phone),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerEmailController,
-                label: 'ایمیل',
-                icon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
-              ),
+              _buildTextField(controller: _customerEmailController, label: 'ایمیل', icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _customerAddressController,
-                label: 'آدرس',
-                icon: Icons.location_on_outlined,
-                maxLines: 2,
-              ),
+              _buildTextField(controller: _customerAddressController, label: 'آدرس', icon: Icons.location_on_outlined, maxLines: 2),
+              const SizedBox(height: 10),
+              _buildTextField(controller: _customerTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقیقی یا حقوقی'),
             ],
           ),
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            onPressed: () {
-              if (_customerNameController.text.isEmpty) {
+            onPressed: () async {
+              if (_customerNameController.text.trim().isEmpty) {
                 _showSnackbar('لطفاً نام مشتری را وارد کنید', Colors.red);
                 return;
               }
+              final type = _customerTypeController.text.trim().isEmpty ? 'حقیقی' : _customerTypeController.text.trim();
+              final transactions = List<Map<String, dynamic>>.from(customer['transactions'] ?? []);
+              final payload = {
+                'name': _customerNameController.text.trim(),
+                'nickname': _customerNicknameController.text.trim(),
+                'phone': _customerPhoneController.text.trim(),
+                'email': _customerEmailController.text.trim(),
+                'address': _customerAddressController.text.trim(),
+                'type': type,
+                'transactions': _encodeTransactions(transactions),
+              };
+              final result = await _db.updateCustomer(customer['id'], payload);
+              if (result == -1) {
+                _showSnackbar('ویرایش مشتری با خطا مواجه شد', Colors.red);
+                return;
+              }
+              if (!mounted) return;
               setState(() {
                 final index = _customers.indexWhere((c) => c['id'] == customer['id']);
                 if (index != -1) {
                   _customers[index] = {
                     'id': customer['id'],
-                    'name': _customerNameController.text,
-                    'nickname': _customerNicknameController.text,
-                    'phone': _customerPhoneController.text,
-                    'email': _customerEmailController.text,
-                    'address': _customerAddressController.text,
-                    'type': 'حقیقی',
-                    'transactions': customer['transactions'] ?? [],
+                    ...payload,
+                    'transactions': transactions,
                   };
                 }
               });
@@ -324,7 +264,13 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
       context,
       title: 'حذف مشتری',
       content: 'آیا از حذف مشتری "${customer['name']}" مطمئن هستید؟',
-      onConfirm: () {
+      onConfirm: () async {
+        final result = await _db.deleteCustomer(customer['id']);
+        if (result == -1) {
+          _showSnackbar('حذف مشتری با خطا مواجه شد', Colors.red);
+          return;
+        }
+        if (!mounted) return;
         setState(() {
           _customers.removeWhere((c) => c['id'] == customer['id']);
         });
@@ -339,82 +285,58 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     _companyPhoneController.clear();
     _companyEmailController.clear();
     _companyAddressController.clear();
+    _companyTypeController.clear();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'ثبت شرکت جدید',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
+        title: const Text('ثبت شرکت جدید', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(
-                controller: _companyNameController,
-                label: 'نام شرکت',
-                icon: Icons.business_outlined,
-                hint: 'نام کامل شرکت',
-              ),
+              _buildTextField(controller: _companyNameController, label: 'نام شرکت', icon: Icons.business_outlined, hint: 'نام کامل شرکت'),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _companyPhoneController,
-                label: 'شماره تماس',
-                icon: Icons.phone_outlined,
-                hint: '۰۲۱۸۸۷۶۵۴۳۲',
-                keyboardType: TextInputType.phone,
-              ),
+              _buildTextField(controller: _companyPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, hint: '۰۲۱۸۸۷۶۵۴۳۲', keyboardType: TextInputType.phone),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _companyEmailController,
-                label: 'ایمیل',
-                icon: Icons.email_outlined,
-                hint: 'info@company.com',
-                keyboardType: TextInputType.emailAddress,
-              ),
+              _buildTextField(controller: _companyEmailController, label: 'ایمیل', icon: Icons.email_outlined, hint: 'info@company.com', keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _companyAddressController,
-                label: 'آدرس',
-                icon: Icons.location_on_outlined,
-                hint: 'آدرس کامل شرکت',
-                maxLines: 2,
-              ),
+              _buildTextField(controller: _companyAddressController, label: 'آدرس', icon: Icons.location_on_outlined, hint: 'آدرس کامل شرکت', maxLines: 2),
+              const SizedBox(height: 10),
+              _buildTextField(controller: _companyTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقوقی یا حقیقی'),
             ],
           ),
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            onPressed: () {
-              if (_companyNameController.text.isEmpty) {
+            onPressed: () async {
+              if (_companyNameController.text.trim().isEmpty) {
                 _showSnackbar('لطفاً نام شرکت را وارد کنید', Colors.red);
                 return;
               }
+              final type = _companyTypeController.text.trim().isEmpty ? 'حقوقی' : _companyTypeController.text.trim();
+              final payload = {
+                'name': _companyNameController.text.trim(),
+                'phone': _companyPhoneController.text.trim(),
+                'email': _companyEmailController.text.trim(),
+                'address': _companyAddressController.text.trim(),
+                'type': type,
+                'transactions': _encodeTransactions([]),
+              };
+              final id = await _db.insertCompany(payload);
+              if (id == -1) {
+                _showSnackbar('ثبت شرکت با خطا مواجه شد', Colors.red);
+                return;
+              }
+              if (!mounted) return;
               setState(() {
                 _companies.add({
-                  'id': _companies.length + 1,
-                  'name': _companyNameController.text,
-                  'phone': _companyPhoneController.text,
-                  'email': _companyEmailController.text,
-                  'address': _companyAddressController.text,
-                  'type': 'حقوقی',
-                  'transactions': [],
+                  ...payload,
+                  'id': id,
+                  'transactions': <Map<String, dynamic>>[],
                 });
               });
               Navigator.pop(context);
@@ -429,84 +351,65 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   void _editCompany(Map<String, dynamic> company) {
-    _companyNameController.text = company['name'];
-    _companyPhoneController.text = company['phone'] ?? '';
-    _companyEmailController.text = company['email'] ?? '';
-    _companyAddressController.text = company['address'] ?? '';
+    _companyNameController.text = company['name']?.toString() ?? '';
+    _companyPhoneController.text = company['phone']?.toString() ?? '';
+    _companyEmailController.text = company['email']?.toString() ?? '';
+    _companyAddressController.text = company['address']?.toString() ?? '';
+    _companyTypeController.text = company['type']?.toString() ?? '';
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'ویرایش شرکت',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
+        title: const Text('ویرایش شرکت', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(
-                controller: _companyNameController,
-                label: 'نام شرکت',
-                icon: Icons.business_outlined,
-              ),
+              _buildTextField(controller: _companyNameController, label: 'نام شرکت', icon: Icons.business_outlined),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _companyPhoneController,
-                label: 'شماره تماس',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
+              _buildTextField(controller: _companyPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, keyboardType: TextInputType.phone),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _companyEmailController,
-                label: 'ایمیل',
-                icon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
-              ),
+              _buildTextField(controller: _companyEmailController, label: 'ایمیل', icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 10),
-              _buildTextField(
-                controller: _companyAddressController,
-                label: 'آدرس',
-                icon: Icons.location_on_outlined,
-                maxLines: 2,
-              ),
+              _buildTextField(controller: _companyAddressController, label: 'آدرس', icon: Icons.location_on_outlined, maxLines: 2),
+              const SizedBox(height: 10),
+              _buildTextField(controller: _companyTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقوقی یا حقیقی'),
             ],
           ),
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            onPressed: () {
-              if (_companyNameController.text.isEmpty) {
+            onPressed: () async {
+              if (_companyNameController.text.trim().isEmpty) {
                 _showSnackbar('لطفاً نام شرکت را وارد کنید', Colors.red);
                 return;
               }
+              final type = _companyTypeController.text.trim().isEmpty ? 'حقوقی' : _companyTypeController.text.trim();
+              final transactions = List<Map<String, dynamic>>.from(company['transactions'] ?? []);
+              final payload = {
+                'name': _companyNameController.text.trim(),
+                'phone': _companyPhoneController.text.trim(),
+                'email': _companyEmailController.text.trim(),
+                'address': _companyAddressController.text.trim(),
+                'type': type,
+                'transactions': _encodeTransactions(transactions),
+              };
+              final result = await _db.updateCompany(company['id'], payload);
+              if (result == -1) {
+                _showSnackbar('ویرایش شرکت با خطا مواجه شد', Colors.red);
+                return;
+              }
+              if (!mounted) return;
               setState(() {
                 final index = _companies.indexWhere((c) => c['id'] == company['id']);
                 if (index != -1) {
                   _companies[index] = {
                     'id': company['id'],
-                    'name': _companyNameController.text,
-                    'phone': _companyPhoneController.text,
-                    'email': _companyEmailController.text,
-                    'address': _companyAddressController.text,
-                    'type': 'حقوقی',
-                    'transactions': company['transactions'] ?? [],
+                    ...payload,
+                    'transactions': transactions,
                   };
                 }
               });
@@ -526,7 +429,13 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
       context,
       title: 'حذف شرکت',
       content: 'آیا از حذف شرکت "${company['name']}" مطمئن هستید؟',
-      onConfirm: () {
+      onConfirm: () async {
+        final result = await _db.deleteCompany(company['id']);
+        if (result == -1) {
+          _showSnackbar('حذف شرکت با خطا مواجه شد', Colors.red);
+          return;
+        }
+        if (!mounted) return;
         setState(() {
           _companies.removeWhere((c) => c['id'] == company['id']);
         });
@@ -885,6 +794,8 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   Widget _buildEntityCard(Map<String, dynamic> entity, bool isCustomer) {
     final transactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
     final totalTransactions = transactions.length;
+    final entityType = (entity['type'] ?? '').toString().trim();
+    final typeLabel = entityType.isNotEmpty ? entityType : (isCustomer ? 'حقیقی' : 'حقوقی');
     
     int totalAmount = 0;
     for (var t in transactions) {
@@ -1025,7 +936,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  isCustomer ? 'حقیقی' : 'حقوقی',
+                                  typeLabel,
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: primaryColor,
@@ -1575,16 +1486,15 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   // ======================== صفحه اصلی ========================
   @override
   Widget build(BuildContext context) {
+    final searchText = _searchQuery.trim().toLowerCase();
     final filteredCustomers = _customers.where((c) {
-      return c['name'].contains(_searchQuery) ||
-          c['nickname'].contains(_searchQuery) ||
-          c['phone'].contains(_searchQuery);
+      final haystack = '${c['name'] ?? ''} ${c['nickname'] ?? ''} ${c['phone'] ?? ''} ${c['type'] ?? ''}'.toLowerCase();
+      return haystack.contains(searchText);
     }).toList();
 
     final filteredCompanies = _companies.where((c) {
-      return c['name'].contains(_searchQuery) ||
-          c['phone'].contains(_searchQuery) ||
-          c['email'].contains(_searchQuery);
+      final haystack = '${c['name'] ?? ''} ${c['phone'] ?? ''} ${c['email'] ?? ''} ${c['type'] ?? ''}'.toLowerCase();
+      return haystack.contains(searchText);
     }).toList();
 
     final bool isEmpty = (_selectedTab == 'customers' && filteredCustomers.isEmpty) ||
@@ -1604,60 +1514,42 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
             _buildSearchAndFilter(),
             const SizedBox(height: 20),
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                ),
-                child: isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _selectedTab == 'customers'
-                                  ? Icons.people_outline
-                                  : Icons.business_outlined,
-                              size: 80,
-                              color: Colors.grey.shade300,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _selectedTab == 'customers'
-                                  ? 'هیچ مشتریی یافت نشد'
-                                  : 'هیچ شرکتی یافت نشد',
-                              style: TextStyle(
-                                color: Colors.grey.shade500,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+                  : Container(
+                      decoration: BoxDecoration(color: Colors.transparent),
+                      child: isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    _selectedTab == 'customers' ? Icons.people_outline : Icons.business_outlined,
+                                    size: 80,
+                                    color: Colors.grey.shade300,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _selectedTab == 'customers' ? 'هیچ مشتریی یافت نشد' : 'هیچ شرکتی یافت نشد',
+                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 16, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text('برای افزودن روی دکمه "+" کلیک کنید', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                                ],
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Column(
+                                children: [
+                                  if (_selectedTab == 'customers')
+                                    ...filteredCustomers.map((customer) => _buildEntityCard(customer, true)),
+                                  if (_selectedTab == 'companies')
+                                    ...filteredCompanies.map((company) => _buildEntityCard(company, false)),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'برای افزودن روی دکمه "+" کلیک کنید',
-                              style: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Column(
-                          children: [
-                            if (_selectedTab == 'customers')
-                              ...filteredCustomers.map(
-                                (customer) => _buildEntityCard(customer, true),
-                              ),
-                            if (_selectedTab == 'companies')
-                              ...filteredCompanies.map(
-                                (company) => _buildEntityCard(company, false),
-                              ),
-                          ],
-                        ),
-                      ),
-              ),
+                    ),
             ),
           ],
         ),

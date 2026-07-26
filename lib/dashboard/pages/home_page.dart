@@ -47,8 +47,8 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Container(
-        padding: const EdgeInsets.all(24),
+      child: SingleChildScrollView(  // ← WRAP WITH SingleChildScrollView
+        padding: const EdgeInsets.all(20),
         child: _isLoading
             ? const Center(
                 child: CircularProgressIndicator(
@@ -83,74 +83,76 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ],
                       ),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.refresh,
-                            color: Color(0xFFCB001D),
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'آخرین بروزرسانی: امروز',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF888888),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Stats Cards Row - Wrap in SingleChildScrollView for horizontal scroll
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildStatCard(
+                          'مواد خام',
+                          _rawMaterialsCount.toString(),
+                          Icons.warehouse_outlined,
+                          const Color(0xFFCB001D),
+                        ),
+                        const SizedBox(width: 12),
+                        _buildStatCard(
+                          'محصولات',
+                          _productsCount.toString(),
+                          Icons.inventory_2_outlined,
+                          Colors.blue,
+                        ),
+                        const SizedBox(width: 12),
+                        _buildStatCard(
+                          'فروشندگان',
+                          _suppliersCount.toString(),
+                          Icons.local_shipping_outlined,
+                          Colors.orange,
+                        ),
+                        const SizedBox(width: 12),
+                        _buildStatCard(
+                          'کاربران',
+                          _usersCount.toString(),
+                          Icons.people_outline,
+                          Colors.purple,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Charts Section - Responsive
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth < 800) {
+                        // Small screen - stacked
+                        return Column(
+                          children: [
+                            _buildActivityChart(),
+                            const SizedBox(height: 16),
+                            _buildQuickStats(),
+                          ],
+                        );
+                      } else {
+                        // Large screen - side by side
+                        return Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: _buildActivityChart(),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Stats Cards Row
-                  Row(
-                    children: [
-                      _buildStatCard(
-                        'مواد خام',
-                        _rawMaterialsCount.toString(),
-                        Icons.warehouse_outlined,
-                        const Color(0xFFCB001D),
-                      ),
-                      const SizedBox(width: 16),
-                      _buildStatCard(
-                        'محصولات',
-                        _productsCount.toString(),
-                        Icons.inventory_2_outlined,
-                        Colors.blue,
-                      ),
-                      const SizedBox(width: 16),
-                      _buildStatCard(
-                        'فروشندگان',
-                        _suppliersCount.toString(),
-                        Icons.local_shipping_outlined,
-                        Colors.orange,
-                      ),
-                      const SizedBox(width: 16),
-                      _buildStatCard(
-                        'کاربران',
-                        _usersCount.toString(),
-                        Icons.people_outline,
-                        Colors.purple,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Charts Section
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildActivityChart(),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        flex: 1,
-                        child: _buildQuickStats(),
-                      ),
-                    ],
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 1,
+                              child: _buildQuickStats(),
+                            ),
+                          ],
+                        );
+                      }
+                    },
                   ),
                   const SizedBox(height: 16),
 
@@ -163,86 +165,85 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(
-            color: color.withOpacity(0.15),
-            width: 1,
+    return Container(
+      width: 180,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
           ),
+        ],
+        border: Border.all(
+          color: color.withOpacity(0.15),
+          width: 1,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, color: color, size: 22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.trending_up,
+                child: Icon(icon, color: color, size: 22),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.trending_up,
+                      color: Colors.green,
+                      size: 12,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      '+12%',
+                      style: TextStyle(
                         color: Colors.green,
-                        size: 12,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        '+12%',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1A1A2E),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1A1A2E),
             ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -290,18 +291,21 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 16),
-          // Chart bars
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildChartBar('شنبه', 65, Colors.red),
-              _buildChartBar('یکشنبه', 45, Colors.orange),
-              _buildChartBar('دوشنبه', 80, Colors.blue),
-              _buildChartBar('سه‌شنبه', 55, Colors.green),
-              _buildChartBar('چهارشنبه', 70, Colors.purple),
-              _buildChartBar('پنجشنبه', 90, Colors.teal),
-              _buildChartBar('جمعه', 60, Colors.pink),
-            ],
+          // Chart bars - Responsive
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildChartBar('شنبه', 65, Colors.red),
+                _buildChartBar('یکشنبه', 45, Colors.orange),
+                _buildChartBar('دوشنبه', 80, Colors.blue),
+                _buildChartBar('سه‌شنبه', 55, Colors.green),
+                _buildChartBar('چهارشنبه', 70, Colors.purple),
+                _buildChartBar('پنجشنبه', 90, Colors.teal),
+                _buildChartBar('جمعه', 60, Colors.pink),
+              ],
+            ),
           ),
         ],
       ),
@@ -309,30 +313,33 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildChartBar(String label, double height, Color color) {
-    return Column(
-      children: [
-        Container(
-          width: 28,
-          height: height,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [color, color.withOpacity(0.5)],
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        children: [
+          Container(
+            width: 28,
+            height: height,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color, color.withOpacity(0.5)],
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+              ),
+              borderRadius: BorderRadius.circular(6),
             ),
-            borderRadius: BorderRadius.circular(6),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF888888),
-            fontWeight: FontWeight.w500,
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF888888),
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

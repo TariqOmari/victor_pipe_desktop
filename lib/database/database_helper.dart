@@ -4,6 +4,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'dart:io';
+import '../utils/date_converter.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -93,6 +94,7 @@ class DatabaseHelper {
           await _ensureCustomerCompanyTables(db);
           await _ensureSalesInvoiceTable(db);
           await _ensureSellLoanTables(db);
+          await _ensureDailyExpensesTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -126,6 +128,7 @@ class DatabaseHelper {
           await _ensureCustomerCompanyTables(db);
           await _ensureSalesInvoiceTable(db);
           await _ensureSellLoanTables(db);
+          await _ensureDailyExpensesTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -455,6 +458,31 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> _ensureDailyExpensesTable(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS daily_expenses(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT UNIQUE,
+          date TEXT,
+          date_en TEXT,
+          bill_number TEXT,
+          registration_number TEXT,
+          category TEXT,
+          description TEXT,
+          price REAL,
+          currency TEXT,
+          exchange_rate REAL,
+          usd_equivalent REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+    } catch (e) {
+      print('❌ Error ensuring daily_expenses table: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _ensureSalesInvoiceTable(Database db) async {
     try {
       await db.execute('''
@@ -658,6 +686,7 @@ class DatabaseHelper {
 
     await _ensureSalesInvoiceTable(db);
     await _ensureSellLoanTables(db);
+    await _ensureDailyExpensesTable(db);
   }
 
   Future<void> _insertSampleData(Database db) async {
@@ -1327,6 +1356,69 @@ class DatabaseHelper {
       );
     } catch (e) {
       print('❌ Error deleting raw material: $e');
+      return -1;
+    }
+  }
+
+  // ============ DAILY EXPENSES ============
+  Future<List<Map<String, dynamic>>> getDailyExpenses() async {
+    try {
+      final db = await database;
+      return await db.query('daily_expenses', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting daily expenses: $e');
+      return [];
+    }
+  }
+
+  Future<int> insertDailyExpense(Map<String, dynamic> expense) async {
+    try {
+      final db = await database;
+      // generate invoice if not provided
+      if (expense['invoice_number'] == null || (expense['invoice_number'] as String).isEmpty) {
+        expense['invoice_number'] = 'DEX-${DateTime.now().millisecondsSinceEpoch}';
+      }
+      expense['date_en'] = expense['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
+      // calculate usd equivalent when possible
+      try {
+        final price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0.0;
+        final rate = double.tryParse(expense['exchange_rate']?.toString() ?? '0') ?? 0.0;
+        expense['usd_equivalent'] = (price * rate).round();
+      } catch (_) {}
+
+      final filtered = await _filterMapForTableColumns(db, 'daily_expenses', expense);
+      if (filtered.isEmpty) {
+        print('⚠️ insertDailyExpense filtered empty - daily_expenses table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.insert('daily_expenses', filtered);
+    } catch (e) {
+      print('❌ Error inserting daily expense: $e');
+      return -1;
+    }
+  }
+
+  Future<int> updateDailyExpense(int id, Map<String, dynamic> expense) async {
+    try {
+      final db = await database;
+      final filtered = await _filterMapForTableColumns(db, 'daily_expenses', expense);
+      if (filtered.isEmpty) {
+        print('⚠️ updateDailyExpense filtered empty - daily_expenses table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.update('daily_expenses', filtered, where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error updating daily expense: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteDailyExpense(int id) async {
+    try {
+      final db = await database;
+      return await db.delete('daily_expenses', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error deleting daily expense: $e');
       return -1;
     }
   }

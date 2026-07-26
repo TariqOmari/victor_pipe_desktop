@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../database/database_helper.dart';
+import '../../utils/date_converter.dart';
 
 class DailyExpensesPage extends StatefulWidget {
   const DailyExpensesPage({super.key});
@@ -8,105 +10,10 @@ class DailyExpensesPage extends StatefulWidget {
 }
 
 class _DailyExpensesPageState extends State<DailyExpensesPage> {
-  // ======================== داده‌های نمونه مصارف ========================
-  final List<Map<String, dynamic>> _expensesData = [
-    {
-      'id': 1,
-      'date': '۱۴۰۵/۰۵/۰۱',
-      'billNumber': 'BL-۱۴۰۵-۰۰۱',
-      'registrationNumber': 'REG-۱۲۳۴۵',
-      'category': 'سوخت',
-      'description': 'خرید گازوئیل برای ژنراتور',
-      'price': 2500000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 27500,
-    },
-    {
-      'id': 2,
-      'date': '۱۴۰۵/۰۵/۰۱',
-      'billNumber': 'BL-۱۴۰۵-۰۰۲',
-      'registrationNumber': 'REG-۱۲۳۴۶',
-      'category': 'مواد اولیه',
-      'description': 'خرید مواد شیمیایی تصفیه',
-      'price': 4500000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 49500,
-    },
-    {
-      'id': 3,
-      'date': '۱۴۰۵/۰۵/۰۲',
-      'billNumber': 'BL-۱۴۰۵-۰۰۳',
-      'registrationNumber': 'REG-۱۲۳۴۷',
-      'category': 'حقوق کارگران',
-      'description': 'حقوق ماهانه کارگران خط تولید',
-      'price': 15000000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 165000,
-    },
-    {
-      'id': 4,
-      'date': '۱۴۰۵/۰۵/۰۲',
-      'billNumber': 'BL-۱۴۰۵-۰۰۴',
-      'registrationNumber': 'REG-۱۲۳۴۸',
-      'category': 'تعمیرات',
-      'description': 'تعمیر دستگاه پرس',
-      'price': 3200000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 35200,
-    },
-    {
-      'id': 5,
-      'date': '۱۴۰۵/۰۵/۰۳',
-      'billNumber': 'BL-۱۴۰۵-۰۰۵',
-      'registrationNumber': 'REG-۱۲۳۴۹',
-      'category': 'حمل و نقل',
-      'description': 'هزینه حمل مواد اولیه',
-      'price': 1800000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 19800,
-    },
-    {
-      'id': 6,
-      'date': '۱۴۰۵/۰۵/۰۳',
-      'billNumber': 'BL-۱۴۰۵-۰۰۶',
-      'registrationNumber': 'REG-۱۲۳۵۰',
-      'category': 'سوخت',
-      'description': 'خرید بنزین برای خودروها',
-      'price': 950000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 10450,
-    },
-    {
-      'id': 7,
-      'date': '۱۴۰۵/۰۵/۰۴',
-      'billNumber': 'BL-۱۴۰۵-۰۰۷',
-      'registrationNumber': 'REG-۱۲۳۵۱',
-      'category': 'مواد اولیه',
-      'description': 'خرید PVC گرید صنعتی',
-      'price': 8500000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 93500,
-    },
-    {
-      'id': 8,
-      'date': '۱۴۰۵/۰۵/۰۴',
-      'billNumber': 'BL-۱۴۰۵-۰۰۸',
-      'registrationNumber': 'REG-۱۲۳۵۲',
-      'category': 'سایر',
-      'description': 'لوازم اداری و مصرفی',
-      'price': 650000,
-      'currency': 'افغانی',
-      'exchangeRate': 0.011,
-      'usdEquivalent': 7150,
-    },
-  ];
+  // expenses will be loaded from DB
+  final DatabaseHelper _db = DatabaseHelper();
+  bool _isLoading = true;
+  final List<Map<String, dynamic>> _expensesData = [];
 
   String _searchQuery = '';
   String _selectedCategory = 'همه';
@@ -153,6 +60,44 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _exchangeRateController.dispose();
     _usdEquivalentController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExpenses();
+  }
+
+  Future<void> _loadExpenses() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _db.getDailyExpenses();
+      if (!mounted) return;
+      setState(() {
+        _expensesData.clear();
+        for (final r in list) {
+          _expensesData.add({
+            'id': r['id'],
+            'invoiceNumber': r['invoice_number'],
+            'date': r['date'],
+            'date_en': r['date_en'],
+            'billNumber': r['bill_number'],
+            'registrationNumber': r['registration_number'],
+            'category': r['category'],
+            'description': r['description'],
+            'price': (r['price'] is int) ? r['price'] : (r['price'] is double ? (r['price'] as double).round() : int.tryParse(r['price']?.toString() ?? '0') ?? 0),
+            'currency': r['currency'],
+            'exchangeRate': r['exchange_rate'],
+            'usdEquivalent': (r['usd_equivalent'] is int) ? r['usd_equivalent'] : (r['usd_equivalent'] is double ? (r['usd_equivalent'] as double).round() : int.tryParse(r['usd_equivalent']?.toString() ?? '0') ?? 0),
+          });
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackBar('خطا در بارگذاری مصارف', Colors.red);
+    }
   }
 
   // ======================== متدهای مدیریت ========================
@@ -292,7 +237,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                 ),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   // اعتبارسنجی
                   if (_dateController.text.isEmpty) {
                     _showSnackBar('لطفاً تاریخ را وارد کنید', Colors.red);
@@ -307,27 +252,29 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     return;
                   }
 
-                  setState(() {
-                    _expensesData.add({
-                      'id': _expensesData.length + 1,
+                    Navigator.of(context).pop();
+                    final insertPayload = {
                       'date': _dateController.text,
-                      'billNumber': _billNumberController.text,
-                      'registrationNumber': _registrationNumberController.text,
-                      'category': _categoryController.text.isNotEmpty
-                          ? _categoryController.text
-                          : 'سایر',
+                      'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
+                      'bill_number': _billNumberController.text,
+                      'registration_number': _registrationNumberController.text,
+                      'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
                       'description': _descriptionController.text,
-                      'price': int.tryParse(_priceController.text) ?? 0,
-                      'currency': _currencyController.text.isNotEmpty
-                          ? _currencyController.text
-                          : 'افغانی',
-                      'exchangeRate': double.tryParse(_exchangeRateController.text) ?? 0.011,
-                      'usdEquivalent': int.tryParse(_usdEquivalentController.text) ?? 0,
-                    });
-                  });
+                      'price': double.tryParse(_priceController.text) ?? 0,
+                      'currency': _currencyController.text.isNotEmpty ? _currencyController.text : 'افغانی',
+                      'exchange_rate': double.tryParse(_exchangeRateController.text) ?? 0.011,
+                    };
+                    final price = double.tryParse(_priceController.text) ?? 0;
+                    final rate = double.tryParse(_exchangeRateController.text) ?? 0.0;
+                    insertPayload['usd_equivalent'] = (price * rate).round();
 
-                  Navigator.pop(context);
-                  _showSnackBar('مصرف با موفقیت ثبت شد', Colors.green);
+                    final id = await _db.insertDailyExpense(insertPayload);
+                    if (id != -1) {
+                      await _loadExpenses();
+                      _showSnackBar('مصرف با موفقیت ثبت شد', Colors.green);
+                    } else {
+                      _showSnackBar('خطا در ثبت مصرف', Colors.red);
+                    }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCB001D),
@@ -465,36 +412,35 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (_dateController.text.isEmpty) {
                 _showSnackBar('لطفاً تاریخ را وارد کنید', Colors.red);
                 return;
               }
 
-              setState(() {
-                final index = _expensesData.indexWhere((e) => e['id'] == expense['id']);
-                if (index != -1) {
-                  _expensesData[index] = {
-                    'id': expense['id'],
-                    'date': _dateController.text,
-                    'billNumber': _billNumberController.text,
-                    'registrationNumber': _registrationNumberController.text,
-                    'category': _categoryController.text.isNotEmpty
-                        ? _categoryController.text
-                        : 'سایر',
-                    'description': _descriptionController.text,
-                    'price': int.tryParse(_priceController.text) ?? 0,
-                    'currency': _currencyController.text.isNotEmpty
-                        ? _currencyController.text
-                        : 'افغانی',
-                    'exchangeRate': double.tryParse(_exchangeRateController.text) ?? 0.011,
-                    'usdEquivalent': int.tryParse(_usdEquivalentController.text) ?? 0,
-                  };
-                }
-              });
+              final payload = {
+                'date': _dateController.text,
+                'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
+                'bill_number': _billNumberController.text,
+                'registration_number': _registrationNumberController.text,
+                'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
+                'description': _descriptionController.text,
+                'price': double.tryParse(_priceController.text) ?? 0,
+                'currency': _currencyController.text.isNotEmpty ? _currencyController.text : 'افغانی',
+                'exchange_rate': double.tryParse(_exchangeRateController.text) ?? 0.011,
+              };
+              final price = double.tryParse(_priceController.text) ?? 0;
+              final rate = double.tryParse(_exchangeRateController.text) ?? 0.0;
+              payload['usd_equivalent'] = (price * rate).round();
 
-              Navigator.pop(context);
-              _showSnackBar('مصرف با موفقیت ویرایش شد', Colors.blue);
+              final res = await _db.updateDailyExpense(expense['id'] as int, payload);
+              if (res != -1) {
+                await _loadExpenses();
+                Navigator.pop(context);
+                _showSnackBar('مصرف با موفقیت ویرایش شد', Colors.blue);
+              } else {
+                _showSnackBar('خطا در ویرایش مصرف', Colors.red);
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFCB001D),
@@ -539,11 +485,15 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                _expensesData.removeWhere((e) => e['id'] == expense['id']);
-              });
               Navigator.pop(context);
-              _showSnackBar('مصرف با موفقیت حذف شد', Colors.red);
+              _db.deleteDailyExpense(expense['id'] as int).then((res) async {
+                if (res != -1) {
+                  await _loadExpenses();
+                  _showSnackBar('مصرف با موفقیت حذف شد', Colors.red);
+                } else {
+                  _showSnackBar('خطا در حذف مصرف', Colors.red);
+                }
+              });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red.shade700,
@@ -684,7 +634,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       backgroundColor: Colors.grey.shade50,
       body: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+            : Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(totalPrice, totalUsd),

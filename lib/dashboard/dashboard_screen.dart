@@ -8,11 +8,14 @@ import 'pages/admins_page.dart';
 import 'pages/suppliers_page.dart';
 import 'pages/raw_materials_page.dart';
 import 'pages/sales_page.dart';
+import 'pages/services_page.dart';
 import 'pages/daily_expenses_page.dart';
+import 'pages/wastes_page.dart';
 import 'pages/customers_companies_page.dart';
-import 'pages/production_management_page.dart'; // ← FIXED IMPORT NAME
+import 'pages/production_management_page.dart';
 import 'pages/loans_page.dart';
 import 'pages/capital_Page.dart';
+import 'pages/sarafi_page.dart'; // ← MAKE SURE THIS IMPORT EXISTS
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -31,12 +34,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const SuppliersPage(),
     const RawMaterialsPage(),
     const SalesPage(),
+    const ServicesPage(),
     const DailyExpensesPage(),
+    const WastesPage(),
     const CustomersCompaniesPage(),
     const ProductionManagementPage(),
     const Center(child: Text('صفحه گزارشات در حال ساخت ...')),
     const CapitalPage(),
-    const Center(child: Text('صفحه صرافی در حال ساخت ...')),
+    const SarafiPage(), // ← CHANGE THIS LINE! REMOVE THE PLACEHOLDER
     AdminsPage(currentUser: widget.user),
     const LoansPage(),
   ];

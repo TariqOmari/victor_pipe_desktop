@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 
@@ -22,8 +26,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   // ======================== کنترل‌های فرم ========================
   final TextEditingController _dateController = TextEditingController();
-  final TextEditingController _billNumberController = TextEditingController();
-  final TextEditingController _registrationNumberController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
@@ -51,8 +53,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   @override
   void dispose() {
     _dateController.dispose();
-    _billNumberController.dispose();
-    _registrationNumberController.dispose();
     _categoryController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
@@ -78,11 +78,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         for (final r in list) {
           _expensesData.add({
             'id': r['id'],
-            'invoiceNumber': r['invoice_number'],
-            'date': r['date'],
-            'date_en': r['date_en'],
-            'billNumber': r['bill_number'],
-            'registrationNumber': r['registration_number'],
+              'invoiceNumber': r['invoice_number'],
+              'date': r['date'],
+              'date_en': r['date_en'],
             'category': r['category'],
             'description': r['description'],
             'price': (r['price'] is int) ? r['price'] : (r['price'] is double ? (r['price'] as double).round() : int.tryParse(r['price']?.toString() ?? '0') ?? 0),
@@ -101,74 +99,77 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   }
 
   // ======================== متدهای مدیریت ========================
-  void _addExpense() {
+  Future<void> _addExpense() async {
     _dateController.clear();
-    _billNumberController.clear();
-    _registrationNumberController.clear();
     _categoryController.clear();
     _descriptionController.clear();
     _priceController.clear();
     _currencyController.clear();
     _exchangeRateController.clear();
     _usdEquivalentController.clear();
-
+    final nextInvoice = await _db.getNextSalesInvoiceNumber();
+    final invoiceShown = nextInvoice.toString().padLeft(5, '0');
+    String? selectedEnglishDate;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           return AlertDialog(
-            title: const Text(
-              'ثبت مصرف جدید',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            content: SizedBox(
-              width: 650,
-              height: 480,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // تاریخ
-                    _buildTextField(
-                      controller: _dateController,
-                      label: 'تاریخ',
-                      icon: Icons.calendar_today_outlined,
-                      hint: '۱۴۰۵/۰۵/۰۱',
-                    ),
-                    const SizedBox(height: 12),
-                    // شماره بل و شماره ثبت
-                    Row(
+                title: const Text(
+                  'ثبت مصرف جدید',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                content: SizedBox(
+                  width: 650,
+                  height: 520,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _billNumberController,
-                            label: 'شماره بل',
-                            icon: Icons.receipt_outlined,
-                            hint: 'BL-۱۴۰۵-۰۰۱',
-                          ),
+                        // نمایش شماره فاکتور (غیرقابل ویرایش)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('شماره فاکتور: $invoiceShown', style: const TextStyle(fontWeight: FontWeight.w700)),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _registrationNumberController,
-                            label: 'شماره ثبت',
-                            icon: Icons.numbers_outlined,
-                            hint: 'REG-۱۲۳۴۵',
+                        const SizedBox(height: 12),
+                        // تاریخ
+                        TextFormField(
+                          controller: _dateController,
+                          decoration: InputDecoration(
+                            labelText: 'تاریخ (شمسی)',
+                            suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
+                            border: OutlineInputBorder(),
                           ),
+                          readOnly: true,
+                          onTap: () async {
+                            DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            if (picked != null) {
+                              String persianDate = PersianDateConverter.gregorianToJalali(picked);
+                              String englishDate = PersianDateConverter.getEnglishDate(picked);
+                              setStateDialog(() {
+                                _dateController.text = persianDate;
+                                selectedEnglishDate = englishDate;
+                              });
+                            }
+                          },
                         ),
-                      ],
-                    ),
+                        const SizedBox(height: 12),
                     const SizedBox(height: 12),
                     // کتگوری
-                    _buildDropdownField(
+                    _buildTextField(
                       controller: _categoryController,
                       label: 'کتگوری',
                       icon: Icons.category_outlined,
-                      items: _categories.where((c) => c != 'همه').toList(),
+                      hint: 'مثال: سوخت',
                     ),
                     const SizedBox(height: 12),
                     // تفصیل
@@ -243,38 +244,33 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     _showSnackBar('لطفاً تاریخ را وارد کنید', Colors.red);
                     return;
                   }
-                  if (_billNumberController.text.isEmpty) {
-                    _showSnackBar('لطفاً شماره بل را وارد کنید', Colors.red);
-                    return;
-                  }
                   if (_priceController.text.isEmpty) {
                     _showSnackBar('لطفاً قیمت را وارد کنید', Colors.red);
                     return;
                   }
 
-                    Navigator.of(context).pop();
-                    final insertPayload = {
-                      'date': _dateController.text,
-                      'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
-                      'bill_number': _billNumberController.text,
-                      'registration_number': _registrationNumberController.text,
-                      'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
-                      'description': _descriptionController.text,
-                      'price': double.tryParse(_priceController.text) ?? 0,
-                      'currency': _currencyController.text.isNotEmpty ? _currencyController.text : 'افغانی',
-                      'exchange_rate': double.tryParse(_exchangeRateController.text) ?? 0.011,
-                    };
-                    final price = double.tryParse(_priceController.text) ?? 0;
-                    final rate = double.tryParse(_exchangeRateController.text) ?? 0.0;
-                    insertPayload['usd_equivalent'] = (price * rate).round();
+                  Navigator.of(context).pop();
+                  final insertPayload = {
+                    'invoice_number': invoiceShown,
+                    'date': _dateController.text,
+                    'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
+                    'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
+                    'description': _descriptionController.text,
+                    'price': double.tryParse(_priceController.text) ?? 0,
+                    'currency': _currencyController.text.isNotEmpty ? _currencyController.text : 'افغانی',
+                    'exchange_rate': double.tryParse(_exchangeRateController.text) ?? 0.011,
+                  };
+                  final price = double.tryParse(_priceController.text) ?? 0;
+                  final rate = double.tryParse(_exchangeRateController.text) ?? 0.0;
+                  insertPayload['usd_equivalent'] = (price * rate).round();
 
-                    final id = await _db.insertDailyExpense(insertPayload);
-                    if (id != -1) {
-                      await _loadExpenses();
-                      _showSnackBar('مصرف با موفقیت ثبت شد', Colors.green);
-                    } else {
-                      _showSnackBar('خطا در ثبت مصرف', Colors.red);
-                    }
+                  final id = await _db.insertDailyExpense(insertPayload);
+                  if (id != -1) {
+                    await _loadExpenses();
+                    _showSnackBar('مصرف با موفقیت ثبت شد', Colors.green);
+                  } else {
+                    _showSnackBar('خطا در ثبت مصرف', Colors.red);
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFCB001D),
@@ -294,14 +290,14 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   void _editExpense(Map<String, dynamic> expense) {
     _dateController.text = expense['date'];
-    _billNumberController.text = expense['billNumber'];
-    _registrationNumberController.text = expense['registrationNumber'] ?? '';
     _categoryController.text = expense['category'] ?? '';
     _descriptionController.text = expense['description'] ?? '';
     _priceController.text = expense['price'].toString();
     _currencyController.text = expense['currency'] ?? '';
     _exchangeRateController.text = expense['exchangeRate'].toString();
     _usdEquivalentController.text = expense['usdEquivalent'].toString();
+
+    String? selectedEnglishDate = expense['date_en'];
 
     showDialog(
       context: context,
@@ -318,40 +314,40 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           width: 650,
           height: 480,
           child: SingleChildScrollView(
-            child: Column(
+                child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildTextField(
+                TextFormField(
                   controller: _dateController,
-                  label: 'تاریخ',
-                  icon: Icons.calendar_today_outlined,
+                  decoration: InputDecoration(
+                    labelText: 'تاریخ (شمسی)',
+                    suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
+                    border: OutlineInputBorder(),
+                  ),
+                  readOnly: true,
+                  onTap: () async {
+                    DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      String persianDate = PersianDateConverter.gregorianToJalali(picked);
+                      String englishDate = PersianDateConverter.getEnglishDate(picked);
+                      setState(() {
+                        _dateController.text = persianDate;
+                        selectedEnglishDate = englishDate;
+                      });
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        controller: _billNumberController,
-                        label: 'شماره بل',
-                        icon: Icons.receipt_outlined,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildTextField(
-                        controller: _registrationNumberController,
-                        label: 'شماره ثبت',
-                        icon: Icons.numbers_outlined,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _buildDropdownField(
+                _buildTextField(
                   controller: _categoryController,
                   label: 'کتگوری',
                   icon: Icons.category_outlined,
-                  items: _categories.where((c) => c != 'همه').toList(),
+                  hint: 'مثال: سوخت',
                 ),
                 const SizedBox(height: 12),
                 _buildTextField(
@@ -411,7 +407,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               style: TextStyle(color: Colors.grey),
             ),
           ),
-          ElevatedButton(
+              ElevatedButton(
             onPressed: () async {
               if (_dateController.text.isEmpty) {
                 _showSnackBar('لطفاً تاریخ را وارد کنید', Colors.red);
@@ -420,9 +416,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
               final payload = {
                 'date': _dateController.text,
-                'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
-                'bill_number': _billNumberController.text,
-                'registration_number': _registrationNumberController.text,
+                'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                 'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
                 'description': _descriptionController.text,
                 'price': double.tryParse(_priceController.text) ?? 0,
@@ -469,7 +463,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           ),
         ),
         content: Text(
-          'آیا از حذف مصرف "${expense['billNumber']}" مطمئن هستید؟',
+          'آیا از حذف مصرف "${expense['invoiceNumber']}" مطمئن هستید؟',
           style: const TextStyle(fontSize: 14),
         ),
         shape: RoundedRectangleBorder(
@@ -610,9 +604,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   Widget build(BuildContext context) {
     // فیلتر کردن داده‌ها
     final filteredData = _expensesData.where((expense) {
-      final matchesSearch = expense['billNumber'].contains(_searchQuery) ||
-          expense['description'].contains(_searchQuery) ||
-          expense['category'].contains(_searchQuery);
+      final matchesSearch = (expense['invoiceNumber'] ?? '').toString().contains(_searchQuery) ||
+        (expense['description'] ?? '').toString().contains(_searchQuery) ||
+        (expense['category'] ?? '').toString().contains(_searchQuery);
       final matchesCategory = _selectedCategory == 'همه' ||
           expense['category'] == _selectedCategory;
       final matchesCurrency = _selectedCurrency == 'همه' ||
@@ -738,6 +732,20 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: _showTodayInvoice,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF1A1A1A),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                side: BorderSide(color: Colors.grey.shade300),
+                elevation: 0,
+              ),
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+              label: const Text('فاکتور امروز'),
             ),
             const SizedBox(width: 12),
             ElevatedButton.icon(
@@ -1029,11 +1037,11 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                 bottom: BorderSide(color: Colors.grey.shade200, width: 1),
               ),
             ),
-            child: Row(
+                child: Row(
               children: const [
-                Expanded(flex: 1, child: Text('تاریخ', style: TextStyle(fontWeight: FontWeight.w600))),
-                Expanded(flex: 1, child: Text('شماره بل', style: TextStyle(fontWeight: FontWeight.w600))),
-                Expanded(flex: 1, child: Text('شماره ثبت', style: TextStyle(fontWeight: FontWeight.w600))),
+                Expanded(flex: 1, child: Text('تاریخ (شمسی)', style: TextStyle(fontWeight: FontWeight.w600))),
+                Expanded(flex: 1, child: Text('شماره فاکتور', style: TextStyle(fontWeight: FontWeight.w600))),
+                Expanded(flex: 1, child: Text('تاریخ (انگلیسی)', style: TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text('کتگوری', style: TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 2, child: Text('تفصیل', style: TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text('قیمت', style: TextStyle(fontWeight: FontWeight.w600), textAlign: TextAlign.right)),
@@ -1089,20 +1097,16 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           ),
           Expanded(
             flex: 1,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFCB001D).withOpacity(0.08),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                expense['billNumber'],
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                  color: Color(0xFFCB001D),
-                ),
-              ),
+            child: Text(
+              expense['invoiceNumber'] ?? '-',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w700),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Text(
+              expense['date_en'] ?? '-',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
             ),
           ),
           Expanded(
@@ -1222,6 +1226,13 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
+                  onPressed: () => _showSingleExpenseInvoice(expense),
+                  icon: const Icon(Icons.receipt_outlined, color: Colors.blue),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
                   onPressed: () => _deleteExpense(expense),
                   icon: Icon(
                     Icons.delete_outline_rounded,
@@ -1258,4 +1269,118 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         return Colors.grey.shade700;
     }
   }
+
+    // ================= PDF / Invoice Helpers =================
+    Future<pw.Document> _buildExpenseInvoicePdf(List<Map<String, dynamic>> items, String title) async {
+      final doc = pw.Document();
+      final now = DateTime.now();
+      final dateStr = PersianDateConverter.getCurrentPersianDate();
+      final totalPrice = items.fold<double>(0, (s, e) => s + (double.tryParse(e['price']?.toString() ?? '0') ?? 0));
+      final totalUsd = items.fold<double>(0, (s, e) => s + (double.tryParse(e['usdEquivalent']?.toString() ?? '0') ?? 0));
+
+      final ttf = await _loadVazirFont();
+
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context ctx) => [
+            pw.Directionality(
+              textDirection: pw.TextDirection.rtl,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(title, style: pw.TextStyle(font: ttf, fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 6),
+                  pw.Text('تاریخ: $dateStr', style: pw.TextStyle(font: ttf)),
+                  pw.SizedBox(height: 8),
+                  pw.Table.fromTextArray(
+                    headers: ['شماره فاکتور', 'تاریخ (انگلیسی)', 'کتگوری', 'تفصیل', 'قیمت', 'واحد', 'نرخ', 'معادل \$'],
+                    data: items.map((e) {
+                      return [
+                        e['invoiceNumber'] ?? '-',
+                        e['date_en'] ?? '-',
+                        e['category'] ?? '-',
+                        e['description'] ?? '-',
+                        (e['price'] ?? '').toString(),
+                        e['currency'] ?? '-',
+                        (e['exchangeRate'] ?? '').toString(),
+                        (e['usdEquivalent'] ?? '').toString(),
+                      ];
+                    }).toList(),
+                    headerStyle: pw.TextStyle(font: ttf, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                    headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
+                    cellStyle: pw.TextStyle(font: ttf, fontSize: 9),
+                    cellAlignment: pw.Alignment.centerRight,
+                    border: pw.TableBorder.symmetric(outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5), inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
+                    pw.Column(children: [
+                      pw.Text('جمع کل: ${totalPrice.toStringAsFixed(0)}', style: pw.TextStyle(font: ttf, fontWeight: pw.FontWeight.bold)),
+                      pw.Text('معادل دالر: ${totalUsd.toStringAsFixed(0)}', style: pw.TextStyle(font: ttf, fontWeight: pw.FontWeight.bold)),
+                    ])
+                  ])
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+      return doc;
+    }
+
+    Future<pw.Font> _loadVazirFont() async {
+      try {
+        final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
+        return pw.Font.ttf(fontData);
+      } catch (e) {
+        return pw.Font.helvetica();
+      }
+    }
+
+    Future<void> _showInvoiceDialogWithPdf(pw.Document doc, String filename) async {
+      final bytes = await doc.save();
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('پیش‌نمایش فاکتور'),
+          content: const Text('برای چاپ یا ذخیره، یکی از دکمه‌ها را بزنید.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('بستن')),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await Printing.layoutPdf(onLayout: (format) async => bytes);
+              },
+              child: const Text('چاپ'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await Printing.sharePdf(bytes: bytes, filename: filename);
+              },
+              child: const Text('ذخیره PDF'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Future<void> _showTodayInvoice() async {
+      final today = PersianDateConverter.getCurrentPersianDate();
+      final items = _expensesData.where((e) => e['date'] == today).toList();
+      if (items.isEmpty) {
+        _showSnackBar('امروز هیچ مصرفی ثبت نشده', Colors.grey);
+        return;
+      }
+      final doc = await _buildExpenseInvoicePdf(items, 'لیست مصارف امروز');
+      await _showInvoiceDialogWithPdf(doc, 'daily_invoice_$today.pdf');
+    }
+
+    Future<void> _showSingleExpenseInvoice(Map<String, dynamic> expense) async {
+      final doc = await _buildExpenseInvoicePdf([expense], 'فاکتور مصرف');
+      final inv = (expense['invoiceNumber'] ?? DateTime.now().millisecondsSinceEpoch.toString());
+      await _showInvoiceDialogWithPdf(doc, 'expense_$inv.pdf');
+    }
 }

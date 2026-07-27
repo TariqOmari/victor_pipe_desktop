@@ -84,17 +84,20 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 17,
+        version: 22,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
           print('✅ Database opened successfully!');
           await _ensureProducedProductsTable(db);
           await _ensureCapitalTables(db);
+          await _ensureSarafiTables(db);
           await _ensureCustomerCompanyTables(db);
           await _ensureSalesInvoiceTable(db);
+          await _ensureServiceInvoicesTable(db);
           await _ensureSellLoanTables(db);
           await _ensureDailyExpensesTable(db);
+          await _ensureWasteMaterialsTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -118,17 +121,20 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 17,
+        version: 22,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
           print('✅ Database opened successfully (fallback)!');
           await _ensureProducedProductsTable(db);
           await _ensureCapitalTables(db);
+          await _ensureSarafiTables(db);
           await _ensureCustomerCompanyTables(db);
           await _ensureSalesInvoiceTable(db);
+          await _ensureServiceInvoicesTable(db);
           await _ensureSellLoanTables(db);
           await _ensureDailyExpensesTable(db);
+          await _ensureWasteMaterialsTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -267,7 +273,6 @@ class DatabaseHelper {
         print('✅ Database upgraded to version 10!');
       }
 
-      // ★★★ VERSION 11: ADD date_en COLUMN ★★★
       if (oldVersion < 11) {
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN date_en TEXT');
@@ -338,6 +343,129 @@ class DatabaseHelper {
           print('⚠️ Error adding price_rate column (may already exist): $e');
         }
         print('✅ Database upgraded to version 17!');
+      }
+
+      if (oldVersion < 18) {
+        try {
+          print('🔄 Migrating daily_expenses to remove bill_number and registration_number...');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS daily_expenses_new(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              invoice_number TEXT UNIQUE,
+              date TEXT,
+              date_en TEXT,
+              category TEXT,
+              description TEXT,
+              price REAL,
+              currency TEXT,
+              exchange_rate REAL,
+              usd_equivalent REAL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          ''');
+          await db.execute('''
+            INSERT INTO daily_expenses_new (id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at)
+            SELECT id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at FROM daily_expenses
+          ''');
+          await db.execute('DROP TABLE IF EXISTS daily_expenses');
+          await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
+          print('✅ Migration to version 18 completed!');
+        } catch (e) {
+          print('⚠️ Migration to version 18 failed: $e');
+        }
+      }
+
+      if (oldVersion < 19) {
+        try {
+          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN account_id INTEGER');
+          await db.execute("UPDATE sarafi_transactions SET account_id = 1 WHERE account_id IS NULL");
+          print('✅ Added account_id column to sarafi_transactions');
+        } catch (e) {
+          print('⚠️ Error adding account_id to sarafi_transactions: $e');
+        }
+      }
+
+      if (oldVersion < 20) {
+        try {
+          print('🔄 Migrating sarafi_transactions: renaming afn_equivalent to amount_afn...');
+          
+          final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+          final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+          
+          if (columnNames.contains('afn_equivalent') && !columnNames.contains('amount_afn')) {
+            await db.execute('ALTER TABLE sarafi_transactions RENAME TO sarafi_transactions_old');
+            
+            await db.execute('''
+              CREATE TABLE sarafi_transactions(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER,
+                transaction_type TEXT NOT NULL,
+                amount_usd REAL NOT NULL,
+                exchange_rate REAL NOT NULL DEFAULT 1,
+                amount_afn REAL NOT NULL DEFAULT 0,
+                balance_after REAL NOT NULL DEFAULT 0,
+                source_name TEXT,
+                source_account TEXT,
+                source_email TEXT,
+                source_phone TEXT,
+                date TEXT,
+                date_en TEXT,
+                address TEXT,
+                note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
+              )
+            ''');
+            
+            await db.execute('''
+              INSERT INTO sarafi_transactions 
+                (id, account_id, transaction_type, amount_usd, exchange_rate, 
+                 source_name, source_account, source_email, source_phone, 
+                 date, date_en, address, note, created_at, amount_afn, balance_after)
+              SELECT 
+                id, account_id, transaction_type, amount_usd, exchange_rate,
+                source_name, source_account, source_email, source_phone,
+                date, date_en, address, note, created_at, afn_equivalent, 0
+              FROM sarafi_transactions_old
+            ''');
+            
+            await db.execute('DROP TABLE sarafi_transactions_old');
+            print('✅ Successfully renamed afn_equivalent to amount_afn');
+          } else if (!columnNames.contains('amount_afn')) {
+            await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_afn REAL NOT NULL DEFAULT 0');
+            print('✅ Added amount_afn column');
+          }
+        } catch (e) {
+          print('⚠️ Error migrating amount_afn column: $e');
+        }
+      }
+
+      if (oldVersion < 22) {
+        try {
+          await _ensureWasteMaterialsTable(db);
+          print('✅ Ensured waste_material_losses table exists');
+        } catch (e) {
+          print('⚠️ Error ensuring waste_material_losses table: $e');
+        }
+        print('✅ Database upgraded to version 22!');
+      }
+
+      if (oldVersion < 21) {
+        try {
+          print('🔄 Migrating sarafi_transactions: adding balance_after...');
+          
+          final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+          final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+          
+          if (!columnNames.contains('balance_after')) {
+            await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
+            print('✅ Added balance_after column');
+          } else {
+            print('✅ balance_after column already exists');
+          }
+        } catch (e) {
+          print('⚠️ Error adding balance_after column: $e');
+        }
       }
       
       print('✅ Database upgraded successfully!');
@@ -424,6 +552,147 @@ class DatabaseHelper {
     }
   }
 
+  Future<bool> _tableExists(Database db, String tableName) async {
+    try {
+      final result = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [tableName]);
+      return result.isNotEmpty;
+    } catch (e) {
+      print('⚠️ Error checking table $tableName: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _tableHasColumn(Database db, String tableName, String columnName) async {
+    try {
+      final result = await db.rawQuery('PRAGMA table_info($tableName)');
+      return result.any((row) => row['name']?.toString() == columnName);
+    } catch (e) {
+      print('⚠️ Error checking column $columnName in $tableName: $e');
+      return false;
+    }
+  }
+
+  Future<void> _repairSarafiTransactionsTable(Database db) async {
+    try {
+      final tableExists = await _tableExists(db, 'sarafi_transactions');
+      if (!tableExists) {
+        await db.execute('''
+          CREATE TABLE sarafi_transactions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER,
+            transaction_type TEXT NOT NULL,
+            amount_usd REAL NOT NULL,
+            exchange_rate REAL NOT NULL DEFAULT 1,
+            amount_afn REAL NOT NULL DEFAULT 0,
+            balance_after REAL NOT NULL DEFAULT 0,
+            source_name TEXT,
+            source_account TEXT,
+            source_email TEXT,
+            source_phone TEXT,
+            date TEXT,
+            date_en TEXT,
+            address TEXT,
+            note TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
+          )
+        ''');
+        return;
+      }
+
+      final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+      final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+
+      if (!columnNames.contains('account_id')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN account_id INTEGER');
+      }
+      if (!columnNames.contains('exchange_rate')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN exchange_rate REAL NOT NULL DEFAULT 1');
+      }
+      if (!columnNames.contains('amount_afn')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_afn REAL NOT NULL DEFAULT 0');
+      }
+      if (!columnNames.contains('balance_after')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
+      }
+      if (!columnNames.contains('amount_usd')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_usd REAL NOT NULL DEFAULT 0');
+      }
+      if (!columnNames.contains('source_name')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN source_name TEXT');
+      }
+      if (!columnNames.contains('source_account')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN source_account TEXT');
+      }
+      if (!columnNames.contains('source_email')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN source_email TEXT');
+      }
+      if (!columnNames.contains('source_phone')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN source_phone TEXT');
+      }
+      if (!columnNames.contains('date')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN date TEXT');
+      }
+      if (!columnNames.contains('date_en')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN date_en TEXT');
+      }
+      if (!columnNames.contains('address')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN address TEXT');
+      }
+      if (!columnNames.contains('note')) {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN note TEXT');
+      }
+
+      await db.execute("UPDATE sarafi_transactions SET account_id = 1 WHERE account_id IS NULL");
+      await db.execute("UPDATE sarafi_transactions SET exchange_rate = 1 WHERE exchange_rate IS NULL");
+      await db.execute("UPDATE sarafi_transactions SET amount_afn = 0 WHERE amount_afn IS NULL");
+      await db.execute("UPDATE sarafi_transactions SET balance_after = 0 WHERE balance_after IS NULL");
+    } catch (e) {
+      print('⚠️ Error repairing sarafi_transactions schema: $e');
+    }
+  }
+
+  Future<void> _ensureSarafiTables(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sarafi_accounts(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_number TEXT NOT NULL UNIQUE,
+          current_usd_balance REAL NOT NULL,
+          initial_usd_balance REAL NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sarafi_transactions(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_id INTEGER,
+          transaction_type TEXT NOT NULL,
+          amount_usd REAL NOT NULL,
+          exchange_rate REAL NOT NULL DEFAULT 1,
+          amount_afn REAL NOT NULL DEFAULT 0,
+          balance_after REAL NOT NULL DEFAULT 0,
+          source_name TEXT,
+          source_account TEXT,
+          source_email TEXT,
+          source_phone TEXT,
+          date TEXT,
+          date_en TEXT,
+          address TEXT,
+          note TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
+        )
+      ''');
+
+      await _repairSarafiTransactionsTable(db);
+    } catch (e) {
+      print('❌ Error ensuring sarafi tables: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _ensureCustomerCompanyTables(Database db) async {
     try {
       await db.execute('''
@@ -479,6 +748,64 @@ class DatabaseHelper {
       ''');
     } catch (e) {
       print('❌ Error ensuring daily_expenses table: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureWasteMaterialsTable(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS waste_material_losses(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT UNIQUE,
+          party_details TEXT,
+          waste_type TEXT,
+          weight REAL,
+          quantity REAL,
+          value REAL,
+          currency TEXT,
+          exchange_rate REAL,
+          afn_equivalent REAL,
+          description TEXT,
+          date TEXT,
+          date_en TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+    } catch (e) {
+      print('❌ Error ensuring waste_material_losses table: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureServiceInvoicesTable(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS service_invoices(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT NOT NULL UNIQUE,
+          customer_name TEXT,
+          customer_phone TEXT,
+          customer_address TEXT,
+          service_title TEXT,
+          service_type TEXT,
+          description TEXT,
+          price REAL,
+          currency TEXT,
+          exchange_rate REAL,
+          loading_cost REAL,
+          transfer_cost REAL,
+          clearance_cost REAL,
+          discount REAL,
+          final_price REAL,
+          afn_equivalent REAL,
+          date TEXT,
+          date_en TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''' );
+    } catch (e) {
+      print('❌ Error ensuring service invoices table: $e');
       rethrow;
     }
   }
@@ -685,6 +1012,7 @@ class DatabaseHelper {
     ''');
 
     await _ensureSalesInvoiceTable(db);
+    await _ensureServiceInvoicesTable(db);
     await _ensureSellLoanTables(db);
     await _ensureDailyExpensesTable(db);
   }
@@ -1106,6 +1434,73 @@ class DatabaseHelper {
     }
   }
 
+  // ============ SERVICE INVOICES ============
+  Future<List<Map<String, dynamic>>> getServiceInvoices() async {
+    try {
+      final db = await database;
+      return await db.query('service_invoices', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting service invoices: $e');
+      return [];
+    }
+  }
+
+  Future<int> getNextServiceInvoiceNumber() async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery('SELECT MAX(CAST(invoice_number AS INTEGER)) AS max_invoice FROM service_invoices');
+      final maxInvoice = result.isNotEmpty ? result.first['max_invoice'] : null;
+      final currentValue = maxInvoice is int ? maxInvoice : int.tryParse(maxInvoice?.toString() ?? '') ?? 9999;
+      return currentValue + 1;
+    } catch (e) {
+      print('❌ Error getting next service invoice number: $e');
+      return 10000;
+    }
+  }
+
+  Future<int> insertServiceInvoice(Map<String, dynamic> invoice) async {
+    try {
+      final db = await database;
+      if (invoice['invoice_number'] == null || invoice['invoice_number'].toString().trim().isEmpty) {
+        invoice['invoice_number'] = await getNextServiceInvoiceNumber().then((n) => n.toString().padLeft(5, '0'));
+      }
+      final filtered = await _filterMapForTableColumns(db, 'service_invoices', invoice);
+      if (filtered.isEmpty) {
+        print('⚠️ insertServiceInvoice filtered empty - service_invoices table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.insert('service_invoices', filtered);
+    } catch (e) {
+      print('❌ Error inserting service invoice: $e');
+      return -1;
+    }
+  }
+
+  Future<int> updateServiceInvoice(int id, Map<String, dynamic> invoice) async {
+    try {
+      final db = await database;
+      final filtered = await _filterMapForTableColumns(db, 'service_invoices', invoice);
+      if (filtered.isEmpty) {
+        print('⚠️ updateServiceInvoice filtered empty - service_invoices table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.update('service_invoices', filtered, where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error updating service invoice: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteServiceInvoice(int id) async {
+    try {
+      final db = await database;
+      return await db.delete('service_invoices', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error deleting service invoice: $e');
+      return -1;
+    }
+  }
+
   // ============ SELL LOANS ============
   Future<int> insertSellLoan(Map<String, dynamic> loan) async {
     try {
@@ -1265,6 +1660,105 @@ class DatabaseHelper {
     }
   }
 
+  // ============ SARAFI ACCOUNTS ============
+  Future<List<Map<String, dynamic>>> getSarafiAccounts() async {
+    try {
+      final db = await database;
+      return await db.query('sarafi_accounts', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting sarafi accounts: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSarafiAccountByNumber(String accountNumber) async {
+    try {
+      final db = await database;
+      final result = await db.query('sarafi_accounts', where: 'account_number = ?', whereArgs: [accountNumber], limit: 1);
+      if (result.isNotEmpty) return result.first;
+      return null;
+    } catch (e) {
+      print('❌ Error getting sarafi account by number: $e');
+      return null;
+    }
+  }
+
+  Future<int> insertSarafiAccount(Map<String, dynamic> account) async {
+    try {
+      final db = await database;
+      return await db.insert('sarafi_accounts', account);
+    } catch (e) {
+      print('❌ Error inserting sarafi account: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteSarafiAccount(int id) async {
+    try {
+      final db = await database;
+      return await db.delete('sarafi_accounts', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error deleting sarafi account: $e');
+      return -1;
+    }
+  }
+
+  Future<int> updateSarafiAccountBalance(int id, double currentUsdBalance) async {
+    try {
+      final db = await database;
+      return await db.update('sarafi_accounts', {'current_usd_balance': currentUsdBalance}, where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error updating sarafi account balance: $e');
+      return -1;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getSarafiTransactions() async {
+    try {
+      final db = await database;
+      return await db.query('sarafi_transactions', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting sarafi transactions: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getSarafiTransactionsByAccount(int accountId) async {
+    try {
+      final db = await database;
+      return await db.query(
+        'sarafi_transactions',
+        where: 'account_id = ?',
+        whereArgs: [accountId],
+        orderBy: 'created_at DESC',
+      );
+    } catch (e) {
+      print('❌ Error getting sarafi transactions by account: $e');
+      return [];
+    }
+  }
+
+  Future<int> insertSarafiTransaction(Map<String, dynamic> transaction) async {
+    try {
+      final db = await database;
+      await _repairSarafiTransactionsTable(db);
+      return await db.insert('sarafi_transactions', transaction);
+    } catch (e) {
+      print('❌ Error inserting sarafi transaction: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteSarafiTransaction(int id) async {
+    try {
+      final db = await database;
+      return await db.delete('sarafi_transactions', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error deleting sarafi transaction: $e');
+      return -1;
+    }
+  }
+
   Future<int> insertProducedProduct(Map<String, dynamic> product) async {
     try {
       final db = await database;
@@ -1374,12 +1868,11 @@ class DatabaseHelper {
   Future<int> insertDailyExpense(Map<String, dynamic> expense) async {
     try {
       final db = await database;
-      // generate invoice if not provided
       if (expense['invoice_number'] == null || (expense['invoice_number'] as String).isEmpty) {
-        expense['invoice_number'] = 'DEX-${DateTime.now().millisecondsSinceEpoch}';
+        final next = await getNextSalesInvoiceNumber();
+        expense['invoice_number'] = next.toString().padLeft(5, '0');
       }
       expense['date_en'] = expense['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
-      // calculate usd equivalent when possible
       try {
         final price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0.0;
         final rate = double.tryParse(expense['exchange_rate']?.toString() ?? '0') ?? 0.0;
@@ -1419,6 +1912,93 @@ class DatabaseHelper {
       return await db.delete('daily_expenses', where: 'id = ?', whereArgs: [id]);
     } catch (e) {
       print('❌ Error deleting daily expense: $e');
+      return -1;
+    }
+  }
+
+  // ============ WASTE / MATERIAL LOSSES ============
+  Future<List<Map<String, dynamic>>> getWasteRecords() async {
+    try {
+      final db = await database;
+      return await db.query('waste_material_losses', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting waste records: $e');
+      return [];
+    }
+  }
+
+  Future<int> getNextWasteInvoiceNumber() async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery('SELECT MAX(CAST(invoice_number AS INTEGER)) AS max_invoice FROM waste_material_losses');
+      final maxInvoice = result.isNotEmpty ? result.first['max_invoice'] : null;
+      final currentValue = maxInvoice is int ? maxInvoice : int.tryParse(maxInvoice?.toString() ?? '') ?? 9999;
+      return currentValue + 1;
+    } catch (e) {
+      print('❌ Error getting next waste invoice number: $e');
+      return 10000;
+    }
+  }
+
+  Future<int> insertWasteRecord(Map<String, dynamic> waste) async {
+    try {
+      final db = await database;
+      if (waste['invoice_number'] == null || waste['invoice_number'].toString().trim().isEmpty) {
+        final next = await getNextWasteInvoiceNumber();
+        waste['invoice_number'] = next.toString().padLeft(5, '0');
+      }
+      waste['date_en'] = waste['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
+      final value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0.0;
+      final rate = double.tryParse(waste['exchange_rate']?.toString() ?? '0') ?? 0.0;
+      waste['afn_equivalent'] = (value * rate).round();
+      final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
+      if (filtered.isEmpty) {
+        return -1;
+      }
+      return await db.insert('waste_material_losses', filtered);
+    } catch (e) {
+      if (e.toString().contains('UNIQUE constraint failed') || e.toString().contains('constraint failed')) {
+        try {
+          waste['invoice_number'] = (await getNextWasteInvoiceNumber()).toString().padLeft(5, '0');
+          final db = await database;
+          final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
+          if (filtered.isEmpty) {
+            return -1;
+          }
+          return await db.insert('waste_material_losses', filtered);
+        } catch (retryError) {
+          print('❌ Retry insert waste record failed: $retryError');
+          return -1;
+        }
+      }
+      print('❌ Error inserting waste record: $e');
+      return -1;
+    }
+  }
+
+  Future<int> updateWasteRecord(int id, Map<String, dynamic> waste) async {
+    try {
+      final db = await database;
+      final value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0.0;
+      final rate = double.tryParse(waste['exchange_rate']?.toString() ?? '0') ?? 0.0;
+      waste['afn_equivalent'] = (value * rate).round();
+      final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
+      if (filtered.isEmpty) {
+        return -1;
+      }
+      return await db.update('waste_material_losses', filtered, where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error updating waste record: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteWasteRecord(int id) async {
+    try {
+      final db = await database;
+      return await db.delete('waste_material_losses', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error deleting waste record: $e');
       return -1;
     }
   }

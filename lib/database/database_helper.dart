@@ -850,6 +850,10 @@ class DatabaseHelper {
           sale_type TEXT,
           date TEXT,
           date_en TEXT,
+          is_back_returned INTEGER DEFAULT 0,
+          back_return_reason TEXT,
+          back_return_date TEXT,
+          back_return_date_en TEXT,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
       ''');
@@ -882,6 +886,26 @@ class DatabaseHelper {
           await db.execute('ALTER TABLE sales_invoices ADD COLUMN remaining_amount REAL DEFAULT 0');
         } catch (e) {
           print('⚠️ remaining_amount column already exists or could not be added: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN is_back_returned INTEGER DEFAULT 0');
+        } catch (e) {
+          print('⚠️ is_back_returned column already exists or could not be added: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_reason TEXT');
+        } catch (e) {
+          print('⚠️ back_return_reason column already exists or could not be added: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date TEXT');
+        } catch (e) {
+          print('⚠️ back_return_date column already exists or could not be added: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date_en TEXT');
+        } catch (e) {
+          print('⚠️ back_return_date_en column already exists or could not be added: $e');
         }
     } catch (e) {
       print('❌ Error ensuring sales invoices table: $e');
@@ -1386,13 +1410,42 @@ class DatabaseHelper {
   }
 
   // ============ SALES INVOICES ============
-  Future<List<Map<String, dynamic>>> getSalesInvoices() async {
+  Future<List<Map<String, dynamic>>> getSalesInvoices({bool onlyReturned = false}) async {
     try {
       final db = await database;
+      if (onlyReturned) {
+        return await db.query('sales_invoices', where: 'is_back_returned = ?', whereArgs: [1], orderBy: 'created_at DESC');
+      }
       return await db.query('sales_invoices', orderBy: 'created_at DESC');
     } catch (e) {
       print('❌ Error getting sales invoices: $e');
       return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSalesInvoiceById(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query('sales_invoices', where: 'id = ?', whereArgs: [id]);
+      return result.isNotEmpty ? result.first : null;
+    } catch (e) {
+      print('❌ Error getting sales invoice by id: $e');
+      return null;
+    }
+  }
+
+  Future<int> updateSalesInvoice(int id, Map<String, dynamic> invoice) async {
+    try {
+      final db = await database;
+      final filtered = await _filterMapForTableColumns(db, 'sales_invoices', invoice);
+      if (filtered.isEmpty) {
+        print('⚠️ updateSalesInvoice filtered empty - sales_invoices table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.update('sales_invoices', filtered, where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error updating sales invoice: $e');
+      return -1;
     }
   }
 

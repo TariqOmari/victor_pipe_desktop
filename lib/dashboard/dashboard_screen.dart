@@ -8,6 +8,7 @@ import 'pages/admins_page.dart';
 import 'pages/suppliers_page.dart';
 import 'pages/raw_materials_page.dart';
 import 'pages/sales_page.dart';
+import 'pages/back_returned_sales_page.dart';
 import 'pages/services_page.dart';
 import 'pages/daily_expenses_page.dart';
 import 'pages/wastes_page.dart';
@@ -34,6 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const SuppliersPage(),
     const RawMaterialsPage(),
     const SalesPage(),
+    const BackReturnedSalesPage(),
     const ServicesPage(),
     const DailyExpensesPage(),
     const WastesPage(),
@@ -41,7 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const ProductionManagementPage(),
     const Center(child: Text('صفحه گزارشات در حال ساخت ...')),
     const CapitalPage(),
-    const SarafiPage(), // ← CHANGE THIS LINE! REMOVE THE PLACEHOLDER
+    const SarafiPage(),
     AdminsPage(currentUser: widget.user),
     const LoansPage(),
   ];

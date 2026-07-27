@@ -544,6 +544,17 @@ class _SalesPageState extends State<SalesPage> {
                         Text('Date (EN): ${invoice['date_en'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
                         if (invoice['loading_time'] != null && invoice['loading_time'].toString().isNotEmpty) Text('ساعت بارگیری: ${invoice['loading_time']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
                         if (invoice['loading_time_en'] != null && invoice['loading_time_en'].toString().isNotEmpty) Text('Loading (EN): ${invoice['loading_time_en']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        if (invoice['is_back_returned'] == 1 || invoice['is_back_returned']?.toString() == '1') ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            decoration: BoxDecoration(color: const Color(0xFFEBF1FF), borderRadius: BorderRadius.circular(4)),
+                            child: const Text('وضعیت: برگشت خورده', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF034ADE))),
+                          ),
+                          if (invoice['back_return_reason'] != null && invoice['back_return_reason'].toString().isNotEmpty) Text('علت برگشت: ${invoice['back_return_reason']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                          Text('تاریخ برگشت: ${invoice['back_return_date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                          Text('Return Date (EN): ${invoice['back_return_date_en'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        ],
                       ]),
                     ],
                   ),
@@ -941,6 +952,19 @@ class _SalesPageState extends State<SalesPage> {
     return number.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
   }
 
+  Widget _buildReturnStatusCell(Map<String, dynamic> sale) {
+    final isReturned = sale['is_back_returned'] == 1 || sale['is_back_returned']?.toString() == '1';
+    if (!isReturned) {
+      return Text('عادی', style: TextStyle(fontSize: 11, color: Colors.green.shade700, fontWeight: FontWeight.w600));
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(color: const Color(0xFFEBF1FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100)),
+      child: const Text('برگشت خورده', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF034ADE))),
+    );
+  }
+
   void _showSnackbar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: color, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
   }
@@ -1017,7 +1041,7 @@ class _SalesPageState extends State<SalesPage> {
                   }
                 }
               });
-            })), const SizedBox(width: 8), const Expanded(flex: 1, child: Text('شماره')), const SizedBox(width: 8), const Expanded(flex: 2, child: Text('مشتری')), const Expanded(flex: 2, child: Text('محصول')), const Expanded(flex: 1, child: Text('جمع نهایی')), const Expanded(flex: 1, child: Text('تاریخ')), const Expanded(flex: 1, child: Text('عملیات'))])),
+            })), const SizedBox(width: 8), const Expanded(flex: 1, child: Text('شماره')), const SizedBox(width: 8), const Expanded(flex: 2, child: Text('مشتری')), const Expanded(flex: 2, child: Text('محصول')), const Expanded(flex: 1, child: Text('جمع نهایی')), const Expanded(flex: 1, child: Text('وضعیت')), const Expanded(flex: 1, child: Text('تاریخ')), const Expanded(flex: 1, child: Text('عملیات'))])),
         Expanded(child: paged.isEmpty ? const Center(child: Text('هیچ فاکتوری ثبت نشده است', style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: paged.length, itemBuilder: (context, index) {
           final sale = paged[index];
           final inv = (sale['invoice_number'] ?? '').toString();
@@ -1030,7 +1054,7 @@ class _SalesPageState extends State<SalesPage> {
                     _selectedInvoices.remove(inv);
                   }
                 });
-              })), Expanded(flex: 1, child: Text(inv.isNotEmpty ? inv : '-', style: const TextStyle(fontWeight: FontWeight.w700))), Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sale['customer_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w700)), Text(sale['customer_company'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))])), Expanded(flex: 2, child: Text(sale['product_name'] ?? '-', style: const TextStyle(fontSize: 13))), Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price']), style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFCB001D)))), Expanded(flex: 1, child: Text(sale['date'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), Expanded(flex: 1, child: Row(children: [IconButton(onPressed: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)), IconButton(onPressed: () => _deleteSale(sale), icon: const Icon(Icons.delete_outline, color: Colors.red))]))])));})),
+              })), Expanded(flex: 1, child: Text(inv.isNotEmpty ? inv : '-', style: const TextStyle(fontWeight: FontWeight.w700))), Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sale['customer_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w700)), Text(sale['customer_company'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))])), Expanded(flex: 2, child: Text(sale['product_name'] ?? '-', style: const TextStyle(fontSize: 13))), Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price']), style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFCB001D)))), Expanded(flex: 1, child: _buildReturnStatusCell(sale)), Expanded(flex: 1, child: Text(sale['date'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), Expanded(flex: 1, child: Row(children: [IconButton(onPressed: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)), IconButton(onPressed: () => _deleteSale(sale), icon: const Icon(Icons.delete_outline, color: Colors.red))]))])));})),
         // Pagination controls
         Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Row(children: [Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}'), const SizedBox(width: 12), IconButton(onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null, icon: const Icon(Icons.chevron_left)), IconButton(onPressed: (_currentPage + 1) < totalPages ? () => setState(() => _currentPage++) : null, icon: const Icon(Icons.chevron_right)), const SizedBox(width: 12), DropdownButton<int>(value: _rowsPerPage, items: const [DropdownMenuItem(value: 5, child: Text('5')), DropdownMenuItem(value: 10, child: Text('10')), DropdownMenuItem(value: 20, child: Text('20')), DropdownMenuItem(value: 50, child: Text('50'))], onChanged: (v) => setState(() { _rowsPerPage = v ?? 10; _currentPage = 0; })),]),

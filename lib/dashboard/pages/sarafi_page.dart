@@ -30,7 +30,10 @@ class _SarafiPageState extends State<SarafiPage> {
     setState(() => _isLoading = true);
     try {
       final accounts = await _db.getSarafiAccounts();
-      final transactions = await _db.getSarafiTransactions();
+      final activeAccount = accounts.isNotEmpty ? accounts.first : null;
+      final transactions = activeAccount == null
+          ? <Map<String, dynamic>>[]
+          : await _db.getSarafiTransactionsByAccount(activeAccount['id'] as int);
       if (!mounted) return;
       setState(() {
         _accounts = accounts;
@@ -1148,10 +1151,6 @@ class _SarafiPageState extends State<SarafiPage> {
     if (confirm != true) return;
 
     final amount = double.tryParse(transaction['amount_usd']?.toString() ?? '0') ?? 0;
-    final currentBalance = double.tryParse(account['current_usd_balance']?.toString() ?? '0') ?? 0;
-    final newBalance = transaction['transaction_type'] == 'deposit'
-        ? currentBalance - amount
-        : currentBalance + amount;
 
     final result = await _db.deleteSarafiTransaction(transaction['id']);
     if (result == -1) {
@@ -1159,7 +1158,12 @@ class _SarafiPageState extends State<SarafiPage> {
       return;
     }
 
-    await _db.updateSarafiAccountBalance(account['id'], newBalance);
+    final remainingTransactions = await _db.getSarafiTransactionsByAccount(account['id'] as int);
+    final newBalance = remainingTransactions.isNotEmpty
+        ? double.tryParse(remainingTransactions.first['balance_after']?.toString() ?? '0') ?? 0.0
+        : 0.0;
+
+    await _db.updateSarafiAccountBalance(account['id'] as int, newBalance);
     _showSnackbar('تراکنش حذف شد', Colors.green.shade700);
     _loadData();
   }

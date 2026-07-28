@@ -173,6 +173,13 @@ class Sidebar extends StatelessWidget {
                   title: 'مدیریت قرضه مشتریان و شرکت‌ها',
                   isSelected: selectedIndex == 15,
                 ),
+                _buildMenuItem(
+                  context: context,
+                  index: 16,
+                  icon: Icons.storefront,
+                  title: 'مدیریت قرضه فروشندگان',
+                  isSelected: selectedIndex == 16,
+                ),
                 
                 // Divider
                 Padding(

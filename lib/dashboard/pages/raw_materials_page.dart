@@ -578,6 +578,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           _buildHeaderCell('وزن خالص', 65),
                           _buildHeaderCell('وزن ناخالص', 65),
                           _buildHeaderCell('قیمت واحد', 65),
+                          _buildHeaderCell('قیمت پایه فروشنده', 80),
+                          _buildHeaderCell('پرداخت اولیه', 80),
+                          _buildHeaderCell('روش پرداخت', 80),
                           _buildHeaderCell('محصول', 60),
                           _buildHeaderCell('کمیشن', 60),
                           _buildHeaderCell('کرایه', 60),
@@ -644,6 +647,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             _buildDataCell(material['net_weight'] ?? '-', 65),
                             _buildDataCell(material['gross_weight'] ?? '-', 65),
                             _buildDataCell(material['unit_price'] ?? '-', 65),
+                            _buildDataCell(material['seller_payment'] ?? '-', 80),
+                            _buildDataCell(material['seller_paid_amount'] ?? '-', 80),
+                            _buildDataCell(material['seller_payment_method'] == 'cash'
+                                ? 'نقد'
+                                : material['seller_payment_method'] == 'loan_full'
+                                    ? 'قرض کامل'
+                                    : material['seller_payment_method'] == 'loan_partial'
+                                        ? 'قرض جزئی'
+                                        : '-', 80),
                             _buildDataCell(material['product'] ?? '-', 60),
                             _buildDataCell(material['commission'] ?? '-', 60),
                             _buildDataCell(material['transfer_cost'] ?? '-', 60),
@@ -929,7 +941,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     final ghurfedariController = TextEditingController();
     final barchalaniController = TextEditingController();
     final finalPriceController = TextEditingController();
-    
+    final sellerPaymentController = TextEditingController();
+    final sellerPaidAmountController = TextEditingController();
+
+    String selectedSellerPaymentMethod = 'cash';
     String? selectedPurchaseType;
     String? selectedSupplierId;
     String? selectedDate;
@@ -948,6 +963,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
       double finalPrice = basePrice + productCost + commission + transferCost + 
                           miscellaneous + ghurfedari + barchalani;
       finalPriceController.text = finalPrice.toStringAsFixed(0);
+      sellerPaymentController.text = basePrice.toStringAsFixed(0);
+      if (selectedSellerPaymentMethod == 'cash') {
+        sellerPaidAmountController.text = sellerPaymentController.text;
+      } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
+        sellerPaidAmountController.text = '0';
+      }
     }
 
     showDialog(
@@ -1149,6 +1170,66 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                         children: [
                           Expanded(
                             child: TextField(
+                              controller: sellerPaymentController,
+                              enabled: false,
+                              decoration: const InputDecoration(
+                                labelText: 'مبلغ فروشنده (افغانی)',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedSellerPaymentMethod,
+                              decoration: const InputDecoration(
+                                labelText: 'روش پرداخت فروشنده',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'cash', child: Text('نقد')),
+                                DropdownMenuItem(value: 'loan_full', child: Text('قرض کامل')),
+                                DropdownMenuItem(value: 'loan_partial', child: Text('قرض جزئی')),
+                              ],
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  selectedSellerPaymentMethod = value ?? 'cash';
+                                  if (selectedSellerPaymentMethod == 'cash') {
+                                    sellerPaidAmountController.text = sellerPaymentController.text;
+                                  } else {
+                                    sellerPaidAmountController.text = '0';
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (selectedSellerPaymentMethod == 'loan_partial') ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: sellerPaidAmountController,
+                          decoration: const InputDecoration(
+                            labelText: 'مبلغ پرداختی اولیه فروشنده',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      const Text(
+                        'قرض فروشنده فقط بر اساس مبلغ پایه محاسبه می‌شود. هزینه‌های اضافی مانند محصول، کمیشن، کرایه، غرفه‌داری، بارچلانی و متفرقه جداگانه پرداخت می‌شوند.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
                               controller: commissionController,
                               decoration: const InputDecoration(
                                 labelText: 'کمیشن (افغانی)',
@@ -1257,6 +1338,18 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       return;
                     }
 
+                    final sellerPayment = double.tryParse(sellerPaymentController.text) ?? 0;
+                    final sellerPaidAmount = selectedSellerPaymentMethod == 'cash'
+                        ? sellerPayment
+                        : double.tryParse(sellerPaidAmountController.text) ?? 0;
+
+                    if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmount > sellerPayment) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('مبلغ پرداختی فروشنده نمی‌تواند بیشتر از مبلغ پایه باشد'), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+
                     final material = {
                       'supplier_id': int.parse(selectedSupplierId!),
                       'name': nameController.text,
@@ -1276,10 +1369,43 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       'ghurfedari': ghurfedariController.text,
                       'barchalani': barchalaniController.text,
                       'purchase_type': selectedPurchaseType,
+                      'seller_payment': sellerPayment.toStringAsFixed(0),
+                      'seller_payment_method': selectedSellerPaymentMethod,
+                      'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
                       'final_price': finalPriceController.text,
                     };
 
                     final result = await _db.insertRawMaterial(material);
+                    if (selectedSellerPaymentMethod != 'cash') {
+                      final sellerPayment = double.tryParse(sellerPaymentController.text) ?? 0;
+                      final sellerPaidAmount = double.tryParse(sellerPaidAmountController.text) ?? 0;
+                      final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 ? 0 : (sellerPayment - sellerPaidAmount);
+                      final supplier = suppliers.firstWhere((s) => s['id'].toString() == selectedSupplierId, orElse: () => {});
+                      final loanPayload = {
+                        'sale_invoice_id': null,
+                        'invoice_number': 'RM-${DateTime.now().millisecondsSinceEpoch}',
+                        'customer_name': supplier['name'] ?? 'فروشنده',
+                        'customer_company': supplier['address'] ?? '',
+                        'total_amount': sellerPayment,
+                        'paid_amount': selectedSellerPaymentMethod == 'loan_full' ? 0 : sellerPaidAmount,
+                        'remaining_amount': remainingSeller,
+                        'loan_type': selectedSellerPaymentMethod == 'loan_full' ? 'full' : 'partial',
+                        'loan_source': 'supplier',
+                        'currency': 'AFN',
+                        'date': dateController.text.trim(),
+                        'date_en': selectedEnglishDate,
+                      };
+                      final loanId = await _db.insertSellLoan(loanPayload);
+                      if (loanId != -1 && sellerPaidAmount > 0) {
+                        await _db.insertSellLoanPayment({
+                          'loan_id': loanId,
+                          'amount': sellerPaidAmount,
+                          'note': 'پرداخت اولیه فروشنده هنگام ثبت ماده خام',
+                          'date': dateController.text.trim(),
+                          'date_en': selectedEnglishDate,
+                        });
+                      }
+                    }
                     Navigator.pop(context);
 
                     if (result != -1) {

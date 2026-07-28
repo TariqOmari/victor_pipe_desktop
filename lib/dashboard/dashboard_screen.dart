@@ -15,6 +15,7 @@ import 'pages/wastes_page.dart';
 import 'pages/customers_companies_page.dart';
 import 'pages/production_management_page.dart';
 import 'pages/loans_page.dart';
+import 'pages/supplier_loans_page.dart';
 import 'pages/capital_Page.dart';
 import 'pages/sarafi_page.dart'; // ← MAKE SURE THIS IMPORT EXISTS
 
@@ -46,6 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const SarafiPage(),
     AdminsPage(currentUser: widget.user),
     const LoansPage(),
+    const SupplierLoansPage(),
   ];
 
   @override

@@ -7,7 +7,8 @@ import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 
 class LoansPage extends StatefulWidget {
-  const LoansPage({super.key});
+  final String? loanSource;
+  const LoansPage({super.key, this.loanSource});
 
   @override
   State<LoansPage> createState() => _LoansPageState();
@@ -27,7 +28,7 @@ class _LoansPageState extends State<LoansPage> {
   Future<void> _loadLoans() async {
     setState(() => _isLoading = true);
     try {
-      final loans = await _db.getSellLoans();
+      final loans = await _db.getSellLoans(source: widget.loanSource);
       if (!mounted) return;
       setState(() {
         _loans = loans;
@@ -330,8 +331,9 @@ class _LoansPageState extends State<LoansPage> {
     final totalPaidAmount = _loans.fold<double>(0, (sum, loan) => sum + (double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0));
     final totalRemainingAmount = _loans.fold<double>(0, (sum, loan) => sum + (double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0));
 
+    final pageTitle = widget.loanSource == 'supplier' ? 'مدیریت قرضه فروشندگان' : 'مدیریت قرضه مشتریان و شرکت ها';
     return Scaffold(
-      appBar: AppBar(title: const Text('مدیریت قرضه مشتریان و شرکت ها'), backgroundColor: const Color(0xFFCB001D)),
+      appBar: AppBar(title: Text(pageTitle), backgroundColor: const Color(0xFFCB001D)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: _isLoading

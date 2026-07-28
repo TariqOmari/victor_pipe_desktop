@@ -37,6 +37,7 @@ class DatabaseHelper {
           paid_amount REAL NOT NULL DEFAULT 0,
           remaining_amount REAL NOT NULL DEFAULT 0,
           loan_type TEXT,
+          loan_source TEXT,
           currency TEXT,
           due_date TEXT,
           date TEXT,
@@ -84,7 +85,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 22,
+        version: 24,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -121,7 +122,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 22,
+        version: 24,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -281,6 +282,28 @@ class DatabaseHelper {
           print('⚠️ Error adding date_en: $e');
         }
         print('✅ Database upgraded to version 11!');
+      }
+
+      if (oldVersion < 23) {
+        try {
+          await db.execute('ALTER TABLE sell_loans ADD COLUMN loan_source TEXT');
+          print('✅ Added loan_source column to sell_loans table');
+        } catch (e) {
+          print('⚠️ Error adding loan_source: $e');
+        }
+        print('✅ Database upgraded to version 23!');
+      }
+
+      if (oldVersion < 24) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment TEXT');
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment_method TEXT');
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_paid_amount TEXT');
+          print('✅ Added seller payment columns to raw_materials table');
+        } catch (e) {
+          print('⚠️ Error adding seller payment columns: $e');
+        }
+        print('✅ Database upgraded to version 24!');
       }
 
       if (oldVersion < 13) {
@@ -981,10 +1004,13 @@ class DatabaseHelper {
         commission TEXT,
         transfer_cost TEXT,
         miscellaneous TEXT,
-        final_price TEXT,
         ghurfedari TEXT,
         barchalani TEXT,
         purchase_type TEXT,
+        seller_payment TEXT,
+        seller_payment_method TEXT,
+        seller_paid_amount TEXT,
+        final_price TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
       )
@@ -1570,9 +1596,12 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getSellLoans() async {
+  Future<List<Map<String, dynamic>>> getSellLoans({String? source}) async {
     try {
       final db = await database;
+      if (source != null) {
+        return await db.query('sell_loans', where: 'loan_source = ?', whereArgs: [source], orderBy: 'created_at DESC');
+      }
       return await db.query('sell_loans', orderBy: 'created_at DESC');
     } catch (e) {
       print('❌ Error getting sell loans: $e');

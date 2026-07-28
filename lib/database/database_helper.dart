@@ -30,6 +30,7 @@ class DatabaseHelper {
         CREATE TABLE IF NOT EXISTS sell_loans(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           sale_invoice_id INTEGER,
+          supplier_id INTEGER,
           invoice_number TEXT,
           customer_name TEXT,
           customer_company TEXT,
@@ -42,7 +43,8 @@ class DatabaseHelper {
           due_date TEXT,
           date TEXT,
           date_en TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
         )
       ''');
 
@@ -58,9 +60,79 @@ class DatabaseHelper {
           FOREIGN KEY (loan_id) REFERENCES sell_loans (id)
         )
       ''');
+
+      final sellLoanCols = await db.rawQuery("PRAGMA table_info('sell_loans')");
+      final sellLoanColumnNames = sellLoanCols
+          .map((c) => c['name']?.toString())
+          .whereType<String>()
+          .toSet();
+      if (!sellLoanColumnNames.contains('supplier_id')) {
+        try {
+          await db.execute('ALTER TABLE sell_loans ADD COLUMN supplier_id INTEGER');
+          print('✅ Added missing sell_loans column supplier_id');
+        } catch (e) {
+          print('⚠️ Error adding supplier_id to sell_loans: $e');
+        }
+      }
+      if (!sellLoanColumnNames.contains('loan_source')) {
+        try {
+          await db.execute('ALTER TABLE sell_loans ADD COLUMN loan_source TEXT');
+          print('✅ Added missing sell_loans column loan_source');
+        } catch (e) {
+          print('⚠️ Error adding loan_source to sell_loans: $e');
+        }
+      }
     } catch (e) {
       print('❌ Error ensuring sell loan tables: $e');
       rethrow;
+    }
+  }
+
+  Future<void> _ensureRawMaterialColumns(Database db) async {
+    try {
+      final rawMaterialCols = await db.rawQuery("PRAGMA table_info('raw_materials')");
+      final rawMaterialColumnNames = rawMaterialCols
+          .map((c) => c['name']?.toString())
+          .whereType<String>()
+          .toSet();
+      final expectedColumns = <String, String>{
+        'supplier_id': 'INTEGER',
+        'location': 'TEXT',
+        'material_type': 'TEXT',
+        'thickness': 'TEXT',
+        'net_weight': 'TEXT',
+        'gross_weight': 'TEXT',
+        'date': 'TEXT',
+        'date_en': 'TEXT',
+        'unit': 'TEXT',
+        'unit_price': 'TEXT',
+        'product': 'TEXT',
+        'commission': 'TEXT',
+        'transfer_cost': 'TEXT',
+        'miscellaneous': 'TEXT',
+        'ghurfedari': 'TEXT',
+        'barchalani': 'TEXT',
+        'purchase_type': 'TEXT',
+        'seller_payment': 'TEXT',
+        'seller_payment_method': 'TEXT',
+        'seller_paid_amount': 'TEXT',
+        'currency': 'TEXT',
+        'exchange_rate': 'REAL',
+        'final_price': 'TEXT',
+      };
+
+      for (final entry in expectedColumns.entries) {
+        if (!rawMaterialColumnNames.contains(entry.key)) {
+          try {
+            await db.execute('ALTER TABLE raw_materials ADD COLUMN ${entry.key} ${entry.value}');
+            print('✅ Added missing raw_materials column ${entry.key}');
+          } catch (e) {
+            print('⚠️ Error adding raw_materials column ${entry.key}: $e');
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error ensuring raw_materials columns: $e');
     }
   }
 
@@ -85,7 +157,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 24,
+        version: 25,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -97,6 +169,7 @@ class DatabaseHelper {
           await _ensureSalesInvoiceTable(db);
           await _ensureServiceInvoicesTable(db);
           await _ensureSellLoanTables(db);
+          await _ensureRawMaterialColumns(db);
           await _ensureDailyExpensesTable(db);
           await _ensureWasteMaterialsTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
@@ -122,7 +195,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 24,
+        version: 25,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -134,6 +207,7 @@ class DatabaseHelper {
           await _ensureSalesInvoiceTable(db);
           await _ensureServiceInvoicesTable(db);
           await _ensureSellLoanTables(db);
+          await _ensureRawMaterialColumns(db);
           await _ensureDailyExpensesTable(db);
           await _ensureWasteMaterialsTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
@@ -199,6 +273,23 @@ class DatabaseHelper {
             thickness TEXT,
             net_weight TEXT,
             gross_weight TEXT,
+            date TEXT,
+            date_en TEXT,
+            unit TEXT,
+            unit_price TEXT,
+            product TEXT,
+            commission TEXT,
+            transfer_cost TEXT,
+            miscellaneous TEXT,
+            ghurfedari TEXT,
+            barchalani TEXT,
+            purchase_type TEXT,
+            seller_payment TEXT,
+            seller_payment_method TEXT,
+            seller_paid_amount TEXT,
+            currency TEXT,
+            exchange_rate REAL,
+            final_price TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
           )
@@ -304,6 +395,25 @@ class DatabaseHelper {
           print('⚠️ Error adding seller payment columns: $e');
         }
         print('✅ Database upgraded to version 24!');
+      }
+
+      if (oldVersion < 25) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN currency TEXT');
+        } catch (e) {
+          print('⚠️ Error adding currency column to raw_materials: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN exchange_rate REAL');
+        } catch (e) {
+          print('⚠️ Error adding exchange_rate column to raw_materials: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sell_loans ADD COLUMN supplier_id INTEGER');
+        } catch (e) {
+          print('⚠️ Error adding supplier_id column to sell_loans: $e');
+        }
+        print('✅ Database upgraded to version 25!');
       }
 
       if (oldVersion < 13) {
@@ -1010,6 +1120,8 @@ class DatabaseHelper {
         seller_payment TEXT,
         seller_payment_method TEXT,
         seller_paid_amount TEXT,
+        currency TEXT,
+        exchange_rate REAL,
         final_price TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
@@ -1596,15 +1708,42 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getSellLoans({String? source}) async {
+  Future<List<Map<String, dynamic>>> getSellLoans({String? source, int? supplierId}) async {
     try {
       final db = await database;
+      String? whereClause;
+      final List<dynamic> whereArgs = [];
+
       if (source != null) {
-        return await db.query('sell_loans', where: 'loan_source = ?', whereArgs: [source], orderBy: 'created_at DESC');
+        whereClause = 'loan_source = ?';
+        whereArgs.add(source);
       }
+      if (supplierId != null) {
+        if (whereClause != null && whereClause.isNotEmpty) {
+          whereClause = '$whereClause AND supplier_id = ?';
+        } else {
+          whereClause = 'supplier_id = ?';
+        }
+        whereArgs.add(supplierId);
+      }
+
+      if (whereClause != null && whereClause.isNotEmpty) {
+        return await db.query('sell_loans', where: whereClause, whereArgs: whereArgs, orderBy: 'created_at DESC');
+      }
+
       return await db.query('sell_loans', orderBy: 'created_at DESC');
     } catch (e) {
       print('❌ Error getting sell loans: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getRawMaterialsBySupplier(int supplierId) async {
+    try {
+      final db = await database;
+      return await db.query('raw_materials', where: 'supplier_id = ?', whereArgs: [supplierId], orderBy: 'date_en DESC');
+    } catch (e) {
+      print('❌ Error getting raw materials by supplier: $e');
       return [];
     }
   }
@@ -1884,7 +2023,16 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getRawMaterials() async {
     try {
       final db = await database;
-      final result = await db.query('raw_materials', orderBy: 'name ASC');
+      final result = await db.rawQuery('''
+        SELECT raw_materials.*, 
+          suppliers.name AS supplier_name,
+          suppliers.phone AS supplier_phone,
+          suppliers.email AS supplier_email,
+          suppliers.address AS supplier_address
+        FROM raw_materials
+        LEFT JOIN suppliers ON raw_materials.supplier_id = suppliers.id
+        ORDER BY raw_materials.name ASC
+      ''');
       print('📦 Raw materials fetched: ${result.length}');
       if (result.isNotEmpty) {
         print('📦 First material keys: ${result.first.keys}');

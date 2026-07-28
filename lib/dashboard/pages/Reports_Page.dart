@@ -3,6 +3,8 @@ import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
+import '../../database/database_helper.dart';
+import '../../utils/date_converter.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -12,335 +14,335 @@ class ReportsPage extends StatefulWidget {
 }
 
 class _ReportsPageState extends State<ReportsPage> {
-  // انتخاب نوع گزارش
+  final DatabaseHelper _db = DatabaseHelper();
+  
   String _selectedReport = 'مواد خام';
-  final List<String> _reportTypes = [
-    'مواد خام',
-    'تولید',
-    'فروشات',
-    'مشتریان',
-    'فروشندگان',
-    'قرضه‌ها',
-    'صرافی',
+  String _searchQuery = '';
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _reportData = [];
+  
+  final List<ReportType> _reportTypes = [
+    ReportType(
+      id: 'raw_materials',
+      label: 'مواد خام',
+      icon: Icons.inventory_2,
+      color: Colors.blue,
+      fetchData: (db) => db.getRawMaterials(),
+    ),
+    ReportType(
+      id: 'produced_products',
+      label: 'محصولات تولیدی',
+      icon: Icons.factory,
+      color: Colors.green,
+      fetchData: (db) => db.getProducedProducts(),
+    ),
+    ReportType(
+      id: 'sales_invoices',
+      label: 'فروشات',
+      icon: Icons.receipt_long,
+      color: Colors.orange,
+      fetchData: (db) => db.getSalesInvoices(),
+    ),
+    ReportType(
+      id: 'service_invoices',
+      label: 'فاکتورهای خدمات',
+      icon: Icons.build_circle,
+      color: Colors.purple,
+      fetchData: (db) => db.getServiceInvoices(),
+    ),
+    ReportType(
+      id: 'customers',
+      label: 'مشتریان',
+      icon: Icons.people,
+      color: Colors.teal,
+      fetchData: (db) => db.getCustomers(),
+    ),
+    ReportType(
+      id: 'companies',
+      label: 'شرکت‌ها',
+      icon: Icons.business,
+      color: Colors.indigo,
+      fetchData: (db) => db.getCompanies(),
+    ),
+    ReportType(
+      id: 'suppliers',
+      label: 'تأمین‌کنندگان',
+      icon: Icons.local_shipping,
+      color: Colors.cyan,
+      fetchData: (db) => db.getSuppliers(),
+    ),
+    ReportType(
+      id: 'sell_loans',
+      label: 'قرضه‌ها',
+      icon: Icons.credit_card,
+      color: Colors.red,
+      fetchData: (db) => db.getSellLoans(),
+    ),
+    ReportType(
+      id: 'sarafi_transactions',
+      label: 'صرافی',
+      icon: Icons.currency_exchange,
+      color: Colors.amber,
+      fetchData: (db) => db.getSarafiTransactions(),
+    ),
+    ReportType(
+      id: 'daily_expenses',
+      label: 'هزینه‌های روزانه',
+      icon: Icons.money_off,
+      color: Colors.pink,
+      fetchData: (db) => db.getDailyExpenses(),
+    ),
+    ReportType(
+      id: 'waste_records',
+      label: 'ضایعات و تلفات',
+      icon: Icons.delete_outline,
+      color: Colors.brown,
+      fetchData: (db) => db.getWasteRecords(),
+    ),
+    ReportType(
+      id: 'capital_assets',
+      label: 'دارایی‌های سرمایه‌ای',
+      icon: Icons.account_balance,
+      color: Colors.deepPurple,
+      fetchData: (db) => db.getCapitalAssets(),
+    ),
+    ReportType(
+      id: 'capital_transactions',
+      label: 'تراکنش‌های سرمایه‌ای',
+      icon: Icons.swap_horiz,
+      color: Colors.lightBlue,
+      fetchData: (db) => db.getCapitalTransactions(),
+    ),
+    ReportType(
+      id: 'sarafi_accounts',
+      label: 'حساب‌های صرافی',
+      icon: Icons.account_balance_wallet,
+      color: Colors.deepOrange,
+      fetchData: (db) => db.getSarafiAccounts(),
+    ),
   ];
 
-  // فیلتر تاریخ
-  DateTime? _startDate;
-  DateTime? _endDate;
-  String _searchQuery = '';
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
 
-  // داده‌های نمونه برای هر گزارش
-  final Map<String, List<Map<String, dynamic>>> _reportData = {
-    'مواد خام': [
-      {
-        'id': 'RM-001',
-        'name': 'لوله پلی‌اتیلن',
-        'supplier': 'شرکت پلیمر',
-        'quantity': 150,
-        'unit': 'متر',
-        'price': 450000,
-        'total': 67500000,
-        'date': '۱۴۰۵/۰۵/۰۱',
-      },
-      {
-        'id': 'RM-002',
-        'name': 'اتصالات جوشی',
-        'supplier': 'صنایع فلزی',
-        'quantity': 80,
-        'unit': 'عدد',
-        'price': 320000,
-        'total': 25600000,
-        'date': '۱۴۰۵/۰۵/۰۲',
-      },
-      {
-        'id': 'RM-003',
-        'name': 'لوله فولادی',
-        'supplier': 'فولاد مبارکه',
-        'quantity': 200,
-        'unit': 'متر',
-        'price': 580000,
-        'total': 116000000,
-        'date': '۱۴۰۵/۰۵/۰۳',
-      },
-      {
-        'id': 'RM-004',
-        'name': 'کمربند فلنج',
-        'supplier': 'صنایع فلزی',
-        'quantity': 45,
-        'unit': 'عدد',
-        'price': 175000,
-        'total': 7875000,
-        'date': '۱۴۰۵/۰۵/۰۴',
-      },
-    ],
-    'تولید': [
-      {
-        'id': 'P-1001',
-        'product': 'لوله پلی‌اتیلن ۲۵۰',
-        'type': 'لوله',
-        'quantity': 150,
-        'unit': 'متر',
-        'weight': '۳۲۰ کیلوگرم',
-        'status': 'تکمیل شده',
-        'date': '۱۴۰۵/۰۵/۰۱',
-      },
-      {
-        'id': 'P-1002',
-        'product': 'اتصالات جوشی ۴ اینچ',
-        'type': 'اتصال',
-        'quantity': 80,
-        'unit': 'عدد',
-        'weight': '۴۵ کیلوگرم',
-        'status': 'در حال تولید',
-        'date': '۱۴۰۵/۰۵/۰۲',
-      },
-      {
-        'id': 'P-1003',
-        'product': 'لوله فولادی ۴ اینچ',
-        'type': 'لوله',
-        'quantity': 200,
-        'unit': 'متر',
-        'weight': '۸۵۰ کیلوگرم',
-        'status': 'تکمیل شده',
-        'date': '۱۴۰۵/۰۵/۰۳',
-      },
-    ],
-    'فروشات': [
-      {
-        'id': 'S-1001',
-        'customer': 'علی رضایی',
-        'product': 'لوله پلی‌اتیلن',
-        'quantity': 150,
-        'unit': 'متر',
-        'price': 450000,
-        'total': 67500000,
-        'status': 'تکمیل شده',
-        'date': '۱۴۰۵/۰۵/۰۱',
-      },
-      {
-        'id': 'S-1002',
-        'customer': 'شرکت نفت جنوب',
-        'product': 'اتصالات جوشی',
-        'quantity': 80,
-        'unit': 'عدد',
-        'price': 320000,
-        'total': 25600000,
-        'status': 'در انتظار',
-        'date': '۱۴۰۵/۰۵/۰۲',
-      },
-      {
-        'id': 'S-1003',
-        'customer': 'مهندس کریمی',
-        'product': 'لوله فولادی',
-        'quantity': 200,
-        'unit': 'متر',
-        'price': 580000,
-        'total': 116000000,
-        'status': 'ارسال شده',
-        'date': '۱۴۰۵/۰۵/۰۳',
-      },
-    ],
-    'مشتریان': [
-      {
-        'id': 'C-001',
-        'name': 'علی رضایی',
-        'phone': '۰۹۱۲۱۲۳۴۵۶۷',
-        'email': 'ali@email.com',
-        'type': 'حقیقی',
-        'total_purchases': 67500000,
-        'last_purchase': '۱۴۰۵/۰۵/۰۱',
-      },
-      {
-        'id': 'C-002',
-        'name': 'شرکت نفت جنوب',
-        'phone': '۰۲۱۲۲۳۳۴۴۵۵',
-        'email': 'info@oil.com',
-        'type': 'حقوقی',
-        'total_purchases': 25600000,
-        'last_purchase': '۱۴۰۵/۰۵/۰۲',
-      },
-      {
-        'id': 'C-003',
-        'name': 'مهندس کریمی',
-        'phone': '۰۹۱۲۳۴۵۶۷۸۹',
-        'email': 'karimi@email.com',
-        'type': 'حقیقی',
-        'total_purchases': 116000000,
-        'last_purchase': '۱۴۰۵/۰۵/۰۳',
-      },
-    ],
-    'فروشندگان': [
-      {
-        'id': 'V-001',
-        'name': 'شرکت پلیمر',
-        'phone': '۰۲۱۸۸۷۷۶۶۵۵',
-        'email': 'info@polymer.com',
-        'type': 'تأمین‌کننده',
-        'total_supplies': 67500000,
-        'last_supply': '۱۴۰۵/۰۵/۰۱',
-      },
-      {
-        'id': 'V-002',
-        'name': 'صنایع فلزی',
-        'phone': '۰۲۱۸۸۷۷۴۴۳۳',
-        'email': 'info@metal.com',
-        'type': 'تأمین‌کننده',
-        'total_supplies': 25600000,
-        'last_supply': '۱۴۰۵/۰۵/۰۲',
-      },
-      {
-        'id': 'V-003',
-        'name': 'فولاد مبارکه',
-        'phone': '۰۳۱۳۲۲۳۳۴۴۵',
-        'email': 'info@mobarakeh.com',
-        'type': 'تأمین‌کننده',
-        'total_supplies': 116000000,
-        'last_supply': '۱۴۰۵/۰۵/۰۳',
-      },
-    ],
-    'قرضه‌ها': [
-      {
-        'id': 'L-001',
-        'customer': 'محمد کریمی',
-        'amount': 5000000,
-        'interest': 0,
-        'date': '۱۴۰۵/۰۵/۰۱',
-        'due_date': '۱۴۰۵/۰۶/۰۱',
-        'status': 'فعال',
-      },
-      {
-        'id': 'L-002',
-        'customer': 'احمد حسینی',
-        'amount': 3000000,
-        'interest': 5,
-        'date': '۱۴۰۵/۰۵/۰۲',
-        'due_date': '۱۴۰۵/۰۶/۰۲',
-        'status': 'تسویه شده',
-      },
-      {
-        'id': 'L-003',
-        'customer': 'علی رضایی',
-        'amount': 10000000,
-        'interest': 3,
-        'date': '۱۴۰۵/۰۵/۰۳',
-        'due_date': '۱۴۰۵/۰۷/۰۳',
-        'status': 'فعال',
-      },
-    ],
-    'صرافی': [
-      {
-        'id': 'EX-001',
-        'type': 'خرید ارز',
-        'currency': 'USD',
-        'amount': 1000,
-        'rate': 85000,
-        'total': 85000000,
-        'date': '۱۴۰۵/۰۵/۰۱',
-        'status': 'انجام شده',
-      },
-      {
-        'id': 'EX-002',
-        'type': 'فروش ارز',
-        'currency': 'EUR',
-        'amount': 500,
-        'rate': 92000,
-        'total': 46000000,
-        'date': '۱۴۰۵/۰۵/۰۲',
-        'status': 'انجام شده',
-      },
-      {
-        'id': 'EX-003',
-        'type': 'خرید ارز',
-        'currency': 'GBP',
-        'amount': 200,
-        'rate': 105000,
-        'total': 21000000,
-        'date': '۱۴۰۵/۰۵/۰۳',
-        'status': 'در انتظار',
-      },
-    ],
-  };
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final reportType = _reportTypes.firstWhere(
+        (r) => r.label == _selectedReport,
+        orElse: () => _reportTypes.first,
+      );
+      final data = await reportType.fetchData(_db);
+      setState(() {
+        _reportData = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ خطا در بارگذاری داده: $e')),
+      );
+    }
+  }
 
-  // ============ BUILD HEADER ============
-  Widget _buildHeader() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isSmallScreen = constraints.maxWidth < 600;
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'گزارشات',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A1A2E),
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'مدیریت و چاپ گزارشات مدیریتی',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF888888),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                if (!isSmallScreen) ...[
-                  ElevatedButton.icon(
-                    onPressed: _generatePDFReport,
-                    icon: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 18),
-                    label: const Text(
-                      'خروجی PDF',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                ElevatedButton.icon(
-                  onPressed: _printReport,
-                  icon: const Icon(Icons.print, color: Colors.white, size: 18),
-                  label: Text(
-                    isSmallScreen ? 'چاپ' : 'چاپ',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCB001D),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  ),
-                ),
-              ],
+            _buildHeader(),
+            const SizedBox(height: 12),
+            _buildFilters(),
+            const SizedBox(height: 12),
+            _buildStats(),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : _reportData.isEmpty
+                  ? _buildEmptyState()
+                  : _buildReportTable(),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 
-  // ============ BUILD FILTERS ============
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [
+            Color(0xFFCB001D),
+            Color(0xFFA80018),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFCB001D).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.report_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'گزارشات مدیریتی',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 4),
+              Text(
+                'مشاهده و چاپ گزارشات از تمام بخش‌های سیستم',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white70,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              _buildActionButton(
+                icon: Icons.picture_as_pdf,
+                label: 'PDF',
+                color: Colors.white,
+                backgroundColor: Colors.white.withOpacity(0.2),
+                onPressed: _generatePDFReport,
+              ),
+              const SizedBox(width: 8),
+              _buildActionButton(
+                icon: Icons.print,
+                label: 'چاپ',
+                color: Colors.white,
+                backgroundColor: Colors.white.withOpacity(0.2),
+                onPressed: _printReport,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color backgroundColor,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.report_outlined,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'هیچ داده‌ای برای نمایش وجود ندارد',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'برای این گزارش هیچ رکوردی یافت نشد',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilters() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -352,7 +354,6 @@ class _ReportsPageState extends State<ReportsPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isSmallScreen = constraints.maxWidth < 700;
-          final isMediumScreen = constraints.maxWidth < 1000;
 
           if (isSmallScreen) {
             return Column(
@@ -360,8 +361,6 @@ class _ReportsPageState extends State<ReportsPage> {
                 _buildReportTypeDropdown(),
                 const SizedBox(height: 8),
                 _buildSearchField(),
-                const SizedBox(height: 8),
-                _buildDateFilters(),
               ],
             );
           }
@@ -371,11 +370,8 @@ class _ReportsPageState extends State<ReportsPage> {
               _buildReportTypeDropdown(),
               const SizedBox(width: 12),
               Expanded(
-                flex: isMediumScreen ? 1 : 2,
                 child: _buildSearchField(),
               ),
-              const SizedBox(width: 12),
-              _buildDateFilters(),
             ],
           );
         },
@@ -385,10 +381,14 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Widget _buildReportTypeDropdown() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      constraints: const BoxConstraints(minWidth: 180),
       decoration: BoxDecoration(
         color: const Color(0xFFCB001D).withOpacity(0.06),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFFCB001D).withOpacity(0.1),
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -403,15 +403,23 @@ class _ReportsPageState extends State<ReportsPage> {
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
-          items: _reportTypes.map((String value) {
+          items: _reportTypes.map((ReportType type) {
             return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
+              value: type.label,
+              child: Row(
+                children: [
+                  Icon(type.icon, size: 18, color: type.color),
+                  const SizedBox(width: 8),
+                  Text(type.label),
+                ],
+              ),
             );
           }).toList(),
           onChanged: (String? newValue) {
             setState(() {
               _selectedReport = newValue!;
+              _searchQuery = '';
+              _loadData();
             });
           },
         ),
@@ -420,216 +428,159 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Widget _buildSearchField() {
-    return TextField(
-      onChanged: (value) => setState(() => _searchQuery = value),
-      decoration: InputDecoration(
-        hintText: 'جستجو در گزارشات...',
-        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-        prefixIcon: Icon(
-          Icons.search_rounded,
-          color: Colors.grey.shade400,
-          size: 20,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Colors.grey.shade200,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade200),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade200),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 0),
-        isDense: true,
       ),
-    );
-  }
-
-  Widget _buildDateFilters() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isSmallScreen = constraints.maxWidth < 400;
-
-        if (isSmallScreen) {
-          return Column(
-            children: [
-              _buildDatePicker(true),
-              const SizedBox(height: 4),
-              _buildDatePicker(false),
-            ],
-          );
-        }
-
-        return Row(
-          children: [
-            _buildDatePicker(true),
-            const SizedBox(width: 6),
-            const Text('تا', style: TextStyle(fontSize: 11, color: Colors.grey)),
-            const SizedBox(width: 6),
-            _buildDatePicker(false),
-            if (_startDate != null || _endDate != null) ...[
-              const SizedBox(width: 6),
-              IconButton(
-                icon: const Icon(Icons.clear_rounded, size: 18, color: Colors.red),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: () {
-                  setState(() {
-                    _startDate = null;
-                    _endDate = null;
-                  });
-                },
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildDatePicker(bool isStart) {
-    return InkWell(
-      onTap: () => _selectDate(context, isStart),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_today, size: 14, color: Color(0xFFCB001D)),
-            const SizedBox(width: 4),
-            Text(
-              isStart
-                  ? (_startDate != null
-                      ? '${_startDate!.year}/${_startDate!.month}/${_startDate!.day}'
-                      : 'از تاریخ')
-                  : (_endDate != null
-                      ? '${_endDate!.year}/${_endDate!.month}/${_endDate!.day}'
-                      : 'تا تاریخ'),
-              style: TextStyle(
-                fontSize: 11,
-                color: (isStart ? _startDate : _endDate) != null
-                    ? Colors.black
-                    : Colors.grey.shade500,
-              ),
-            ),
-          ],
+      child: TextField(
+        onChanged: (value) {
+          setState(() => _searchQuery = value);
+        },
+        textDirection: TextDirection.rtl,
+        decoration: InputDecoration(
+          hintText: '🔍 جستجو در گزارشات...',
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  onPressed: () {
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
         ),
       ),
     );
   }
 
-  // ============ BUILD STATS ============
   Widget _buildStats() {
     final data = _getFilteredData();
     final totalItems = data.length;
     
     double totalAmount = 0;
     for (var item in data) {
-      if (item.containsKey('total')) {
-        totalAmount += (item['total'] as num).toDouble();
-      } else if (item.containsKey('amount')) {
-        totalAmount += (item['amount'] as num).toDouble();
+      for (var key in item.keys) {
+        if (key.contains('amount') || 
+            key.contains('price') || 
+            key.contains('total') || 
+            key.contains('balance')) {
+          final value = item[key];
+          if (value is num) {
+            totalAmount += value.toDouble();
+          } else if (value is String) {
+            final parsed = double.tryParse(value.replaceAll(',', ''));
+            if (parsed != null) totalAmount += parsed;
+          }
+        }
       }
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isSmallScreen = constraints.maxWidth < 600;
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: isSmallScreen
-              ? Column(
-                  children: [
-                    _buildStatItem('تعداد کل', totalItems.toString(), Icons.numbers, Colors.blue),
-                    const SizedBox(height: 8),
-                    _buildStatItem('جمع کل', formatNumber(totalAmount), Icons.attach_money, const Color(0xFFCB001D)),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatItem('تعداد کل', totalItems.toString(), Icons.numbers, Colors.blue),
-                    ),
-                    Expanded(
-                      child: _buildStatItem('جمع کل', formatNumber(totalAmount), Icons.attach_money, const Color(0xFFCB001D)),
-                    ),
-                    Expanded(
-                      child: _buildStatItem('نوع گزارش', _selectedReport, Icons.report, Colors.orange),
-                    ),
-                  ],
-                ),
-        );
-      },
+    final currentType = _reportTypes.firstWhere(
+      (r) => r.label == _selectedReport,
+      orElse: () => _reportTypes.first,
     );
-  }
 
-  Widget _buildStatItem(String title, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(icon, color: color, size: 16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+        ],
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _buildStatCard(
+            'تعداد کل',
+            totalItems.toString(),
+            Icons.numbers,
+            Colors.blue,
+          ),
+          _buildStatCard(
+            'جمع کل',
+            _formatNumber(totalAmount),
+            Icons.attach_money,
+            const Color(0xFFCB001D),
+          ),
+          _buildStatCard(
+            'نوع گزارش',
+            _selectedReport,
+            currentType.icon,
+            currentType.color,
+          ),
+          _buildStatCard(
+            'تعداد ستون‌ها',
+            data.isNotEmpty ? data.first.keys.length.toString() : '0',
+            Icons.table_chart,
+            Colors.green,
           ),
         ],
       ),
     );
   }
 
-  String formatNumber(double number) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color.withOpacity(0.1),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, color: color, size: 14),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatNumber(double number) {
     if (number >= 1000000000) {
       return '${(number / 1000000000).toStringAsFixed(1)} میلیارد';
     } else if (number >= 1000000) {
@@ -640,45 +591,18 @@ class _ReportsPageState extends State<ReportsPage> {
     return number.toStringAsFixed(0);
   }
 
-  // ============ BUILD REPORT TABLE - FULL WIDTH ============
   Widget _buildReportTable() {
     final data = _getFilteredData();
 
     if (data.isEmpty) {
-      return Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.report_outlined, size: 48, color: Colors.grey),
-              SizedBox(height: 12),
-              Text(
-                'هیچ داده‌ای برای نمایش وجود ندارد',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildEmptyState();
     }
 
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -699,72 +623,128 @@ class _ReportsPageState extends State<ReportsPage> {
             return _buildMobileCards(data);
           }
 
-          return _buildDesktopTable(data, constraints.maxWidth);
+          return _buildDesktopTable(data);
         },
       ),
     );
   }
 
-  // ============ MOBILE CARDS VIEW ============
   Widget _buildMobileCards(List<Map<String, dynamic>> data) {
+    final importantFields = data.first.keys
+        .where((key) => 
+            key.contains('name') || 
+            key.contains('id') || 
+            key.contains('amount') || 
+            key.contains('price') || 
+            key.contains('total') ||
+            key.contains('date') ||
+            key.contains('status'))
+        .take(6)
+        .toList();
+
+    final currentType = _reportTypes.firstWhere(
+      (r) => r.label == _selectedReport,
+      orElse: () => _reportTypes.first,
+    );
+
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: data.length,
       itemBuilder: (context, index) {
         final item = data[index];
-        return Container(
+        return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCB001D).withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  item['id'] ?? '-',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFCB001D),
+                  color: currentType.color.withOpacity(0.06),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
                   ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          currentType.icon,
+                          color: currentType.color,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          item['id']?.toString() ?? 'ردیف ${index + 1}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: currentType.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: currentType.color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '#${index + 1}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: currentType.color,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              ...item.entries.where((entry) => entry.key != 'id').map((entry) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _getFieldLabel(entry.key),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: importantFields.where((key) => key != 'id').map((key) {
+                    final value = item[key];
+                    if (value == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _getFieldLabel(key),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Flexible(
+                            child: Text(
+                              value.toString(),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _isNumeric(value.toString()) 
+                                    ? const Color(0xFFCB001D) 
+                                    : const Color(0xFF1A1A2E),
+                              ),
+                              textAlign: TextAlign.left,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        entry.value.toString(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A2E),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                    );
+                  }).toList(),
+                ),
+              ),
             ],
           ),
         );
@@ -772,147 +752,212 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  // ============ DESKTOP TABLE VIEW - FULL WIDTH ============
-  Widget _buildDesktopTable(List<Map<String, dynamic>> data, double maxWidth) {
-    final headers = data.first.keys.toList();
-    final headerCount = headers.length;
-    
-    // محاسبه عرض هر ستون به صورت درصدی از کل عرض
-    final double columnWidth = (maxWidth - 40) / headerCount;
+  bool _isNumeric(String value) {
+    return double.tryParse(value.replaceAll(',', '')) != null ||
+           int.tryParse(value.replaceAll(',', '')) != null;
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFCB001D).withOpacity(0.05),
-            border: const Border(
-              bottom: BorderSide(color: Colors.grey, width: 0.5),
+  Widget _buildDesktopTable(List<Map<String, dynamic>> data) {
+    final headers = data.first.keys.toList();
+    
+    // Calculate available width
+    final screenWidth = MediaQuery.of(context).size.width;
+    final sidebarWidth = screenWidth < 1200 ? 220.0 : 260.0;
+    final availableWidth = screenWidth - sidebarWidth - 32; // 32 for padding
+    
+    // Calculate column width
+    final columnWidth = (availableWidth - 32) / headers.length.clamp(1, 15);
+    
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        width: availableWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Table Header
+            Container(
+              width: availableWidth,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: const Border(
+                  bottom: BorderSide(color: Color(0xFFCB001D), width: 1.5),
+                ),
+              ),
+              child: Row(
+                children: headers.map((header) {
+                  return SizedBox(
+                    width: columnWidth,
+                    child: Text(
+                      _getFieldLabel(header),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                        color: Color(0xFF1A1A2E),
+                      ),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+              ),
             ),
-          ),
-          child: Row(
-            children: headers.map((header) {
-              return SizedBox(
-                width: columnWidth,
-                child: Text(
-                  _getFieldLabel(header),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Color(0xFF1A1A2E),
+            // Table Body
+            ...data.map((item) {
+              return Container(
+                width: availableWidth,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey.shade200,
+                      width: 0.5,
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
+                ),
+                child: Row(
+                  children: headers.map((header) {
+                    final value = item[header]?.toString() ?? '-';
+                    final isNumeric = _isNumeric(value);
+                    
+                    return SizedBox(
+                      width: columnWidth,
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: isNumeric ? FontWeight.bold : FontWeight.normal,
+                          color: isNumeric ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
+                        ),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
                 ),
               );
             }).toList(),
-          ),
+          ],
         ),
-        // Rows
-        ...data.map((item) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Colors.grey, width: 0.3),
-              ),
-            ),
-            child: Row(
-              children: headers.map((header) {
-                final value = item[header]?.toString() ?? '-';
-                final isTotal = header == 'total' || header == 'amount' || 
-                               header == 'total_purchases' || header == 'total_supplies';
-                
-                return SizedBox(
-                  width: columnWidth,
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-                      color: isTotal ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                );
-              }).toList(),
-            ),
-          );
-        }).toList(),
-      ],
+      ),
     );
   }
 
-  // ============ HELPERS ============
   String _getFieldLabel(String key) {
     final labels = {
       'id': 'شناسه',
+      'created_at': 'تاریخ ایجاد',
       'name': 'نام',
-      'product': 'محصول',
-      'product_name': 'نام محصول',
-      'supplier': 'فروشنده',
-      'customer': 'مشتری',
-      'type': 'نوع',
-      'quantity': 'تعداد',
+      'supplier_name': 'تأمین‌کننده',
+      'supplier_phone': 'تلفن تأمین‌کننده',
+      'supplier_email': 'ایمیل تأمین‌کننده',
+      'supplier_address': 'آدرس تأمین‌کننده',
+      'material_type': 'نوع ماده',
+      'thickness': 'ضخامت',
+      'net_weight': 'وزن خالص',
+      'gross_weight': 'وزن ناخالص',
       'unit': 'واحد',
-      'price': 'قیمت واحد',
-      'total': 'جمع کل',
+      'unit_price': 'قیمت واحد',
+      'product': 'محصول',
+      'commission': 'کمیسیون',
+      'transfer_cost': 'هزینه حمل',
+      'miscellaneous': 'متفرقه',
+      'ghurfedari': 'غرفه‌داری',
+      'barchalani': 'بارچالانی',
+      'purchase_type': 'نوع خرید',
+      'seller_payment': 'پرداخت فروشنده',
+      'seller_payment_method': 'روش پرداخت',
+      'seller_paid_amount': 'مبلغ پرداختی',
+      'currency': 'ارز',
+      'exchange_rate': 'نرخ ارز',
+      'final_price': 'قیمت نهایی',
       'date': 'تاریخ',
-      'status': 'وضعیت',
+      'date_en': 'تاریخ (انگلیسی)',
+      'product_name': 'نام محصول',
+      'production_type': 'نوع تولید',
+      'loading': 'بارگیری',
+      'length': 'طول',
+      'quantity': 'تعداد',
       'weight': 'وزن',
+      'production_date': 'تاریخ تولید',
+      'production_date_en': 'تاریخ تولید (انگلیسی)',
+      'status': 'وضعیت',
+      'batch': 'دسته',
+      'description': 'توضیحات',
+      'invoice_number': 'شماره فاکتور',
+      'customer_name': 'مشتری',
+      'customer_phone': 'تلفن مشتری',
+      'customer_address': 'آدرس مشتری',
+      'customer_company': 'شرکت مشتری',
+      'gender': 'جنسیت',
+      'size': 'سایز',
+      'total_weight': 'وزن کل',
+      'total_price': 'قیمت کل',
+      'price_rate': 'نرخ قیمت',
+      'usd_equivalent': 'معادل USD',
+      'afn_equivalent': 'معادل AFN',
+      'loading_cost': 'هزینه بارگیری',
+      'clearance_cost': 'هزینه ترخیص',
+      'discount': 'تخفیف',
+      'loading_time': 'زمان بارگیری',
+      'loading_time_en': 'زمان بارگیری (انگلیسی)',
+      'payment_method': 'روش پرداخت',
+      'loan_type': 'نوع قرض',
+      'paid_amount': 'مبلغ پرداختی',
+      'remaining_amount': 'باقیمانده',
+      'sale_type': 'نوع فروش',
+      'is_back_returned': 'برگشتی',
+      'back_return_reason': 'دلیل برگشت',
+      'back_return_date': 'تاریخ برگشت',
+      'back_return_date_en': 'تاریخ برگشت (انگلیسی)',
+      'service_title': 'عنوان خدمات',
+      'service_type': 'نوع خدمات',
+      'price': 'قیمت',
+      'total_amount': 'مبلغ کل',
+      'due_date': 'تاریخ سررسید',
+      'loan_source': 'منبع قرض',
+      'account_id': 'شناسه حساب',
+      'account_number': 'شماره حساب',
+      'transaction_type': 'نوع تراکنش',
+      'amount_usd': 'مبلغ USD',
+      'amount_afn': 'مبلغ AFN',
+      'balance_after': 'موجودی بعدی',
+      'source_name': 'نام منبع',
+      'source_account': 'حساب منبع',
+      'source_email': 'ایمیل منبع',
+      'source_phone': 'تلفن منبع',
+      'address': 'آدرس',
+      'note': 'یادداشت',
+      'current_usd_balance': 'موجودی USD',
+      'initial_usd_balance': 'موجودی اولیه USD',
+      'asset_type': 'نوع دارایی',
+      'asset_name': 'نام دارایی',
+      'current_balance': 'موجودی فعلی',
+      'initial_balance': 'موجودی اولیه',
+      'category': 'دسته‌بندی',
+      'party_details': 'جزئیات طرف',
+      'waste_type': 'نوع ضایعات',
+      'value': 'ارزش',
+      'nickname': 'نام مستعار',
       'phone': 'تلفن',
       'email': 'ایمیل',
-      'total_purchases': 'کل خرید',
-      'last_purchase': 'آخرین خرید',
-      'total_supplies': 'کل تأمین',
-      'last_supply': 'آخرین تأمین',
-      'amount': 'مبلغ',
-      'interest': 'بهره',
-      'due_date': 'تاریخ سررسید',
-      'currency': 'ارز',
-      'rate': 'نرخ',
+      'type': 'نوع',
+      'transactions': 'تراکنش‌ها',
     };
-    return labels[key] ?? key;
+    return labels[key] ?? key.replaceAll('_', ' ');
   }
 
   List<Map<String, dynamic>> _getFilteredData() {
-    var data = _reportData[_selectedReport] ?? [];
-
-    if (_searchQuery.isNotEmpty) {
-      data = data.where((item) {
-        return item.values.any((value) =>
-            value.toString().contains(_searchQuery));
-      }).toList();
-    }
-
-    return data;
+    if (_searchQuery.isEmpty) return _reportData;
+    
+    return _reportData.where((item) {
+      return item.values.any((value) =>
+          value != null && 
+          value.toString().toLowerCase().contains(_searchQuery.toLowerCase()));
+    }).toList();
   }
 
-  // ============ DATE PICKER ============
-  Future<void> _selectDate(BuildContext context, bool isStart) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (picked != null) {
-      setState(() {
-        if (isStart) {
-          _startDate = picked;
-        } else {
-          _endDate = picked;
-        }
-      });
-    }
-  }
-
-  // ============ PRINT & PDF ============
   void _printReport() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -930,30 +975,20 @@ class _ReportsPageState extends State<ReportsPage> {
       ),
     );
   }
+}
 
-  // ============ MAIN BUILD ============
-  @override
-  Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 16),
-            _buildFilters(),
-            const SizedBox(height: 16),
-            _buildStats(),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _buildReportTable(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+class ReportType {
+  final String id;
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Future<List<Map<String, dynamic>>> Function(DatabaseHelper) fetchData;
+
+  ReportType({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.fetchData,
+  });
 }

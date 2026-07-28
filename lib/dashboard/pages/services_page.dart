@@ -100,8 +100,6 @@ class _ServicesPageState extends State<ServicesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTextField(controller: customerNameController, label: 'ثبت مشخصات بل', icon: Icons.person_outline),
-                      const SizedBox(height: 12),
                       _buildTextField(controller: serviceTypeController, label: 'نوع خدمات', icon: Icons.design_services_outlined),
                       const SizedBox(height: 12),
                       Row(

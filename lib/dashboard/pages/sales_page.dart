@@ -108,7 +108,7 @@ class _SalesPageState extends State<SalesPage> {
     final afnEquivalentController = TextEditingController();
     final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
     final paidAmountController = TextEditingController();
-    String selectedPaymentMethod = 'cash'; // 'cash', 'loan_full', 'loan_partial'
+    String selectedPaymentMethod = 'cash';
     String selectedCurrency = 'USD';
     String selectedType = 'فروش';
     Map<String, dynamic>? selectedParty;
@@ -159,7 +159,17 @@ class _SalesPageState extends State<SalesPage> {
                       DropdownButtonFormField<Map<String, dynamic>>(
                         value: selectedParty,
                         isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'انتخاب مشتری / شرکت', border: OutlineInputBorder()),
+                        decoration: InputDecoration(
+                          labelText: 'انتخاب مشتری / شرکت',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.history_rounded, color: Color(0xFFCB001D)),
+                            tooltip: 'مشاهده سوابق مشتری/شرکت',
+                            onPressed: selectedParty == null
+                                ? null
+                                : () => _showPartyTransactionHistory(selectedParty),
+                          ),
+                        ),
                         items: _partyOptions.map((option) {
                           return DropdownMenuItem<Map<String, dynamic>>(
                             value: option,
@@ -416,7 +426,6 @@ class _SalesPageState extends State<SalesPage> {
                       return;
                     }
 
-                    // If payment method is loan, create a sell_loans entry
                     if (selectedPaymentMethod != 'cash') {
                       final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
                       final totalAmount = finalPrice;
@@ -473,7 +482,145 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
+  void _showPartyTransactionHistory(Map<String, dynamic>? initialParty) {
+    Map<String, dynamic>? selectedParty = initialParty ?? (_partyOptions.isNotEmpty ? _partyOptions.first : null);
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          final currentParty = selectedParty;
+          final filteredSales = currentParty == null
+              ? <Map<String, dynamic>>[]
+              : _sales.where((sale) {
+                  final name = currentParty['name']?.toString() ?? '';
+                  return sale['customer_name']?.toString() == name || sale['customer_company']?.toString() == name;
+                }).toList();
+
+          final totalAmount = filteredSales.fold<double>(0, (sum, sale) => sum + (double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0));
+          final totalInvoices = filteredSales.length;
+
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.8,
+              height: MediaQuery.of(context).size.height * 0.75,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('سوابق معاملات مشتری / شرکت', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+                          const SizedBox(height: 4),
+                          Text(currentParty == null ? 'هیچ مشتری/شرکتی انتخاب نشده است' : currentParty['name']?.toString() ?? '-', style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                        ],
+                      ),
+                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.grey, size: 24)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    value: selectedParty,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'انتخاب مشتری / شرکت', border: OutlineInputBorder()),
+                    items: _partyOptions.map((option) {
+                      return DropdownMenuItem<Map<String, dynamic>>(
+                        value: option,
+                        child: Text('${option['name']?.toString() ?? '-'} (${option['source']?.toString() == 'company' ? 'شرکت' : 'مشتری'})'),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        selectedParty = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      _buildKeyValueChip('فاکتورها', totalInvoices.toString(), Colors.blue),
+                      const SizedBox(width: 12),
+                      _buildKeyValueChip('مجموع مبلغ', _formatCurrency(totalAmount), Colors.green),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: filteredSales.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.history_rounded, size: 64, color: Colors.grey.shade300),
+                                const SizedBox(height: 12),
+                                Text('هیچ سوابقی برای این ${currentParty == null ? '' : currentParty['source']?.toString() == 'company' ? 'شرکت' : 'مشتری'} ثبت نشده است', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: filteredSales.length,
+                            separatorBuilder: (_, __) => const Divider(color: Colors.grey),
+                            itemBuilder: (context, index) {
+                              final sale = filteredSales[index];
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                title: Text('${sale['invoice_number'] ?? '-'} • ${sale['customer_name'] ?? sale['customer_company'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                subtitle: Text('${sale['product_name'] ?? '-'} • ${sale['date'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                trailing: Text('${_formatCurrency(sale['final_price'])} ${sale['currency'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFCB001D))),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale);
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildKeyValueChip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+          const SizedBox(width: 8),
+          Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
+        ],
+      ),
+    );
+  }
+
   void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice) {
+    // Helper function to safely get values from invoice map
+    String getInvoiceValue(String key, {String defaultValue = '-'}) {
+      return invoice?[key]?.toString() ?? defaultValue;
+    }
+
+    double getInvoiceNumberValue(String key, {double defaultValue = 0}) {
+      final value = invoice?[key];
+      if (value == null) return defaultValue;
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? defaultValue;
+      return defaultValue;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -540,20 +687,20 @@ class _SalesPageState extends State<SalesPage> {
                         child: Text('شماره: $invoiceNumber', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12)),
                       ),
                       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Text('تاریخ (شمسی): ${invoice['date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        Text('Date (EN): ${invoice['date_en'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        if (invoice['loading_time'] != null && invoice['loading_time'].toString().isNotEmpty) Text('ساعت بارگیری: ${invoice['loading_time']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        if (invoice['loading_time_en'] != null && invoice['loading_time_en'].toString().isNotEmpty) Text('Loading (EN): ${invoice['loading_time_en']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        if (invoice['is_back_returned'] == 1 || invoice['is_back_returned']?.toString() == '1') ...[
+                        Text('تاریخ (شمسی): ${getInvoiceValue('date')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        Text('Date (EN): ${getInvoiceValue('date_en')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        if (getInvoiceValue('loading_time') != '-' && getInvoiceValue('loading_time').isNotEmpty) Text('ساعت بارگیری: ${getInvoiceValue('loading_time')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        if (getInvoiceValue('loading_time_en') != '-' && getInvoiceValue('loading_time_en').isNotEmpty) Text('Loading (EN): ${getInvoiceValue('loading_time_en')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                        if (invoice?['is_back_returned'] == 1 || invoice?['is_back_returned']?.toString() == '1') ...[
                           const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                             decoration: BoxDecoration(color: const Color(0xFFEBF1FF), borderRadius: BorderRadius.circular(4)),
                             child: const Text('وضعیت: برگشت خورده', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF034ADE))),
                           ),
-                          if (invoice['back_return_reason'] != null && invoice['back_return_reason'].toString().isNotEmpty) Text('علت برگشت: ${invoice['back_return_reason']}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                          Text('تاریخ برگشت: ${invoice['back_return_date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                          Text('Return Date (EN): ${invoice['back_return_date_en'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                          if (getInvoiceValue('back_return_reason') != '-' && getInvoiceValue('back_return_reason').isNotEmpty) Text('علت برگشت: ${getInvoiceValue('back_return_reason')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                          Text('تاریخ برگشت: ${getInvoiceValue('back_return_date')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                          Text('Return Date (EN): ${getInvoiceValue('back_return_date_en')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
                         ],
                       ]),
                     ],
@@ -572,7 +719,7 @@ class _SalesPageState extends State<SalesPage> {
                         const SizedBox(width: 4),
                         const Text('مشتری:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
                         const SizedBox(width: 4),
-                        Expanded(child: Text(invoice['supplier_name'] ?? invoice['customer_name'] ?? '-', style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
+                        Expanded(child: Text(getInvoiceValue('supplier_name') != '-' ? getInvoiceValue('supplier_name') : getInvoiceValue('customer_name'), style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
                       ]),
                     ),
                     Expanded(
@@ -581,24 +728,24 @@ class _SalesPageState extends State<SalesPage> {
                         const SizedBox(width: 4),
                         const Text('محل تخلیه:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
                         const SizedBox(width: 4),
-                        Expanded(child: Text(invoice['location'] ?? invoice['customer_address'] ?? '-', style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
+                        Expanded(child: Text(getInvoiceValue('location') != '-' ? getInvoiceValue('location') : getInvoiceValue('customer_address'), style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
                       ]),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
-              if (invoice['payment_method'] != null) ...[
+              if (getInvoiceValue('payment_method') != '-') ...[
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(color: const Color(0xFFF1F8FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2))),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('روش پرداخت: ${invoice['payment_method'] == 'cash' ? 'نقد' : invoice['payment_method'] == 'loan_full' ? 'قرض کامل' : 'قرض جزئی'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-                    if (invoice['payment_method'] != 'cash') ...[
+                    Text('روش پرداخت: ${getInvoiceValue('payment_method') == 'cash' ? 'نقد' : getInvoiceValue('payment_method') == 'loan_full' ? 'قرض کامل' : getInvoiceValue('payment_method') == 'loan_partial' ? 'قرض جزئی' : '-'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                    if (getInvoiceValue('payment_method') != 'cash') ...[
                       const SizedBox(height: 4),
-                      Text('نوع قرض: ${invoice['loan_type'] == 'full' ? 'تمام' : invoice['loan_type'] == 'partial' ? 'جزئی' : '-'}', style: const TextStyle(fontSize: 10)),
-                      Text('پرداخت شده: ${_formatCurrency(invoice['paid_amount'])} ${invoice['currency'] ?? ''}', style: const TextStyle(fontSize: 10)),
-                      Text('باقی‌مانده: ${_formatCurrency(invoice['remaining_amount'])} ${invoice['currency'] ?? ''}', style: const TextStyle(fontSize: 10)),
+                      Text('نوع قرض: ${getInvoiceValue('loan_type') == 'full' ? 'تمام' : getInvoiceValue('loan_type') == 'partial' ? 'جزئی' : '-'}', style: const TextStyle(fontSize: 10)),
+                      Text('پرداخت شده: ${_formatCurrency(invoice?['paid_amount'])} ${getInvoiceValue('currency')}', style: const TextStyle(fontSize: 10)),
+                      Text('باقی‌مانده: ${_formatCurrency(invoice?['remaining_amount'])} ${getInvoiceValue('currency')}', style: const TextStyle(fontSize: 10)),
                     ],
                   ]),
                 ),
@@ -639,20 +786,20 @@ class _SalesPageState extends State<SalesPage> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                             child: Row(children: [
-                              _buildInvoiceDataCell(invoice['customer_name'] ?? '-', 80),
-                              _buildInvoiceDataCell(invoice['customer_company'] ?? '-', 70),
-                              _buildInvoiceDataCell(invoice['product_name'] ?? '-', 90),
-                              _buildInvoiceDataCell(invoice['gender'] ?? '-', 60),
-                              _buildInvoiceDataCell(invoice['size'] ?? '-', 60),
-                              _buildInvoiceDataCell(invoice['thickness'] ?? '-', 60),
-                              _buildInvoiceDataCell(invoice['weight'] ?? '-', 60),
-                              _buildInvoiceDataCell(invoice['weight_per_unit'] ?? '-', 70),
-                              _buildInvoiceDataCell(invoice['unit_count'] ?? '-', 70),
-                              _buildInvoiceDataCell(invoice['total_weight'] ?? '-', 70),
-                              _buildInvoiceDataCell(_formatCurrency(invoice['unit_price']), 70),
-                              _buildInvoiceDataCell(_formatCurrency(invoice['total_price']), 70),
-                              _buildInvoiceDataCell(_formatCurrency(invoice['discount']), 60),
-                              _buildInvoiceDataCell(_formatCurrency(invoice['final_price']), 80, isBold: true, isRed: true),
+                              _buildInvoiceDataCell(getInvoiceValue('customer_name'), 80),
+                              _buildInvoiceDataCell(getInvoiceValue('customer_company'), 70),
+                              _buildInvoiceDataCell(getInvoiceValue('product_name'), 90),
+                              _buildInvoiceDataCell(getInvoiceValue('gender'), 60),
+                              _buildInvoiceDataCell(getInvoiceValue('size'), 60),
+                              _buildInvoiceDataCell(getInvoiceValue('thickness'), 60),
+                              _buildInvoiceDataCell(getInvoiceValue('weight'), 60),
+                              _buildInvoiceDataCell(getInvoiceValue('weight_per_unit'), 70),
+                              _buildInvoiceDataCell(getInvoiceValue('unit_count'), 70),
+                              _buildInvoiceDataCell(getInvoiceValue('total_weight'), 70),
+                              _buildInvoiceDataCell(_formatCurrency(invoice?['unit_price']), 70),
+                              _buildInvoiceDataCell(_formatCurrency(invoice?['total_price']), 70),
+                              _buildInvoiceDataCell(_formatCurrency(invoice?['discount']), 60),
+                              _buildInvoiceDataCell(_formatCurrency(invoice?['final_price']), 80, isBold: true, isRed: true),
                             ]),
                           ),
                         ),
@@ -669,17 +816,17 @@ class _SalesPageState extends State<SalesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(children: [
-                      _buildInvoiceSummaryItem('قیمت پایه:', _formatCurrency(invoice['total_price']), ''),
+                      _buildInvoiceSummaryItem('قیمت پایه:', _formatCurrency(invoice?['total_price']), ''),
                       const SizedBox(width: 12),
-                      _buildInvoiceSummaryItem('هزینه بارگیری:', _formatCurrency(invoice['loading_cost']), ''),
+                      _buildInvoiceSummaryItem('هزینه بارگیری:', _formatCurrency(invoice?['loading_cost']), ''),
                       const SizedBox(width: 12),
-                      _buildInvoiceSummaryItem('هزینه انتقال:', _formatCurrency(invoice['transfer_cost']), ''),
+                      _buildInvoiceSummaryItem('هزینه انتقال:', _formatCurrency(invoice?['transfer_cost']), ''),
                       const SizedBox(width: 12),
-                      _buildInvoiceSummaryItem('هزینه تخلیه:', _formatCurrency(invoice['clearance_cost']), ''),
+                      _buildInvoiceSummaryItem('هزینه تخلیه:', _formatCurrency(invoice?['clearance_cost']), ''),
                     ]),
                     Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                       const Text('مبلغ قابل پرداخت', style: TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                      Text('${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? 'USD'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFCB001D))),
+                      Text('${_formatCurrency(invoice?['final_price'])} ${getInvoiceValue('currency') != '-' ? getInvoiceValue('currency') : 'USD'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFCB001D))),
                     ]),
                   ],
                 ),
@@ -735,6 +882,11 @@ class _SalesPageState extends State<SalesPage> {
       ttf = pw.Font.helvetica();
     }
 
+    // Helper function for PDF
+    String getPdfValue(String key, {String defaultValue = '-'}) {
+      return invoice?[key]?.toString() ?? defaultValue;
+    }
+
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -770,14 +922,14 @@ class _SalesPageState extends State<SalesPage> {
                         ),
                         pw.SizedBox(height: 6),
                         pw.Text('شماره: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)),
-                        pw.Text('تاریخ (شمسی): ${invoice['date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        pw.Text('Date (EN): ${invoice['date_en'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        pw.Text('روش پرداخت: ${invoice['payment_method'] == 'cash' ? 'نقد' : 'قرض'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (invoice['payment_method'] != 'cash') pw.Text('نوع قرض: ${invoice['loan_type'] == 'full' ? 'تمام' : 'جزئی'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (invoice['payment_method'] != 'cash') pw.Text('پرداخت شده: ${_formatCurrency(invoice['paid_amount'])} ${invoice['currency'] ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (invoice['payment_method'] != 'cash') pw.Text('باقی‌مانده: ${_formatCurrency(invoice['remaining_amount'])} ${invoice['currency'] ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (invoice['loading_time'] != null && invoice['loading_time'].toString().isNotEmpty) pw.Text('ساعت بارگیری: ${invoice['loading_time']}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (invoice['loading_time_en'] != null && invoice['loading_time_en'].toString().isNotEmpty) pw.Text('Loading (EN): ${invoice['loading_time_en']}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text('تاریخ (شمسی): ${getPdfValue('date')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text('Date (EN): ${getPdfValue('date_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text('روش پرداخت: ${getPdfValue('payment_method') == 'cash' ? 'نقد' : 'قرض'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (getPdfValue('payment_method') != 'cash') pw.Text('نوع قرض: ${getPdfValue('loan_type') == 'full' ? 'تمام' : 'جزئی'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (getPdfValue('payment_method') != 'cash') pw.Text('پرداخت شده: ${_formatCurrency(invoice?['paid_amount'])} ${getPdfValue('currency')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (getPdfValue('payment_method') != 'cash') pw.Text('باقی‌مانده: ${_formatCurrency(invoice?['remaining_amount'])} ${getPdfValue('currency')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (getPdfValue('loading_time') != '-' && getPdfValue('loading_time').isNotEmpty) pw.Text('ساعت بارگیری: ${getPdfValue('loading_time')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        if (getPdfValue('loading_time_en') != '-' && getPdfValue('loading_time_en').isNotEmpty) pw.Text('Loading (EN): ${getPdfValue('loading_time_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                       ]),
                     ],
                   ),
@@ -787,9 +939,9 @@ class _SalesPageState extends State<SalesPage> {
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
                   child: pw.Row(children: [
-                    pw.Expanded(child: pw.Text('مشتری: ${invoice['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('شرکت: ${invoice['customer_company'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('محل تخلیه: ${invoice['location'] ?? invoice['customer_address'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('مشتری: ${getPdfValue('customer_name')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('شرکت: ${getPdfValue('customer_company')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('محل تخلیه: ${getPdfValue('location') != '-' ? getPdfValue('location') : getPdfValue('customer_address')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
                   ]),
                 ),
                 pw.SizedBox(height: 16),
@@ -797,20 +949,20 @@ class _SalesPageState extends State<SalesPage> {
                   headers: ['نام مشتری', 'شرکت', 'محصول', 'جنس', 'سایز', 'ضخامت', 'وزن', 'وزن/واحد', 'تعداد واحد', 'مجموع وزن', 'قیمت واحد', 'قیمت پایه', 'تخفیف', 'قیمت نهایی'],
                   data: [
                     [
-                      invoice['customer_name'] ?? '-',
-                      invoice['customer_company'] ?? '-',
-                      invoice['product_name'] ?? '-',
-                      invoice['gender'] ?? '-',
-                      invoice['size'] ?? '-',
-                      invoice['thickness'] ?? '-',
-                      invoice['weight'] ?? '-',
-                      invoice['weight_per_unit'] ?? '-',
-                      invoice['unit_count'] ?? '-',
-                      invoice['total_weight'] ?? '-',
-                      _formatCurrency(invoice['unit_price']),
-                      _formatCurrency(invoice['total_price']),
-                      _formatCurrency(invoice['discount']),
-                      '${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? 'USD'}',
+                      getPdfValue('customer_name'),
+                      getPdfValue('customer_company'),
+                      getPdfValue('product_name'),
+                      getPdfValue('gender'),
+                      getPdfValue('size'),
+                      getPdfValue('thickness'),
+                      getPdfValue('weight'),
+                      getPdfValue('weight_per_unit'),
+                      getPdfValue('unit_count'),
+                      getPdfValue('total_weight'),
+                      _formatCurrency(invoice?['unit_price']),
+                      _formatCurrency(invoice?['total_price']),
+                      _formatCurrency(invoice?['discount']),
+                      '${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}',
                     ],
                   ],
                   headerStyle: pw.TextStyle(font: ttf, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
@@ -822,14 +974,14 @@ class _SalesPageState extends State<SalesPage> {
                 pw.SizedBox(height: 16),
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                   pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                    pw.Text('هزینه بارگیری: ${_formatCurrency(invoice['loading_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('هزینه انتقال: ${_formatCurrency(invoice['transfer_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('هزینه تخلیه: ${_formatCurrency(invoice['clearance_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('هزینه بارگیری: ${_formatCurrency(invoice?['loading_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('هزینه انتقال: ${_formatCurrency(invoice?['transfer_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('هزینه تخلیه: ${_formatCurrency(invoice?['clearance_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
                   ]),
                   pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                    pw.Text('قیمت پایه: ${_formatCurrency(invoice['total_price'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('تخفیف: ${_formatCurrency(invoice['discount'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('مبلغ قابل پرداخت: ${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                    pw.Text('قیمت پایه: ${_formatCurrency(invoice?['total_price'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('تخفیف: ${_formatCurrency(invoice?['discount'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    pw.Text('مبلغ قابل پرداخت: ${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
                   ]),
                 ]),
                 pw.Spacer(),
@@ -948,7 +1100,8 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   String _formatCurrency(dynamic value) {
-    final number = value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '0') ?? 0;
+    if (value == null) return '0';
+    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
     return number.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
   }
 
@@ -1055,7 +1208,6 @@ class _SalesPageState extends State<SalesPage> {
                   }
                 });
               })), Expanded(flex: 1, child: Text(inv.isNotEmpty ? inv : '-', style: const TextStyle(fontWeight: FontWeight.w700))), Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sale['customer_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w700)), Text(sale['customer_company'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))])), Expanded(flex: 2, child: Text(sale['product_name'] ?? '-', style: const TextStyle(fontSize: 13))), Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price']), style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFCB001D)))), Expanded(flex: 1, child: _buildReturnStatusCell(sale)), Expanded(flex: 1, child: Text(sale['date'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), Expanded(flex: 1, child: Row(children: [IconButton(onPressed: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)), IconButton(onPressed: () => _deleteSale(sale), icon: const Icon(Icons.delete_outline, color: Colors.red))]))])));})),
-        // Pagination controls
         Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Row(children: [Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}'), const SizedBox(width: 12), IconButton(onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null, icon: const Icon(Icons.chevron_left)), IconButton(onPressed: (_currentPage + 1) < totalPages ? () => setState(() => _currentPage++) : null, icon: const Icon(Icons.chevron_right)), const SizedBox(width: 12), DropdownButton<int>(value: _rowsPerPage, items: const [DropdownMenuItem(value: 5, child: Text('5')), DropdownMenuItem(value: 10, child: Text('10')), DropdownMenuItem(value: 20, child: Text('20')), DropdownMenuItem(value: 50, child: Text('50'))], onChanged: (v) => setState(() { _rowsPerPage = v ?? 10; _currentPage = 0; })),]),
           Row(children: [Text('انتخاب شده: ${_selectedInvoices.length}'), const SizedBox(width: 12), ElevatedButton(onPressed: _selectedInvoices.isEmpty ? null : () { /* placeholder for bulk actions */ }, child: const Text('عملیات جمعی'))])

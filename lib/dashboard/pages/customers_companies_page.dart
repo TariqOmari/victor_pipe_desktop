@@ -445,8 +445,11 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   // ======================== نمایش سوابق معاملات ========================
-  void _showTransactionHistory(Map<String, dynamic> entity, bool isCustomer) {
-    final transactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
+  Future<void> _showTransactionHistory(Map<String, dynamic> entity, bool isCustomer) async {
+    final entityName = entity['name']?.toString() ?? '';
+    final embeddedTransactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
+    final salesHistory = await _getSalesHistoryForEntity(entityName, isCustomer);
+    final transactions = salesHistory.isNotEmpty ? salesHistory : embeddedTransactions;
     final title = isCustomer ? 'سوابق معاملات مشتری' : 'سوابق معاملات شرکت';
 
     showDialog(
@@ -730,6 +733,29 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
         return Icons.cancel_rounded;
       default:
         return Icons.help_rounded;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getSalesHistoryForEntity(String entityName, bool isCustomer) async {
+    try {
+      final allSales = await _db.getSalesInvoices();
+      final normalized = entityName.trim().toLowerCase();
+      if (normalized.isEmpty) return [];
+
+      return allSales.where((sale) {
+        final customerName = sale['customer_name']?.toString().trim().toLowerCase() ?? '';
+        final customerCompany = sale['customer_company']?.toString().trim().toLowerCase() ?? '';
+        return isCustomer ? customerName == normalized : customerCompany == normalized;
+      }).map((sale) {
+        return {
+          'date': sale['date'] ?? sale['created_at'] ?? '',
+          'product': sale['product_name'] ?? '',
+          'amount': sale['final_price'] ?? 0,
+          'status': 'تکمیل شده',
+        };
+      }).toList();
+    } catch (_) {
+      return [];
     }
   }
 
@@ -1556,4 +1582,4 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
       ),
     );
   }
-}
+} 

@@ -488,6 +488,17 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                             children: [
                                               IconButton(
                                                 icon: Icon(
+                                                  Icons.info_outline,
+                                                  color: Colors.blue.shade700,
+                                                  size: 20,
+                                                ),
+                                                tooltip: 'جزئیات فروشنده',
+                                                onPressed: () {
+                                                  _showSupplierDetailsDialog(supplier);
+                                                },
+                                              ),
+                                              IconButton(
+                                                icon: Icon(
                                                   Icons.edit_outlined,
                                                   color: const Color(0xFFCB001D),
                                                   size: 20,
@@ -862,6 +873,90 @@ class _SuppliersPageState extends State<SuppliersPage> {
               backgroundColor: const Color(0xFFCB001D),
             ),
             child: const Text('به‌روزرسانی'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSupplierDetailsDialog(Map<String, dynamic> supplier) async {
+    final rawMaterials = await _db.getRawMaterialsBySupplier(supplier['id']);
+    final loans = await _db.getSellLoans(source: 'supplier', supplierId: supplier['id']);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('جزئیات فروشنده: ${supplier['name'] ?? '-'}'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: SizedBox(
+          width: 600,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('تلفن: ${supplier['phone'] ?? '-'}'),
+                const SizedBox(height: 6),
+                Text('ایمیل: ${supplier['email'] ?? '-'}'),
+                const SizedBox(height: 6),
+                Text('آدرس: ${supplier['address'] ?? '-'}'),
+                const SizedBox(height: 12),
+                const Text('مواد خام مرتبط', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (rawMaterials.isEmpty)
+                  const Text('هیچ ماده خام مرتبطی ثبت نشده است.')
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: rawMaterials.map((material) {
+                      final currency = material['currency'] ?? 'AFN';
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('• ${material['name'] ?? '-'} - ${material['seller_payment'] ?? '-'} $currency / پرداخت اولیه: ${material['seller_paid_amount'] ?? '-'} $currency - روش: ${material['seller_payment_method'] == 'cash' ? 'نقد' : material['seller_payment_method'] == 'loan_full' ? 'قرض کامل' : material['seller_payment_method'] == 'loan_partial' ? 'قرض جزئی' : '-'}'),
+                          const SizedBox(height: 4),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                const SizedBox(height: 12),
+                const Text('قرضه‌های فروشنده', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (loans.isEmpty)
+                  const Text('هیچ قرضه‌ای برای این فروشنده ثبت نشده است.')
+                else
+                  Column(
+                    children: loans.map((loan) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('فاکتور: ${loan['invoice_number'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text('نوع: ${loan['loan_type'] == 'full' ? 'قرض کامل' : loan['loan_type'] == 'partial' ? 'قرض جزئی' : '-'}'),
+                            Text('مبلغ کل: ${loan['total_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                            Text('پرداخت شده: ${loan['paid_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                            Text('باقی‌مانده: ${loan['remaining_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                            Text('تاریخ: ${loan['date'] ?? '-'}'),
+                            if (loan['created_at'] != null) Text('ثبت شده: ${loan['created_at']}'),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('بستن', style: TextStyle(color: Color(0xFF888888))),
           ),
         ],
       ),

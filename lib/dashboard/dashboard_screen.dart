@@ -1,4 +1,3 @@
-// dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'sidebar.dart';
 import 'navbar.dart';
@@ -14,10 +13,11 @@ import 'pages/daily_expenses_page.dart';
 import 'pages/wastes_page.dart';
 import 'pages/customers_companies_page.dart';
 import 'pages/production_management_page.dart';
+import 'pages/Reports_Page.dart';
 import 'pages/loans_page.dart';
 import 'pages/supplier_loans_page.dart';
 import 'pages/capital_Page.dart';
-import 'pages/sarafi_page.dart'; // ← MAKE SURE THIS IMPORT EXISTS
+import 'pages/sarafi_page.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -30,6 +30,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
 
+  // FIXED: Cannot use widget.user here, use a getter or late initialization
   late final List<Widget> pages = [
     const HomePage(),
     const CustomersPage(),
@@ -42,10 +43,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const WastesPage(),
     const CustomersCompaniesPage(),
     const ProductionManagementPage(),
-    const Center(child: Text('صفحه گزارشات در حال ساخت ...')),
+    const ReportsPage(),
     const CapitalPage(),
     const SarafiPage(),
-    AdminsPage(currentUser: widget.user),
+    AdminsPage(currentUser: widget.user),  // ✅ NOW widget.user is accessible inside late initialization
     const LoansPage(),
     const SupplierLoansPage(),
   ];
@@ -69,7 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('صفحه مورد نظر در دسترس نیست'),
+                          content: const Text('صفحه مورد نظر در دسترس نیست'),
                           backgroundColor: Colors.red,
                         ),
                       );

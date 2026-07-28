@@ -573,6 +573,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           const SizedBox(width: 6),
                           _buildHeaderCell('شماره', 60),
                           _buildHeaderCell('نام مواد', 90),
+                          _buildHeaderCell('نام فروشنده', 120),
+                          _buildHeaderCell('تلفن فروشنده', 90),
+                          _buildHeaderCell('آدرس فروشنده', 120),
                           _buildHeaderCell('تاریخ', 100),
                           _buildHeaderCell('واحد', 60),
                           _buildHeaderCell('وزن خالص', 65),
@@ -616,6 +619,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             const SizedBox(width: 6),
                             _buildDataCell(material['id'].toString(), 60),
                             _buildDataCell(material['name'] ?? '-', 90),
+                            _buildDataCell(material['supplier_name'] ?? '-', 120),
+                            _buildDataCell(material['supplier_phone'] ?? '-', 90),
+                            _buildDataCell(material['supplier_address'] ?? '-', 120),
                             Container(
                               width: 100,
                               child: Column(
@@ -647,8 +653,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             _buildDataCell(material['net_weight'] ?? '-', 65),
                             _buildDataCell(material['gross_weight'] ?? '-', 65),
                             _buildDataCell(material['unit_price'] ?? '-', 65),
-                            _buildDataCell(material['seller_payment'] ?? '-', 80),
-                            _buildDataCell(material['seller_paid_amount'] ?? '-', 80),
+                            _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
+                            _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
                             _buildDataCell(material['seller_payment_method'] == 'cash'
                                 ? 'نقد'
                                 : material['seller_payment_method'] == 'loan_full'
@@ -666,7 +672,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                               width: 70,
                               child: _buildPurchaseTypeChip(material['purchase_type']),
                             ),
-                            _buildDataCell(material['final_price'] ?? '-', 80, isBold: true, isRed: true),
+                            _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80, isBold: true, isRed: true),
                             SizedBox(
                               width: 80,
                               child: Row(
@@ -943,8 +949,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     final finalPriceController = TextEditingController();
     final sellerPaymentController = TextEditingController();
     final sellerPaidAmountController = TextEditingController();
+    final exchangeRateController = TextEditingController(text: '1');
+    final afnEquivalentController = TextEditingController();
 
     String selectedSellerPaymentMethod = 'cash';
+    String selectedCurrency = 'AFN';
     String? selectedPurchaseType;
     String? selectedSupplierId;
     String? selectedDate;
@@ -958,11 +967,17 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
       double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
       double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
       double barchalani = double.tryParse(barchalaniController.text) ?? 0;
+      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
 
       double basePrice = grossWeight * unitPrice;
-      double finalPrice = basePrice + productCost + commission + transferCost + 
-                          miscellaneous + ghurfedari + barchalani;
+      double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
+      double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
+      double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
       finalPriceController.text = finalPrice.toStringAsFixed(0);
+      afnEquivalentController.text = (selectedCurrency == 'USD'
+              ? finalPrice * exchangeRate
+              : finalPrice)
+          .toStringAsFixed(0);
       sellerPaymentController.text = basePrice.toStringAsFixed(0);
       if (selectedSellerPaymentMethod == 'cash') {
         sellerPaidAmountController.text = sellerPaymentController.text;
@@ -1144,16 +1159,55 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                         ],
                       ),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: unitPriceController,
-                        decoration: const InputDecoration(
-                          labelText: 'قیمت واحد (افغانی) *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        ),
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => _updateFinalPrice(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: unitPriceController,
+                              decoration: InputDecoration(
+                                labelText: 'قیمت واحد (${selectedCurrency}) *',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _updateFinalPrice(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedCurrency,
+                              decoration: const InputDecoration(
+                                labelText: 'ارز قیمت',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'AFN', child: Text('افغانی')),
+                                DropdownMenuItem(value: 'USD', child: Text('دلار')),
+                              ],
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  selectedCurrency = value ?? 'AFN';
+                                  _updateFinalPrice();
+                                });
+                              },
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 8),
+                      if (selectedCurrency == 'USD')
+                        TextField(
+                          controller: exchangeRateController,
+                          decoration: const InputDecoration(
+                            labelText: 'نرخ ارز (AFN/USD)',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => _updateFinalPrice(),
+                        ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: productController,
@@ -1172,10 +1226,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             child: TextField(
                               controller: sellerPaymentController,
                               enabled: false,
-                              decoration: const InputDecoration(
-                                labelText: 'مبلغ فروشنده (افغانی)',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: 'مبلغ فروشنده (${selectedCurrency})',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
                             ),
@@ -1292,7 +1346,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             child: TextField(
                               controller: miscellaneousController,
                               decoration: const InputDecoration(
-                                labelText: 'متفرقه (افغانی)',
+                                labelText: 'متفرقه (AFN)',
                                 border: OutlineInputBorder(),
                                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
@@ -1306,11 +1360,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                               controller: finalPriceController,
                               enabled: false,
                               decoration: InputDecoration(
-                                labelText: 'قیمت تمام شد (افغانی)',
-                                border: OutlineInputBorder(),
-                                fillColor: Color(0xFFF5F0EB),
+                                labelText: 'قیمت تمام شد (${selectedCurrency})',
+                                border: const OutlineInputBorder(),
+                                fillColor: const Color(0xFFF5F0EB),
                                 filled: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
@@ -1319,6 +1373,22 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: afnEquivalentController,
+                        enabled: false,
+                        decoration: const InputDecoration(
+                          labelText: 'معادل افغانی',
+                          border: OutlineInputBorder(),
+                          fillColor: Color(0xFFF5F0EB),
+                          filled: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFCB001D),
+                        ),
                       ),
                     ],
                   ),
@@ -1372,6 +1442,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       'seller_payment': sellerPayment.toStringAsFixed(0),
                       'seller_payment_method': selectedSellerPaymentMethod,
                       'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
+                      'currency': selectedCurrency,
+                      'exchange_rate': double.tryParse(exchangeRateController.text) ?? 1,
                       'final_price': finalPriceController.text,
                     };
 
@@ -1383,6 +1455,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       final supplier = suppliers.firstWhere((s) => s['id'].toString() == selectedSupplierId, orElse: () => {});
                       final loanPayload = {
                         'sale_invoice_id': null,
+                        'supplier_id': int.parse(selectedSupplierId!),
                         'invoice_number': 'RM-${DateTime.now().millisecondsSinceEpoch}',
                         'customer_name': supplier['name'] ?? 'فروشنده',
                         'customer_company': supplier['address'] ?? '',
@@ -1391,7 +1464,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                         'remaining_amount': remainingSeller,
                         'loan_type': selectedSellerPaymentMethod == 'loan_full' ? 'full' : 'partial',
                         'loan_source': 'supplier',
-                        'currency': 'AFN',
+                        'currency': selectedCurrency,
                         'date': dateController.text.trim(),
                         'date_en': selectedEnglishDate,
                       };

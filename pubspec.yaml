@@ -13,15 +13,29 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   
+  # Database
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.4.2
   path: ^1.8.3
   path_provider: ^2.1.0
+  
+  # State Management
   provider: ^6.0.5
+  
+  # Date & Time
   intl: ^0.20.2
+  
+  # PDF & Printing
   printing: ^5.11.1
   pdf: ^3.10.4
-  image_picker: ^1.0.4  # ← ADD THIS LINE
+  
+  # Image Picker
+  image_picker: ^1.0.4
+  
+  # Charts - ADD THIS
+  fl_chart: ^0.63.0
+  
+  # UI & Icons
   cupertino_icons: ^1.0.8
   persian: ^1.0.0
 

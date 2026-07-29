@@ -20,104 +20,130 @@ class _ReportsPageState extends State<ReportsPage> {
   String _searchQuery = '';
   bool _isLoading = true;
   List<Map<String, dynamic>> _reportData = [];
+  final ScrollController _horizontalScrollController = ScrollController();
+
+  // Filter & Stats State
+  String _selectedDateFilter = 'All';
+  String _selectedMonthFilter = 'All';
+  String _selectedYearFilter = 'All';
+  
+  Map<String, dynamic> _statsData = {
+    'today_count': 0, 'today_total': 0.0,
+    'week_count': 0, 'week_total': 0.0,
+    'month_count': 0, 'month_total': 0.0,
+  };
+
+  // Persian Month Names (Afghanistan/Hijri Shamsi)
+  final List<String> _persianMonths = [
+    'حمل', 'ثور', 'جوزا', 'سرطان', 
+    'اسد', 'سنبله', 'میزان', 'عقرب', 
+    'قوس', 'جدی', 'دلو', 'حوت'
+  ];
+
+  // ✅ FIX: Map Persian Month Name to Month Number (01, 02, etc.)
+  final Map<String, String> _persianMonthToNumber = {
+    'حمل': '01', 'ثور': '02', 'جوزا': '03', 'سرطان': '04',
+    'اسد': '05', 'سنبله': '06', 'میزان': '07', 'عقرب': '08',
+    'قوس': '09', 'جدی': '10', 'دلو': '11', 'حوت': '12'
+  };
   
   final List<ReportType> _reportTypes = [
     ReportType(
       id: 'raw_materials',
       label: 'مواد خام',
       icon: Icons.inventory_2,
-      color: Colors.blue,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getRawMaterials(),
     ),
     ReportType(
       id: 'produced_products',
       label: 'محصولات تولیدی',
       icon: Icons.factory,
-      color: Colors.green,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getProducedProducts(),
     ),
     ReportType(
       id: 'sales_invoices',
       label: 'فروشات',
       icon: Icons.receipt_long,
-      color: Colors.orange,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getSalesInvoices(),
     ),
     ReportType(
       id: 'service_invoices',
       label: 'فاکتورهای خدمات',
       icon: Icons.build_circle,
-      color: Colors.purple,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getServiceInvoices(),
     ),
     ReportType(
       id: 'customers',
       label: 'مشتریان',
       icon: Icons.people,
-      color: Colors.teal,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getCustomers(),
     ),
     ReportType(
       id: 'companies',
       label: 'شرکت‌ها',
       icon: Icons.business,
-      color: Colors.indigo,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getCompanies(),
     ),
     ReportType(
       id: 'suppliers',
       label: 'تأمین‌کنندگان',
       icon: Icons.local_shipping,
-      color: Colors.cyan,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getSuppliers(),
     ),
     ReportType(
       id: 'sell_loans',
       label: 'قرضه‌ها',
       icon: Icons.credit_card,
-      color: Colors.red,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getSellLoans(),
     ),
     ReportType(
       id: 'sarafi_transactions',
       label: 'صرافی',
       icon: Icons.currency_exchange,
-      color: Colors.amber,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getSarafiTransactions(),
     ),
     ReportType(
       id: 'daily_expenses',
       label: 'هزینه‌های روزانه',
       icon: Icons.money_off,
-      color: Colors.pink,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getDailyExpenses(),
     ),
     ReportType(
       id: 'waste_records',
       label: 'ضایعات و تلفات',
       icon: Icons.delete_outline,
-      color: Colors.brown,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getWasteRecords(),
     ),
     ReportType(
       id: 'capital_assets',
       label: 'دارایی‌های سرمایه‌ای',
       icon: Icons.account_balance,
-      color: Colors.deepPurple,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getCapitalAssets(),
     ),
     ReportType(
       id: 'capital_transactions',
       label: 'تراکنش‌های سرمایه‌ای',
       icon: Icons.swap_horiz,
-      color: Colors.lightBlue,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getCapitalTransactions(),
     ),
     ReportType(
       id: 'sarafi_accounts',
       label: 'حساب‌های صرافی',
       icon: Icons.account_balance_wallet,
-      color: Colors.deepOrange,
+      color: const Color(0xFFCB001D),
       fetchData: (db) => db.getSarafiAccounts(),
     ),
   ];
@@ -128,6 +154,12 @@ class _ReportsPageState extends State<ReportsPage> {
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _horizontalScrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -135,11 +167,76 @@ class _ReportsPageState extends State<ReportsPage> {
         (r) => r.label == _selectedReport,
         orElse: () => _reportTypes.first,
       );
-      final data = await reportType.fetchData(_db);
-      setState(() {
-        _reportData = data;
-        _isLoading = false;
-      });
+      
+      // Fetch Data
+      List<Map<String, dynamic>> data = await reportType.fetchData(_db);
+
+      // Filter by PERSIAN dates and Months
+      if (_selectedReport == 'مواد خام') {
+        final todayPersianDate = PersianDateConverter.getCurrentPersianDate(); 
+        
+        // Filter data based on dropdowns
+        List<Map<String, dynamic>> filteredData = data.where((item) {
+          String itemDate = item['date'] ?? ''; // Using Persian 'date' field
+          if (itemDate.isEmpty) return false;
+
+          // Extract Year (e.g., 1405 from "1405-05-6" or "1405/05/06")
+          List<String> parts = itemDate.split(RegExp(r'[-/]'));
+          String itemYear = parts[0];
+          String itemMonth = parts.length >= 2 ? parts[1].padLeft(2, '0') : '';
+          String itemDay = parts.length >= 3 ? parts[2].padLeft(2, '0') : '';
+
+          // Check Persian Day Filter
+          if (_selectedDateFilter != 'All') {
+            if (itemDay != _selectedDateFilter) return false;
+          }
+
+          // ✅ FIX: Check Persian Month Number against the mapped Number from Dropdown
+          if (_selectedMonthFilter != 'All') {
+            String selectedMonthNumber = _persianMonthToNumber[_selectedMonthFilter] ?? '';
+            if (itemMonth != selectedMonthNumber) return false;
+          }
+
+          // Check Persian Year Filter
+          if (_selectedYearFilter != 'All') {
+            if (itemYear != _selectedYearFilter) return false;
+          }
+
+          return true;
+        }).toList();
+
+        // Calculate Real-time Stats for Today
+        int todayCount = 0; double todayTotal = 0.0;
+
+        for (var item in data) {
+          String itemDate = item['date'] ?? '';
+          double price = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0.0;
+
+          if (itemDate == todayPersianDate) { 
+            todayCount++; 
+            todayTotal += price; 
+          }
+        }
+
+        setState(() {
+          _statsData = {
+            'today_count': todayCount, 
+            'today_total': todayTotal,
+            'week_count': filteredData.length, 
+            'week_total': 0,
+            'month_count': filteredData.length, 
+            'month_total': 0,
+          };
+          _reportData = filteredData; // Apply filter to table
+          _isLoading = false;
+        });
+      } else {
+        // Normal load for other reports
+        setState(() {
+          _reportData = data;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -167,7 +264,7 @@ class _ReportsPageState extends State<ReportsPage> {
             const SizedBox(height: 12),
             Expanded(
               child: _isLoading 
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
                 : _reportData.isEmpty
                   ? _buildEmptyState()
                   : _buildReportTable(),
@@ -180,16 +277,9 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [
-            Color(0xFFCB001D),
-            Color(0xFFA80018),
-          ],
-        ),
+        color: const Color(0xFFCB001D),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -202,18 +292,25 @@ class _ReportsPageState extends State<ReportsPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Row(
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.report_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.report_rounded,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  SizedBox(width: 12),
-                  Text(
+                  const Text(
                     'گزارشات مدیریتی',
                     style: TextStyle(
                       fontSize: 22,
@@ -221,15 +318,14 @@ class _ReportsPageState extends State<ReportsPage> {
                       color: Colors.white,
                     ),
                   ),
+                  Text(
+                    '${_selectedReport} - ${_reportData.length} رکورد',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
                 ],
-              ),
-              SizedBox(height: 4),
-              Text(
-                'مشاهده و چاپ گزارشات از تمام بخش‌های سیستم',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white70,
-                ),
               ),
             ],
           ),
@@ -271,7 +367,7 @@ class _ReportsPageState extends State<ReportsPage> {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
               Icon(icon, color: color, size: 18),
@@ -311,24 +407,24 @@ class _ReportsPageState extends State<ReportsPage> {
           children: [
             Icon(
               Icons.report_outlined,
-              size: 64,
-              color: Colors.grey.shade400,
+              size: 80,
+              color: const Color(0xFFCB001D).withOpacity(0.3),
             ),
             const SizedBox(height: 16),
             Text(
               'هیچ داده‌ای برای نمایش وجود ندارد',
               style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade500,
-                fontWeight: FontWeight.w500,
+                fontSize: 18,
+                color: const Color(0xFFCB001D),
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'برای این گزارش هیچ رکوردی یافت نشد',
+              'برای "${_selectedReport}" هیچ رکوردی یافت نشد',
               style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade400,
+                fontSize: 14,
+                color: Colors.grey.shade500,
               ),
             ),
           ],
@@ -353,7 +449,7 @@ class _ReportsPageState extends State<ReportsPage> {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isSmallScreen = constraints.maxWidth < 700;
+          final isSmallScreen = constraints.maxWidth < 900;
 
           if (isSmallScreen) {
             return Column(
@@ -361,17 +457,25 @@ class _ReportsPageState extends State<ReportsPage> {
                 _buildReportTypeDropdown(),
                 const SizedBox(height: 8),
                 _buildSearchField(),
+                if (_selectedReport == 'مواد خام') ...[
+                  const SizedBox(height: 8),
+                  _buildDateFilters(),
+                ],
               ],
             );
           }
 
-          return Row(
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
             children: [
               _buildReportTypeDropdown(),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSearchField(),
-              ),
+              SizedBox(width: isSmallScreen ? 0 : 12),
+              Expanded(child: _buildSearchField()),
+              if (_selectedReport == 'مواد خام') ...[
+                const SizedBox(width: 12),
+                _buildDateFilters(),
+              ],
             ],
           );
         },
@@ -379,10 +483,112 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  Widget _buildDateFilters() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Persian Day Filter (1-31)
+        Container(
+          width: 100,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedDateFilter,
+              isExpanded: true,
+              icon: const Icon(Icons.calendar_today, size: 14, color: Color(0xFFCB001D)),
+              items: [
+                const DropdownMenuItem(value: 'All', child: Text('همه روزها')),
+                ...List.generate(31, (index) => DropdownMenuItem(
+                  value: (index + 1).toString().padLeft(2, '0'),
+                  child: Text('روز ${index + 1}'),
+                )),
+              ],
+              onChanged: (val) {
+                setState(() {
+                  _selectedDateFilter = val!;
+                  _loadData();
+                });
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Persian Month Name Filter (حمل, ثور, جوزا, etc.)
+        Container(
+          width: 100,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedMonthFilter,
+              isExpanded: true,
+              icon: const Icon(Icons.calendar_month, size: 14, color: Color(0xFFCB001D)),
+              items: [
+                const DropdownMenuItem(value: 'All', child: Text('همه ماه‌ها')),
+                ..._persianMonths.map((month) => DropdownMenuItem(
+                  value: month,
+                  child: Text(month),
+                )),
+              ],
+              onChanged: (val) {
+                setState(() {
+                  _selectedMonthFilter = val!;
+                  _loadData();
+                });
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Persian Year Filter (1404, 1405, 1406, etc.)
+        Container(
+          width: 100,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedYearFilter,
+              isExpanded: true,
+              icon: const Icon(Icons.calendar_today, size: 14, color: Color(0xFFCB001D)),
+              items: [
+                const DropdownMenuItem(value: 'All', child: Text('همه سال‌ها')),
+                ...List.generate(10, (index) {
+                  // Generate realistic Persian years
+                  final year = (PersianDateConverter.getCurrentPersianDate().split(RegExp(r'[-/]'))[0]);
+                  final pastYear = (int.parse(year) - index).toString();
+                  return DropdownMenuItem(value: pastYear, child: Text(pastYear));
+                }),
+              ],
+              onChanged: (val) {
+                setState(() {
+                  _selectedYearFilter = val!;
+                  _loadData();
+                });
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildReportTypeDropdown() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      constraints: const BoxConstraints(minWidth: 180),
+      constraints: const BoxConstraints(minWidth: 200),
       decoration: BoxDecoration(
         color: const Color(0xFFCB001D).withOpacity(0.06),
         borderRadius: BorderRadius.circular(10),
@@ -408,7 +614,14 @@ class _ReportsPageState extends State<ReportsPage> {
               value: type.label,
               child: Row(
                 children: [
-                  Icon(type.icon, size: 18, color: type.color),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCB001D).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(type.icon, size: 16, color: const Color(0xFFCB001D)),
+                  ),
                   const SizedBox(width: 8),
                   Text(type.label),
                 ],
@@ -419,6 +632,9 @@ class _ReportsPageState extends State<ReportsPage> {
             setState(() {
               _selectedReport = newValue!;
               _searchQuery = '';
+              _selectedDateFilter = 'All';
+              _selectedMonthFilter = 'All';
+              _selectedYearFilter = 'All';
               _loadData();
             });
           },
@@ -466,10 +682,14 @@ class _ReportsPageState extends State<ReportsPage> {
     double totalAmount = 0;
     for (var item in data) {
       for (var key in item.keys) {
-        if (key.contains('amount') || 
-            key.contains('price') || 
-            key.contains('total') || 
-            key.contains('balance')) {
+        final lowerKey = key.toLowerCase();
+        if (lowerKey.contains('amount') || 
+            lowerKey.contains('price') || 
+            lowerKey.contains('total') || 
+            lowerKey.contains('balance') ||
+            lowerKey.contains('final') ||
+            lowerKey.contains('payment') ||
+            lowerKey.contains('value')) {
           final value = item[key];
           if (value is num) {
             totalAmount += value.toDouble();
@@ -481,13 +701,45 @@ class _ReportsPageState extends State<ReportsPage> {
       }
     }
 
-    final currentType = _reportTypes.firstWhere(
-      (r) => r.label == _selectedReport,
-      orElse: () => _reportTypes.first,
-    );
+    List<Widget> stats = [
+      _buildStatCard(
+        'تعداد کل',
+        totalItems.toString(),
+        Icons.numbers,
+        const Color(0xFFCB001D),
+      ),
+      _buildStatCard(
+        'جمع کل',
+        _formatCurrency(totalAmount),
+        Icons.attach_money,
+        const Color(0xFFCB001D),
+      ),
+      _buildStatCard(
+        'نوع گزارش',
+        _selectedReport,
+        Icons.report,
+        const Color(0xFFCB001D),
+      ),
+      _buildStatCard(
+        'تعداد ستون‌ها',
+        data.isNotEmpty ? data.first.keys.length.toString() : '0',
+        Icons.table_chart,
+        const Color(0xFFCB001D),
+      ),
+    ];
+
+    // Real-time stats (Today based on Persian Date)
+    if (_selectedReport == 'مواد خام') {
+      stats.insert(1, _buildStatCard(
+        'امروز (تعداد/مبلغ)',
+        '${_statsData['today_count']} / ${_formatCurrency(_statsData['today_total'])}',
+        Icons.today,
+        Colors.green,
+      ));
+    }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -500,67 +752,43 @@ class _ReportsPageState extends State<ReportsPage> {
         ],
       ),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _buildStatCard(
-            'تعداد کل',
-            totalItems.toString(),
-            Icons.numbers,
-            Colors.blue,
-          ),
-          _buildStatCard(
-            'جمع کل',
-            _formatNumber(totalAmount),
-            Icons.attach_money,
-            const Color(0xFFCB001D),
-          ),
-          _buildStatCard(
-            'نوع گزارش',
-            _selectedReport,
-            currentType.icon,
-            currentType.color,
-          ),
-          _buildStatCard(
-            'تعداد ستون‌ها',
-            data.isNotEmpty ? data.first.keys.length.toString() : '0',
-            Icons.table_chart,
-            Colors.green,
-          ),
-        ],
+        spacing: 12,
+        runSpacing: 12,
+        children: stats,
       ),
     );
   }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: color.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.1),
+          color: color.withOpacity(0.15),
+          width: 1.5,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(5),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
+              color: color,
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: color, size: 14),
+            child: Icon(icon, color: Colors.white, size: 16),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 9,
+                  fontSize: 10,
                   color: Colors.grey.shade600,
                   fontWeight: FontWeight.w500,
                 ),
@@ -572,6 +800,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -580,7 +809,10 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  String _formatNumber(double number) {
+  String _formatCurrency(dynamic value) {
+    if (value == null) return '0';
+    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
+    
     if (number >= 1000000000) {
       return '${(number / 1000000000).toStringAsFixed(1)} میلیارد';
     } else if (number >= 1000000) {
@@ -588,7 +820,10 @@ class _ReportsPageState extends State<ReportsPage> {
     } else if (number >= 1000) {
       return '${(number / 1000).toStringAsFixed(1)} هزار';
     }
-    return number.toStringAsFixed(0);
+    return number.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'), 
+      (m) => '${m[1]},'
+    );
   }
 
   Widget _buildReportTable() {
@@ -611,7 +846,7 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ],
         border: Border.all(
-          color: const Color(0xFFCB001D).withOpacity(0.06),
+          color: const Color(0xFFCB001D).withOpacity(0.1),
           width: 1,
         ),
       ),
@@ -639,13 +874,8 @@ class _ReportsPageState extends State<ReportsPage> {
             key.contains('total') ||
             key.contains('date') ||
             key.contains('status'))
-        .take(6)
+        .take(8)
         .toList();
-
-    final currentType = _reportTypes.firstWhere(
-      (r) => r.label == _selectedReport,
-      orElse: () => _reportTypes.first,
-    );
 
     return ListView.builder(
       padding: const EdgeInsets.all(12),
@@ -663,9 +893,9 @@ class _ReportsPageState extends State<ReportsPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: currentType.color.withOpacity(0.06),
-                  borderRadius: const BorderRadius.vertical(
+                decoration: const BoxDecoration(
+                  color: Color(0xFFCB001D),
+                  borderRadius: BorderRadius.vertical(
                     top: Radius.circular(16),
                   ),
                 ),
@@ -674,33 +904,34 @@ class _ReportsPageState extends State<ReportsPage> {
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          currentType.icon,
-                          color: currentType.color,
+                        const Icon(
+                          Icons.receipt_long,
+                          color: Colors.white,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           item['id']?.toString() ?? 'ردیف ${index + 1}',
-                          style: TextStyle(
-                            fontSize: 13,
+                          style: const TextStyle(
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: currentType.color,
+                            color: Colors.white,
                           ),
                         ),
                       ],
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: currentType.color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         '#${index + 1}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: currentType.color,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -708,35 +939,42 @@ class _ReportsPageState extends State<ReportsPage> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   children: importantFields.where((key) => key != 'id').map((key) {
                     final value = item[key];
                     if (value == null) return const SizedBox.shrink();
+                    final isNumeric = _isNumeric(value.toString());
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            _getFieldLabel(key),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.w500,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFCB001D).withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _getFieldLabel(key),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                           Flexible(
                             child: Text(
                               value.toString(),
                               style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _isNumeric(value.toString()) 
-                                    ? const Color(0xFFCB001D) 
-                                    : const Color(0xFF1A1A2E),
+                                fontSize: 13,
+                                fontWeight: isNumeric ? FontWeight.bold : FontWeight.w500,
+                                color: isNumeric ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
                               ),
                               textAlign: TextAlign.left,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -759,87 +997,137 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Widget _buildDesktopTable(List<Map<String, dynamic>> data) {
     final headers = data.first.keys.toList();
-    
-    // Calculate available width
-    final screenWidth = MediaQuery.of(context).size.width;
-    final sidebarWidth = screenWidth < 1200 ? 220.0 : 260.0;
-    final availableWidth = screenWidth - sidebarWidth - 32; // 32 for padding
-    
-    // Calculate column width
-    final columnWidth = (availableWidth - 32) / headers.length.clamp(1, 15);
-    
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: availableWidth,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Table Header
-            Container(
-              width: availableWidth,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFCB001D).withOpacity(0.05),
-                border: const Border(
-                  bottom: BorderSide(color: Color(0xFFCB001D), width: 1.5),
-                ),
-              ),
-              child: Row(
-                children: headers.map((header) {
-                  return SizedBox(
-                    width: columnWidth,
-                    child: Text(
-                      _getFieldLabel(header),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
-                        color: Color(0xFF1A1A2E),
-                      ),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                }).toList(),
-              ),
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Table Header (Fixed at top)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFFCB001D),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
-            // Table Body
-            ...data.map((item) {
-              return Container(
-                width: availableWidth,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Colors.grey.shade200,
-                      width: 0.5,
-                    ),
-                  ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'جدول گزارشات',
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                child: Row(
-                  children: headers.map((header) {
-                    final value = item[header]?.toString() ?? '-';
-                    final isNumeric = _isNumeric(value);
-                    
-                    return SizedBox(
-                      width: columnWidth,
-                      child: Text(
-                        value,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: isNumeric ? FontWeight.bold : FontWeight.normal,
-                          color: isNumeric ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
+                Text(
+                  '${data.length} رکورد | ${headers.length} ستون',
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                controller: _horizontalScrollController,
+                padding: const EdgeInsets.all(16),
+                child: DataTable(
+                  headingRowColor: MaterialStateProperty.all(Colors.grey.shade50),
+                  headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12),
+                  dataRowMinHeight: 40,
+                  dataRowMaxHeight: 50,
+                  columnSpacing: 20,
+                  columns: headers.map((header) {
+                    return DataColumn(
+                      label: Container(
+                        constraints: const BoxConstraints(maxWidth: 150),
+                        child: Text(
+                          _getFieldLabel(header),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     );
                   }).toList(),
+                  rows: data.map((item) {
+                    return DataRow(
+                      cells: headers.map((header) {
+                        final value = item[header]?.toString() ?? '-';
+                        final isNumeric = _isNumeric(value);
+                        return DataCell(
+                          Container(
+                            constraints: const BoxConstraints(maxWidth: 150),
+                            child: Text(
+                              value,
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isNumeric ? FontWeight.bold : FontWeight.normal,
+                                color: isNumeric ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  }).toList(),
                 ),
-              );
-            }).toList(),
-          ],
-        ),
+              ),
+            ),
+          ),
+
+          // Footer (Scroll controls)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+              border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '👈 برای مشاهده ستون‌های بیشتر، افقی اسکرول کنید',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left, size: 20),
+                      onPressed: () {
+                        _horizontalScrollController.animateTo(
+                          _horizontalScrollController.offset - 200,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                      },
+                      constraints: const BoxConstraints(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right, size: 20),
+                      onPressed: () {
+                        _horizontalScrollController.animateTo(
+                          _horizontalScrollController.offset + 200,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                      },
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -136,6 +136,20 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> _ensureSalesInvoiceProductRelation(Database db) async {
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info('sales_invoices')");
+      final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+      
+      if (!columnNames.contains('produced_product_id')) {
+        await db.execute('ALTER TABLE sales_invoices ADD COLUMN produced_product_id INTEGER');
+        print('✅ Added produced_product_id column to sales_invoices');
+      }
+    } catch (e) {
+      print('⚠️ Error adding produced_product_id: $e');
+    }
+  }
+
   Future<Database> get database async {
     try {
       init();
@@ -157,7 +171,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 25,
+        version: 26,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -172,6 +186,7 @@ class DatabaseHelper {
           await _ensureRawMaterialColumns(db);
           await _ensureDailyExpensesTable(db);
           await _ensureWasteMaterialsTable(db);
+          await _ensureSalesInvoiceProductRelation(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -195,7 +210,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 25,
+        version: 26,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -210,6 +225,7 @@ class DatabaseHelper {
           await _ensureRawMaterialColumns(db);
           await _ensureDailyExpensesTable(db);
           await _ensureWasteMaterialsTable(db);
+          await _ensureSalesInvoiceProductRelation(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -416,6 +432,16 @@ class DatabaseHelper {
         print('✅ Database upgraded to version 25!');
       }
 
+      if (oldVersion < 26) {
+        try {
+          await _ensureSalesInvoiceProductRelation(db);
+          print('✅ Added produced_product_id relationship to sales_invoices');
+        } catch (e) {
+          print('⚠️ Error adding produced_product_id: $e');
+        }
+        print('✅ Database upgraded to version 26!');
+      }
+
       if (oldVersion < 13) {
         try {
           await _ensureProducedProductsTable(db);
@@ -471,7 +497,6 @@ class DatabaseHelper {
         }
         try {
           await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
-          print('✅ Added price_rate column to sales_invoices table');
         } catch (e) {
           print('⚠️ Error adding price_rate column (may already exist): $e');
         }
@@ -987,6 +1012,7 @@ class DatabaseHelper {
           back_return_reason TEXT,
           back_return_date TEXT,
           back_return_date_en TEXT,
+          produced_product_id INTEGER,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
       ''');
@@ -1039,6 +1065,11 @@ class DatabaseHelper {
           await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date_en TEXT');
         } catch (e) {
           print('⚠️ back_return_date_en column already exists or could not be added: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN produced_product_id INTEGER');
+        } catch (e) {
+          print('⚠️ produced_product_id column already exists or could not be added: $e');
         }
     } catch (e) {
       print('❌ Error ensuring sales invoices table: $e');
@@ -1177,6 +1208,7 @@ class DatabaseHelper {
     await _ensureServiceInvoicesTable(db);
     await _ensureSellLoanTables(db);
     await _ensureDailyExpensesTable(db);
+    await _ensureSalesInvoiceProductRelation(db);
   }
 
   Future<void> _insertSampleData(Database db) async {
@@ -1806,6 +1838,27 @@ class DatabaseHelper {
       return await db.query('produced_products', orderBy: 'created_at DESC');
     } catch (e) {
       print('❌ Error getting produced products: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getProducedProductsWithSaleStatus() async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery('''
+        SELECT 
+          p.*,
+          COUNT(s.id) AS sale_count,
+          GROUP_CONCAT(s.invoice_number) AS sale_invoices,
+          CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END AS is_sold
+        FROM produced_products p
+        LEFT JOIN sales_invoices s ON s.produced_product_id = p.id
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+      ''');
+      return result;
+    } catch (e) {
+      print('❌ Error getting produced products with sale status: $e');
       return [];
     }
   }

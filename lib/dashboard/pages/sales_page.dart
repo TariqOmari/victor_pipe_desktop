@@ -115,6 +115,24 @@ class _SalesPageState extends State<SalesPage> {
     String selectedEnglishDate = PersianDateConverter.getEnglishDate(DateTime.now());
     String selectedEnglishTime = _formatTimeOfDay(TimeOfDay.now());
 
+    // Load produced products
+    final List<Map<String, dynamic>> producedProducts = await _db.getProducedProducts();
+    final List<Map<String, dynamic>> productOptions = producedProducts.map((product) {
+      return {
+        'id': product['id'],
+        'name': product['product_name']?.toString() ?? '-',
+        'unit': product['unit']?.toString() ?? 'کیلو',
+        'thickness': product['thickness']?.toString() ?? '',
+        'loading': product['loading']?.toString() ?? '',
+      };
+    }).toList();
+
+    int? selectedProductId;
+    String? selectedProductName;
+    String? selectedProductUnit;
+    String? selectedProductThickness;
+    String? selectedProductLoading;
+
     void updateTotals() {
       final weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
       final unitCount = double.tryParse(unitCountController.text) ?? 0;
@@ -206,6 +224,114 @@ class _SalesPageState extends State<SalesPage> {
                       const SizedBox(height: 16),
                       _buildSectionTitle('مشخصات محصول'),
                       const SizedBox(height: 8),
+                      // Product dropdown
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: DropdownButtonFormField<String>(
+                          value: selectedProductName,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: 'انتخاب محصول از تولیدات',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D)),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.refresh, color: Colors.grey, size: 18),
+                              onPressed: () async {
+                                final updated = await _db.getProducedProducts();
+                                setDialogState(() {
+                                  productOptions.clear();
+                                  productOptions.addAll(updated.map((p) => {
+                                    'id': p['id'],
+                                    'name': p['product_name']?.toString() ?? '-',
+                                    'unit': p['unit']?.toString() ?? 'کیلو',
+                                    'thickness': p['thickness']?.toString() ?? '',
+                                    'loading': p['loading']?.toString() ?? '',
+                                  }));
+                                });
+                              },
+                            ),
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('-- انتخاب محصول --', style: TextStyle(color: Colors.grey)),
+                            ),
+                            ...productOptions.map((product) {
+                              final name = product['name']?.toString() ?? '-';
+                              final unit = product['unit']?.toString() ?? '';
+                              final thickness = product['thickness']?.toString() ?? '';
+                              return DropdownMenuItem<String>(
+                                value: name,
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D), size: 14),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        style: const TextStyle(fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (unit.isNotEmpty) ...[
+                                      const SizedBox(width: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade200,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(unit, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                                      ),
+                                    ],
+                                    if (thickness.isNotEmpty) ...[
+                                      const SizedBox(width: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade100,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text('ض: $thickness', style: TextStyle(fontSize: 9, color: Colors.blue.shade700)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) {
+                              setDialogState(() {
+                                selectedProductId = null;
+                                selectedProductName = null;
+                                selectedProductUnit = null;
+                                selectedProductThickness = null;
+                                selectedProductLoading = null;
+                              });
+                              return;
+                            }
+                            final selected = productOptions.firstWhere(
+                              (p) => p['name']?.toString() == value,
+                              orElse: () => {},
+                            );
+                            setDialogState(() {
+                              selectedProductId = selected['id'] as int?;
+                              selectedProductName = value;
+                              selectedProductUnit = selected['unit']?.toString() ?? 'کیلو';
+                              selectedProductThickness = selected['thickness']?.toString() ?? '';
+                              selectedProductLoading = selected['loading']?.toString() ?? '';
+                              productController.text = value;
+                              if (selectedProductUnit != null && selectedProductUnit!.isNotEmpty) {
+                                unitController.text = selectedProductUnit!;
+                              }
+                              if (selectedProductThickness != null && selectedProductThickness!.isNotEmpty) {
+                                thicknessController.text = selectedProductThickness!;
+                              }
+                            });
+                          },
+                        ),
+                      ),
                       Row(
                         children: [
                           Expanded(child: _buildTextField(controller: productController, label: 'نام محصول', icon: Icons.inventory_2_outlined)),
@@ -273,7 +399,6 @@ class _SalesPageState extends State<SalesPage> {
                           Expanded(child: _buildTextField(controller: discountController, label: 'تخفیف', icon: Icons.discount_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
                         ],
                       ),
-                      const SizedBox(height: 12),
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -419,6 +544,7 @@ class _SalesPageState extends State<SalesPage> {
                       'sale_type': selectedType,
                       'date': dateController.text.trim(),
                       'date_en': selectedEnglishDate,
+                      'produced_product_id': selectedProductId,
                     };
                     final id = await _db.insertSalesInvoice(payload);
                     if (id == -1) {
@@ -608,7 +734,6 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice) {
-    // Helper function to safely get values from invoice map
     String getInvoiceValue(String key, {String defaultValue = '-'}) {
       return invoice?[key]?.toString() ?? defaultValue;
     }
@@ -882,7 +1007,6 @@ class _SalesPageState extends State<SalesPage> {
       ttf = pw.Font.helvetica();
     }
 
-    // Helper function for PDF
     String getPdfValue(String key, {String defaultValue = '-'}) {
       return invoice?[key]?.toString() ?? defaultValue;
     }

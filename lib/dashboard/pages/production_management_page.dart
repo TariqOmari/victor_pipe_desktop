@@ -28,7 +28,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
   Future<void> _loadData() async {
     setState(() => isLoading = true);
     try {
-      final data = await _db.getProducedProducts();
+      final data = await _db.getProducedProductsWithSaleStatus();
       if (!mounted) return;
       setState(() {
         productions = data;
@@ -326,6 +326,59 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
+  Widget _buildSoldStatusChip(bool isSold, int saleCount) {
+    if (isSold) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.red.withOpacity(0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.sell, color: Colors.red, size: 10),
+            const SizedBox(width: 2),
+            Text(
+              'فروخته شد ($saleCount)',
+              style: const TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.w600,
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.green.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.check_circle, color: Colors.green, size: 10),
+          SizedBox(width: 2),
+          Text(
+            'موجود',
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: Colors.green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showProductDialog(BuildContext context, {Map<String, dynamic>? product}) {
     final isEditing = product != null;
     final nameController = TextEditingController(text: product?['product_name']?.toString() ?? '');
@@ -591,16 +644,17 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                     final columnWidths = {
                                       'checkbox': 40.0,
                                       'id': totalWidth * 0.05,
-                                      'product': totalWidth * 0.13,
-                                      'type': totalWidth * 0.08,
-                                      'thickness': totalWidth * 0.07,
-                                      'length': totalWidth * 0.07,
-                                      'quantity': totalWidth * 0.08,
-                                      'weight': totalWidth * 0.08,
-                                      'unit': totalWidth * 0.07,
-                                      'date': totalWidth * 0.09,
-                                      'status': totalWidth * 0.09,
-                                      'batch': totalWidth * 0.08,
+                                      'product': totalWidth * 0.12,
+                                      'type': totalWidth * 0.07,
+                                      'thickness': totalWidth * 0.06,
+                                      'length': totalWidth * 0.06,
+                                      'quantity': totalWidth * 0.07,
+                                      'weight': totalWidth * 0.07,
+                                      'unit': totalWidth * 0.06,
+                                      'date': totalWidth * 0.08,
+                                      'status': totalWidth * 0.08,
+                                      'batch': totalWidth * 0.07,
+                                      'saleStatus': totalWidth * 0.09,
                                       'actions': totalWidth * 0.08,
                                     };
 
@@ -639,6 +693,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                     _buildHeaderCell('تاریخ', columnWidths['date']!),
                                                     _buildHeaderCell('وضعیت', columnWidths['status']!),
                                                     _buildHeaderCell('بچ', columnWidths['batch']!),
+                                                    _buildHeaderCell('وضعیت فروش', columnWidths['saleStatus']!),
                                                     _buildHeaderCell('عملیات', columnWidths['actions']!),
                                                   ],
                                                 ),
@@ -647,10 +702,15 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
 
                                             final product = _paginatedProductions[index - 1];
                                             final isSelected = _selectedIds.contains(product['id'] as int);
+                                            final isSold = (product['is_sold'] == 1 || product['is_sold']?.toString() == '1');
+                                            final saleCount = (product['sale_count'] as int? ?? 0);
 
                                             return Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                              decoration: BoxDecoration(color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null, border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5))),
+                                              decoration: BoxDecoration(
+                                                color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
+                                                border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
+                                              ),
                                               child: Row(
                                                 children: [
                                                   SizedBox(
@@ -675,12 +735,26 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                   SizedBox(width: columnWidths['status']!, child: _buildStatusChip(product['status']?.toString())),
                                                   _buildDataCell(product['batch']?.toString() ?? '-', columnWidths['batch']!),
                                                   SizedBox(
+                                                    width: columnWidths['saleStatus']!,
+                                                    child: _buildSoldStatusChip(isSold, saleCount),
+                                                  ),
+                                                  SizedBox(
                                                     width: columnWidths['actions']!,
                                                     child: Row(
                                                       mainAxisAlignment: MainAxisAlignment.center,
                                                       children: [
-                                                        IconButton(icon: const Icon(Icons.edit_outlined, color: Color(0xFFCB001D), size: 16), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () => _showProductDialog(context, product: product)),
-                                                        IconButton(icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 16), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () => _showDeleteDialog(context, product)),
+                                                        IconButton(
+                                                          icon: const Icon(Icons.edit_outlined, color: Color(0xFFCB001D), size: 16),
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(),
+                                                          onPressed: () => _showProductDialog(context, product: product),
+                                                        ),
+                                                        IconButton(
+                                                          icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 16),
+                                                          padding: EdgeInsets.zero,
+                                                          constraints: const BoxConstraints(),
+                                                          onPressed: () => _showDeleteDialog(context, product),
+                                                        ),
                                                       ],
                                                     ),
                                                   ),
@@ -716,7 +790,10 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                           child: DropdownButton<int>(
                                             value: _itemsPerPage,
                                             onChanged: _changeItemsPerPage,
-                                            items: _pageSizeOptions.map((size) => DropdownMenuItem<int>(value: size, child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)))).toList(),
+                                            items: _pageSizeOptions.map((size) => DropdownMenuItem<int>(
+                                              value: size,
+                                              child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
+                                            )).toList(),
                                             dropdownColor: Colors.white,
                                             icon: const Icon(Icons.arrow_drop_down, color: Color(0xFFCB001D), size: 18),
                                           ),
@@ -730,8 +807,18 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                     children: [
                                       Text('صفحه $_currentPage از $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                                       const SizedBox(width: 12),
-                                      IconButton(icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null),
-                                      IconButton(icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: _currentPage < _totalPages ? () => _changePage(_currentPage + 1) : null),
+                                      IconButton(
+                                        icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: _currentPage < _totalPages ? () => _changePage(_currentPage + 1) : null,
+                                      ),
                                     ],
                                   ),
                                 ],
@@ -746,5 +833,3 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 }
-
-

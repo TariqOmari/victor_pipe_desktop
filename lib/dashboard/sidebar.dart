@@ -121,7 +121,7 @@ class Sidebar extends StatelessWidget {
                   context: context,
                   index: 8,
                   icon: Icons.delete_outline,
-                  title: 'مدیریت کسورات',
+                  title: 'مدیریت کسرات',
                   isSelected: selectedIndex == 8,
                 ),
                 _buildMenuItem(

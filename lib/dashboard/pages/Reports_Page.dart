@@ -1,8 +1,11 @@
+import 'dart:convert'; // ✅ FIXED: Added to fix the 'utf8' error
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 
@@ -29,8 +32,6 @@ class _ReportsPageState extends State<ReportsPage> {
   
   Map<String, dynamic> _statsData = {
     'today_count': 0, 'today_total': 0.0,
-    'week_count': 0, 'week_total': 0.0,
-    'month_count': 0, 'month_total': 0.0,
   };
 
   // Persian Month Names (Afghanistan/Hijri Shamsi)
@@ -40,7 +41,7 @@ class _ReportsPageState extends State<ReportsPage> {
     'قوس', 'جدی', 'دلو', 'حوت'
   ];
 
-  // ✅ FIX: Map Persian Month Name to Month Number (01, 02, etc.)
+  // Map Persian Month Name to Month Number (01, 02, etc.)
   final Map<String, String> _persianMonthToNumber = {
     'حمل': '01', 'ثور': '02', 'جوزا': '03', 'سرطان': '04',
     'اسد': '05', 'سنبله': '06', 'میزان': '07', 'عقرب': '08',
@@ -180,38 +181,29 @@ class _ReportsPageState extends State<ReportsPage> {
           String itemDate = item['date'] ?? ''; // Using Persian 'date' field
           if (itemDate.isEmpty) return false;
 
-          // Extract Year (e.g., 1405 from "1405-05-6" or "1405/05/06")
           List<String> parts = itemDate.split(RegExp(r'[-/]'));
           String itemYear = parts[0];
           String itemMonth = parts.length >= 2 ? parts[1].padLeft(2, '0') : '';
           String itemDay = parts.length >= 3 ? parts[2].padLeft(2, '0') : '';
 
-          // Check Persian Day Filter
           if (_selectedDateFilter != 'All') {
             if (itemDay != _selectedDateFilter) return false;
           }
-
-          // ✅ FIX: Check Persian Month Number against the mapped Number from Dropdown
           if (_selectedMonthFilter != 'All') {
             String selectedMonthNumber = _persianMonthToNumber[_selectedMonthFilter] ?? '';
             if (itemMonth != selectedMonthNumber) return false;
           }
-
-          // Check Persian Year Filter
           if (_selectedYearFilter != 'All') {
             if (itemYear != _selectedYearFilter) return false;
           }
-
           return true;
         }).toList();
 
         // Calculate Real-time Stats for Today
         int todayCount = 0; double todayTotal = 0.0;
-
         for (var item in data) {
           String itemDate = item['date'] ?? '';
           double price = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0.0;
-
           if (itemDate == todayPersianDate) { 
             todayCount++; 
             todayTotal += price; 
@@ -222,16 +214,11 @@ class _ReportsPageState extends State<ReportsPage> {
           _statsData = {
             'today_count': todayCount, 
             'today_total': todayTotal,
-            'week_count': filteredData.length, 
-            'week_total': 0,
-            'month_count': filteredData.length, 
-            'month_total': 0,
           };
-          _reportData = filteredData; // Apply filter to table
+          _reportData = filteredData;
           _isLoading = false;
         });
       } else {
-        // Normal load for other reports
         setState(() {
           _reportData = data;
           _isLoading = false;
@@ -249,27 +236,30 @@ class _ReportsPageState extends State<ReportsPage> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 12),
-            _buildFilters(),
-            const SizedBox(height: 12),
-            _buildStats(),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _isLoading 
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
-                : _reportData.isEmpty
-                  ? _buildEmptyState()
-                  : _buildReportTable(),
+      child: Scaffold(
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: LimitedBox(
+            maxHeight: double.infinity,
+            maxWidth: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 12),
+                _buildFilters(),
+                const SizedBox(height: 12),
+                _buildStats(),
+                const SizedBox(height: 12),
+                if (_isLoading) 
+                  const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+                else if (_reportData.isEmpty)
+                  _buildEmptyState()
+                else
+                  _buildReportTable(),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -289,62 +279,87 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
         children: [
+          // NEW: Beautiful Centered Logo/Company Name
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
+                  shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.report_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
+                child: const Icon(Icons.factory, color: Colors.white, size: 32),
               ),
-              const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'گزارشات مدیریتی',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    '${_selectedReport} - ${_reportData.length} رکورد',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 12),
+              const Text(
+                'شرکت وکتورپایپ',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 1.5,
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          // Existing Header Content
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildActionButton(
-                icon: Icons.picture_as_pdf,
-                label: 'PDF',
-                color: Colors.white,
-                backgroundColor: Colors.white.withOpacity(0.2),
-                onPressed: _generatePDFReport,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.report_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'گزارشات مدیریتی',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        '${_selectedReport} - ${_reportData.length} رکورد',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _buildActionButton(
-                icon: Icons.print,
-                label: 'چاپ',
-                color: Colors.white,
-                backgroundColor: Colors.white.withOpacity(0.2),
-                onPressed: _printReport,
+              Row(
+                children: [
+                  // NEW: Export Dropdown Button
+                  _buildExportDropdown(),
+                  const SizedBox(width: 8),
+                  _buildActionButton(
+                    icon: Icons.print,
+                    label: 'چاپ',
+                    color: Colors.white,
+                    backgroundColor: Colors.white.withOpacity(0.2),
+                    onPressed: _printReport,
+                  ),
+                ],
               ),
             ],
           ),
@@ -352,6 +367,186 @@ class _ReportsPageState extends State<ReportsPage> {
       ),
     );
   }
+
+  Widget _buildExportDropdown() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          icon: const Icon(Icons.download, color: Colors.white, size: 20),
+          dropdownColor: Colors.white,
+          hint: const Text(
+            'خروجی اکسل',
+            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 'all',
+              child: Row(
+                children: [
+                  Icon(Icons.table_chart, color: Color(0xFFCB001D), size: 18),
+                  SizedBox(width: 8),
+                  Text('خروجی کل داده‌ها'),
+                ],
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'filtered',
+              child: Row(
+                children: [
+                  Icon(Icons.filter_list, color: Color(0xFFCB001D), size: 18),
+                  SizedBox(width: 8),
+                  Text('خروجی فیلتر شده'),
+                ],
+              ),
+            ),
+          ],
+          onChanged: (String? value) {
+            if (value == 'all') {
+              _exportToCSV(allData: true);
+            } else if (value == 'filtered') {
+              _exportToCSV(allData: false);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  // =========================================================
+  // NEW: Export to Excel/CSV Function
+  // =========================================================
+  // =========================================================
+  // ✅ نسخه نهایی اکسل: دقیقاً طبق عکس، مرتب و حرفه‌ای
+  // =========================================================
+  Future<void> _exportToCSV({required bool allData}) async {
+    try {
+      List<Map<String, dynamic>> dataToExport;
+      String exportType;
+
+      if (allData) {
+        final reportType = _reportTypes.firstWhere(
+          (r) => r.label == _selectedReport,
+          orElse: () => _reportTypes.first,
+        );
+        dataToExport = await reportType.fetchData(_db);
+        exportType = 'کل';
+      } else {
+        dataToExport = _getFilteredData();
+        exportType = 'فیلتر شده';
+      }
+
+      if (dataToExport.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('⚠️ هیچ داده‌ای برای خروجی وجود ندارد!'), backgroundColor: Colors.orange),
+        );
+        return;
+      }
+
+      // 1. ساخت محتوای CSV دقیقاً طبق عکس شما
+      StringBuffer csvBuffer = StringBuffer();
+      
+      // هدر اصلی شرکت (Middle Title)
+      csvBuffer.writeln('شرکت وکتورپایپ');
+      csvBuffer.writeln('لیست مواد خام دریافتی سال 1405');
+      csvBuffer.writeln(''); // خط خالی برای زیبایی
+
+      // =========================================================
+      // نوشتن هدرهای جدول (دقیقاً طبق عکس شما)
+      // =========================================================
+      csvBuffer.writeln('شماره,تاریخ,تفصیل,اسم فروشنده,ارسالی,تخلیه شده,نوع مواد,ضخامت,وزن خالص,وزن ناخالص');
+
+      // =========================================================
+      // حلقه زدن روی داده‌ها و نوشتن ردیف‌ها
+      // =========================================================
+      for (var item in dataToExport) {
+        List<String> row = [];
+
+        // 1. شماره (شناسه)
+        row.add(item['id']?.toString() ?? '');
+
+        // 2. تاریخ (فرمت 12/12/1404)
+        String rawDate = item['date']?.toString() ?? '';
+        if (rawDate.isNotEmpty) {
+          // تبدیل فرمت 1405-05-07 به 1405/05/07
+          rawDate = rawDate.replaceAll('-', '/');
+        }
+        row.add(rawDate);
+
+        // 3. تفصیل (همان نام مواد)
+        row.add(item['name']?.toString() ?? '');
+
+        // 4. اسم فروشنده
+        row.add(item['supplier_name']?.toString() ?? '');
+
+        // 5. ارسالی (محل تخلیه)
+        row.add(item['location']?.toString() ?? '');
+
+        // 6. تخلیه شده (نوع خرید: مستقیم / غیر مستقیم)
+        String purchaseType = item['purchase_type']?.toString() ?? '';
+        if (purchaseType == 'مستقیم') {
+          purchaseType = 'فابریکه';
+        } else if (purchaseType == 'غیر مستقیم') {
+          purchaseType = 'غیر فابریکه';
+        }
+        row.add(purchaseType);
+
+        // 7. نوع مواد
+        row.add(item['material_type']?.toString() ?? '');
+
+        // 8. ضخامت (Thickness) - تمیز کردن اعداد اعشاری
+        String thickness = item['thickness']?.toString() ?? '';
+        if (thickness.endsWith('mm')) {
+          thickness = thickness.replaceAll('mm', '').trim();
+        }
+        row.add(thickness);
+
+        // 9. وزن خالص (Net Weight)
+        String netWeight = item['net_weight']?.toString() ?? '0';
+        // اگر اعشار اضافه دارد، کوتاهش کن
+        double netVal = double.tryParse(netWeight) ?? 0;
+        row.add(netVal.toStringAsFixed(0));
+
+        // 10. وزن ناخالص (Gross Weight)
+        String grossWeight = item['gross_weight']?.toString() ?? '0';
+        double grossVal = double.tryParse(grossWeight) ?? 0;
+        row.add(grossVal.toStringAsFixed(0));
+
+        // نوشتن ردیف در فایل
+        csvBuffer.writeln(row.join(','));
+      }
+
+      // 2. ذخیره در پوشه اسناد
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'VictorPipe_Raw_Report_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final file = File('${directory.path}/$fileName');
+      
+      // استفاده از BOM برای نمایش صحیح فارسی در اکسل
+      final List<int> utf8Bom = [0xEF, 0xBB, 0xBF];
+      final List<int> utf8Bytes = utf8.encode(csvBuffer.toString());
+      await file.writeAsBytes([...utf8Bom, ...utf8Bytes]);
+
+      // 3. پیام موفقیت
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ فایل اکسل با جدول تمیز و حرفه‌ای ذخیره شد: $fileName'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ خطا در خروجی اکسل: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // =========================================================
 
   Widget _buildActionButton({
     required IconData icon,
@@ -390,6 +585,7 @@ class _ReportsPageState extends State<ReportsPage> {
   Widget _buildEmptyState() {
     return Container(
       width: double.infinity,
+      height: 300,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -487,7 +683,6 @@ class _ReportsPageState extends State<ReportsPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Persian Day Filter (1-31)
         Container(
           width: 100,
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -518,7 +713,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ),
         const SizedBox(width: 8),
-        // Persian Month Name Filter (حمل, ثور, جوزا, etc.)
         Container(
           width: 100,
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -549,7 +743,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ),
         const SizedBox(width: 8),
-        // Persian Year Filter (1404, 1405, 1406, etc.)
         Container(
           width: 100,
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -566,7 +759,6 @@ class _ReportsPageState extends State<ReportsPage> {
               items: [
                 const DropdownMenuItem(value: 'All', child: Text('همه سال‌ها')),
                 ...List.generate(10, (index) {
-                  // Generate realistic Persian years
                   final year = (PersianDateConverter.getCurrentPersianDate().split(RegExp(r'[-/]'))[0]);
                   final pastYear = (int.parse(year) - index).toString();
                   return DropdownMenuItem(value: pastYear, child: Text(pastYear));
@@ -675,6 +867,69 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  List<Widget> _buildUnitCards() {
+    if (_reportData.isEmpty) return [];
+
+    Map<String, double> unitTotals = {};
+    for (var item in _reportData) {
+      String unit = item['unit']?.toString() ?? 'نامشخص';
+      double weight = double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0.0;
+      unitTotals[unit] = (unitTotals[unit] ?? 0) + weight;
+    }
+
+    return unitTotals.entries.map((entry) {
+      String unit = entry.key;
+      double totalWeight = entry.value;
+      return Container(
+        width: 150,
+        margin: const EdgeInsets.only(right: 12, bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(
+            color: const Color(0xFFCB001D).withOpacity(0.15),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.scale, color: Color(0xFFCB001D), size: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              unit,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              totalWeight.toStringAsFixed(0),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
+            ),
+            const Text(
+              'موجودی کل',
+              style: TextStyle(fontSize: 10, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
   Widget _buildStats() {
     final data = _getFilteredData();
     final totalItems = data.length;
@@ -728,7 +983,6 @@ class _ReportsPageState extends State<ReportsPage> {
       ),
     ];
 
-    // Real-time stats (Today based on Persian Date)
     if (_selectedReport == 'مواد خام') {
       stats.insert(1, _buildStatCard(
         'امروز (تعداد/مبلغ)',
@@ -751,10 +1005,28 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ],
       ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: stats,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: stats,
+          ),
+          if (_selectedReport == 'مواد خام' && data.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'موجودی بر اساس واحد:',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: _buildUnitCards(),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1030,55 +1302,54 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
           ),
 
-          Expanded(
+          // No height constraint! Let the table grow as much as it wants
+          SingleChildScrollView(
+            scrollDirection: Axis.vertical,
             child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                controller: _horizontalScrollController,
-                padding: const EdgeInsets.all(16),
-                child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(Colors.grey.shade50),
-                  headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12),
-                  dataRowMinHeight: 40,
-                  dataRowMaxHeight: 50,
-                  columnSpacing: 20,
-                  columns: headers.map((header) {
-                    return DataColumn(
-                      label: Container(
-                        constraints: const BoxConstraints(maxWidth: 150),
-                        child: Text(
-                          _getFieldLabel(header),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+              scrollDirection: Axis.horizontal,
+              controller: _horizontalScrollController,
+              padding: const EdgeInsets.all(16),
+              child: DataTable(
+                headingRowColor: MaterialStateProperty.all(Colors.grey.shade50),
+                headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12),
+                dataRowMinHeight: 40,
+                dataRowMaxHeight: 50,
+                columnSpacing: 20,
+                columns: headers.map((header) {
+                  return DataColumn(
+                    label: Container(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Text(
+                        _getFieldLabel(header),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    );
-                  }).toList(),
-                  rows: data.map((item) {
-                    return DataRow(
-                      cells: headers.map((header) {
-                        final value = item[header]?.toString() ?? '-';
-                        final isNumeric = _isNumeric(value);
-                        return DataCell(
-                          Container(
-                            constraints: const BoxConstraints(maxWidth: 150),
-                            child: Text(
-                              value,
-                              textAlign: TextAlign.center,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isNumeric ? FontWeight.bold : FontWeight.normal,
-                                color: isNumeric ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
-                              ),
+                    ),
+                  );
+                }).toList(),
+                rows: data.map((item) {
+                  return DataRow(
+                    cells: headers.map((header) {
+                      final value = item[header]?.toString() ?? '-';
+                      final isNumeric = _isNumeric(value);
+                      return DataCell(
+                        Container(
+                          constraints: const BoxConstraints(maxWidth: 150),
+                          child: Text(
+                            value,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isNumeric ? FontWeight.bold : FontWeight.normal,
+                              color: isNumeric ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    );
-                  }).toList(),
-                ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                }).toList(),
               ),
             ),
           ),

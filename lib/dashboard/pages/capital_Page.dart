@@ -1,6 +1,9 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class CapitalPage extends StatefulWidget {
   const CapitalPage({super.key});
@@ -42,7 +45,8 @@ class _CapitalPageState extends State<CapitalPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showSnackbar('❌ خطا در بارگذاری اطلاعات سرمایه', Colors.red);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar(l10n.capitalLoadError, Colors.red);
     }
   }
 
@@ -72,6 +76,10 @@ class _CapitalPageState extends State<CapitalPage> {
   }
 
   Future<void> _showInitialSetupDialog() async {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final isEnglish = languageProvider.isEnglish;
+    
     final fixedController = TextEditingController(text: '10000');
     final cashController = TextEditingController(text: '20000');
     final existingFixed = _findAsset('fixed');
@@ -88,27 +96,29 @@ class _CapitalPageState extends State<CapitalPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('تنظیم دارایی‌های اولیه'),
+          title: Text(l10n.capitalInitialSetup),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: fixedController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'مقدار اولیهسرمایه ثابت',
-                  border: OutlineInputBorder(),
+                textDirection: TextDirection.rtl,
+                decoration: InputDecoration(
+                  labelText: l10n.capitalInitialFixed,
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: cashController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'مقدار اولیهسرمایه نقدی',
-                  border: OutlineInputBorder(),
+                textDirection: TextDirection.rtl,
+                decoration: InputDecoration(
+                  labelText: l10n.capitalInitialCash,
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -116,21 +126,21 @@ class _CapitalPageState extends State<CapitalPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+              child: Text(l10n.cancelBtn, style: const TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               onPressed: () async {
                 final fixedValue = double.tryParse(fixedController.text) ?? 0;
                 final cashValue = double.tryParse(cashController.text) ?? 0;
                 if (fixedValue < 0 || cashValue < 0) {
-                  _showSnackbar('مقدار منفی مجاز نیست', Colors.red);
+                  _showSnackbar(l10n.capitalNegativeAmount, Colors.red);
                   return;
                 }
                 Navigator.pop(context);
                 if (existingFixed == null) {
                   await _db.insertCapitalAsset({
                     'asset_type': 'fixed',
-                    'name': 'سرمایه ثابت',
+                    'name': l10n.capitalFixed,
                     'current_balance': fixedValue,
                     'initial_balance': fixedValue,
                   });
@@ -143,7 +153,7 @@ class _CapitalPageState extends State<CapitalPage> {
                 if (existingCash == null) {
                   await _db.insertCapitalAsset({
                     'asset_type': 'cash',
-                    'name': 'سرمایه نقدی',
+                    'name': l10n.capitalCash,
                     'current_balance': cashValue,
                     'initial_balance': cashValue,
                   });
@@ -153,11 +163,11 @@ class _CapitalPageState extends State<CapitalPage> {
                     'initial_balance': cashValue,
                   });
                 }
-                _showSnackbar('✅ مقادیر اولیه دارایی‌ها ذخیره شد', Colors.green);
+                _showSnackbar(l10n.capitalInitialSaved, Colors.green);
                 _loadData();
               },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D)),
-              child: const Text('ذخیره'),
+              child: Text(l10n.save),
             ),
           ],
         ),
@@ -166,15 +176,19 @@ class _CapitalPageState extends State<CapitalPage> {
   }
 
   Future<void> _showMovementDialog(String assetType, {bool isWithdrawal = false}) async {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final isEnglish = languageProvider.isEnglish;
+    
     final asset = _findAsset(assetType);
     if (asset == null) {
-      _showSnackbar('ابتداسرمایه را تنظیم کنید', Colors.red);
+      _showSnackbar(l10n.capitalSetupFirst, Colors.red);
       return;
     }
 
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
-    String selectedType = isWithdrawal ? 'برداشت' : 'افزایش';
+    String selectedType = isWithdrawal ? l10n.capitalWithdrawal : l10n.capitalDeposit;
     String? selectedEnglishDate;
     final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
 
@@ -183,38 +197,60 @@ class _CapitalPageState extends State<CapitalPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return Directionality(
-            textDirection: TextDirection.rtl,
+            textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
             child: AlertDialog(
-              title: Text(assetType == 'fixed' ? 'ثبت افزایش/برداشتسرمایه ثابت' : 'ثبت افزایش/برداشتسرمایه نقدی'),
+              title: Text(
+                assetType == 'fixed' 
+                    ? '${l10n.capitalFixedTitle} - ${isWithdrawal ? l10n.capitalWithdrawal : l10n.capitalDeposit}'
+                    : '${l10n.capitalCashTitle} - ${isWithdrawal ? l10n.capitalWithdrawal : l10n.capitalDeposit}'
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
                     value: selectedType,
-                    decoration: const InputDecoration(labelText: 'نوع', border: OutlineInputBorder()),
-                    items: const [
-                      DropdownMenuItem(value: 'افزایش', child: Text('افزایش')),
-                      DropdownMenuItem(value: 'برداشت', child: Text('برداشت')),
+                    decoration: InputDecoration(
+                      labelText: l10n.capitalTxType,
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: l10n.capitalDeposit,
+                        child: Text(l10n.capitalDeposit),
+                      ),
+                      DropdownMenuItem(
+                        value: l10n.capitalWithdrawal,
+                        child: Text(l10n.capitalWithdrawal),
+                      ),
                     ],
-                    onChanged: (value) => setDialogState(() => selectedType = value ?? 'افزایش'),
+                    onChanged: (value) => setDialogState(() => selectedType = value ?? l10n.capitalDeposit),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: amountController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'مبلغ', border: OutlineInputBorder()),
+                    textDirection: TextDirection.rtl,
+                    decoration: InputDecoration(
+                      labelText: l10n.capitalAmount,
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: descriptionController,
-                    decoration: const InputDecoration(labelText: 'توضیحات', border: OutlineInputBorder()),
+                    textDirection: TextDirection.rtl,
+                    decoration: InputDecoration(
+                      labelText: l10n.capitalDescription,
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: dateController,
                     readOnly: true,
+                    textDirection: TextDirection.rtl,
                     decoration: InputDecoration(
-                      labelText: 'تاریخ',
+                      labelText: l10n.capitalDate,
                       border: const OutlineInputBorder(),
                       suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
                     ),
@@ -236,37 +272,43 @@ class _CapitalPageState extends State<CapitalPage> {
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.cancelBtn, style: const TextStyle(color: Colors.grey)),
+                ),
                 ElevatedButton(
                   onPressed: () async {
                     final amount = double.tryParse(amountController.text) ?? 0;
                     if (amount <= 0) {
-                      _showSnackbar('مبلغ معتبر وارد کنید', Colors.red);
+                      _showSnackbar(l10n.capitalValidAmount, Colors.red);
                       return;
                     }
                     Navigator.pop(context);
-                    final delta = selectedType == 'افزایش' ? amount : -amount;
+                    final delta = selectedType == l10n.capitalDeposit ? amount : -amount;
                     final newBalance = (asset['current_balance'] ?? 0) + delta;
                     final transactionPayload = {
                       'asset_type': assetType,
-                      'asset_name': assetType == 'fixed' ? 'سرمایه ثابت' : 'سرمایه نقدی',
+                      'asset_name': assetType == 'fixed' ? l10n.capitalFixed : l10n.capitalCash,
                       'transaction_type': selectedType,
                       'amount': amount,
-                      'description': descriptionController.text.isEmpty ? 'ثبت از صفحه سرمایه' : descriptionController.text,
+                      'description': descriptionController.text.isEmpty ? l10n.capitalRecentTransactions : descriptionController.text,
                       'date': dateController.text,
                       'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                     };
                     final txId = await _db.insertCapitalTransaction(transactionPayload);
                     if (txId == -1) {
-                      _showSnackbar('❌ خطا در ثبت تراکنش', Colors.red);
+                      _showSnackbar('❌ ${l10n.capitalLoadError}', Colors.red);
                       return;
                     }
                     await _db.updateCapitalAsset(asset['id'], {'current_balance': newBalance});
-                    _showSnackbar(selectedType == 'افزایش' ? '✅ افزایش ثبت شد' : '✅ برداشت ثبت شد', Colors.green);
+                    _showSnackbar(
+                      selectedType == l10n.capitalDeposit ? l10n.capitalDepositSaved : l10n.capitalWithdrawalSaved,
+                      Colors.green,
+                    );
                     _loadData();
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D)),
-                  child: const Text('ذخیره'),
+                  child: Text(l10n.capitalSaveTx),
                 ),
               ],
             ),
@@ -277,21 +319,22 @@ class _CapitalPageState extends State<CapitalPage> {
   }
 
   Future<void> _deleteTransaction(Map<String, dynamic> transaction) async {
+    final l10n = AppLocalizations.of(context)!;
     final asset = _findAsset(transaction['asset_type']);
     if (asset == null) {
-      _showSnackbar('سرمایه پیدا نشد', Colors.red);
+      _showSnackbar(l10n.capitalNotFound, Colors.red);
       return;
     }
     final amount = double.tryParse(transaction['amount']?.toString() ?? '0') ?? 0;
-    final delta = transaction['transaction_type'] == 'افزایش' ? -amount : amount;
+    final delta = transaction['transaction_type'] == l10n.capitalDeposit ? -amount : amount;
     final newBalance = (asset['current_balance'] ?? 0) + delta;
     final result = await _db.deleteCapitalTransaction(transaction['id']);
     if (result == -1) {
-      _showSnackbar('❌ خطا در حذف تراکنش', Colors.red);
+      _showSnackbar(l10n.capitalErrorDeletingTx, Colors.red);
       return;
     }
     await _db.updateCapitalAsset(asset['id'], {'current_balance': newBalance});
-    _showSnackbar('✅ تراکنش حذف شد', Colors.green);
+    _showSnackbar(l10n.capitalTxDeleted, Colors.green);
     _loadData();
   }
 
@@ -329,9 +372,10 @@ class _CapitalPageState extends State<CapitalPage> {
     );
   }
 
-  Widget _buildAssetCard(String type, String title, String subtitle, Color color) {
+  Widget _buildAssetCard(String type, String title, String subtitle, Color color, AppLocalizations l10n) {
     final asset = _findAsset(type);
     final amount = asset != null ? (asset['current_balance'] ?? 0) : 0;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -362,7 +406,7 @@ class _CapitalPageState extends State<CapitalPage> {
             ],
           ),
           const SizedBox(height: 14),
-          Text('${_formatCurrency(amount)} افغانی', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color)),
+          Text('${_formatCurrency(amount)} ${l10n.capitalAfghani}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color)),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -370,7 +414,7 @@ class _CapitalPageState extends State<CapitalPage> {
                 child: OutlinedButton.icon(
                   onPressed: () => _showMovementDialog(type, isWithdrawal: false),
                   icon: const Icon(Icons.add_circle_outline, size: 18),
-                  label: const Text('افزایش'),
+                  label: Text(l10n.capitalAddDeposit),
                 ),
               ),
               const SizedBox(width: 8),
@@ -378,7 +422,7 @@ class _CapitalPageState extends State<CapitalPage> {
                 child: OutlinedButton.icon(
                   onPressed: () => _showMovementDialog(type, isWithdrawal: true),
                   icon: const Icon(Icons.remove_circle_outline, size: 18),
-                  label: const Text('برداشت'),
+                  label: Text(l10n.capitalAddWithdrawal),
                 ),
               ),
             ],
@@ -388,9 +432,10 @@ class _CapitalPageState extends State<CapitalPage> {
     );
   }
 
-  Widget _buildTransactionTile(Map<String, dynamic> transaction) {
-    final isDeposit = transaction['transaction_type'] == 'افزایش';
+  Widget _buildTransactionTile(Map<String, dynamic> transaction, AppLocalizations l10n) {
+    final isDeposit = transaction['transaction_type'] == l10n.capitalDeposit;
     final color = isDeposit ? Colors.green.shade700 : Colors.red.shade700;
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -411,7 +456,7 @@ class _CapitalPageState extends State<CapitalPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(transaction['asset_name'] ?? 'سرمایه', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF1A1A1A))),
+                Text(transaction['asset_name'] ?? l10n.capitalPageTitle, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF1A1A1A))),
                 const SizedBox(height: 2),
                 Text(transaction['description']?.toString() ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
               ],
@@ -421,7 +466,10 @@ class _CapitalPageState extends State<CapitalPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('${isDeposit ? '+' : '-'}${_formatCurrency(transaction['amount'])} افغانی', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color)),
+              Text(
+                '${isDeposit ? '+' : '-'}${_formatCurrency(transaction['amount'])} ${l10n.capitalAfghani}',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+              ),
               const SizedBox(height: 4),
               Text(transaction['date']?.toString() ?? '-', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
             ],
@@ -450,73 +498,128 @@ class _CapitalPageState extends State<CapitalPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+    
     final fixedAsset = _findAsset('fixed');
     final cashAsset = _findAsset('cash');
     final totalAssets = (fixedAsset != null ? (fixedAsset['current_balance'] ?? 0) : 0) + (cashAsset != null ? (cashAsset['current_balance'] ?? 0) : 0);
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('مدیریت سرمایه', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-                          SizedBox(height: 4),
-                          Text('سرمایه ثابت وسرمایه نقدی با ثبت افزایش و برداشت', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                        ],
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _showInitialSetupDialog,
-                        icon: const Icon(Icons.tune_rounded, size: 18),
-                        label: const Text('تنظیم دارایی‌ها'),
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _buildSummaryCard('جمع سرمایه', '${_formatCurrency(totalAssets)} افغانی', Icons.account_balance_wallet_rounded, const Color(0xFFCB001D)),
-                      const SizedBox(width: 8),
-                      _buildSummaryCard('سرمایه ثابت', '${_formatCurrency(fixedAsset != null ? (fixedAsset['current_balance'] ?? 0) : 0)} افغانی', Icons.business_center_rounded, Colors.blue.shade700),
-                      const SizedBox(width: 8),
-                      _buildSummaryCard('سرمایه نقدی', '${_formatCurrency(cashAsset != null ? (cashAsset['current_balance'] ?? 0) : 0)} افغانی', Icons.attach_money_rounded, Colors.green.shade700),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: _buildAssetCard('fixed', 'سرمایه ثابت', 'مقدار اولیه و تغییرات آن', const Color(0xFFCB001D))),
-                      const SizedBox(width: 12),
-                      Expanded(child: _buildAssetCard('cash', 'سرمایه نقدی', 'موجودی نقد و برداشت‌های آن', Colors.green.shade700)),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('تراکنش‌های اخیر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _transactions.isEmpty
-                        ? Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                            child: const Center(child: Text('هنوز تراکنشی ثبت نشده است', style: TextStyle(color: Colors.grey))),
-                          )
-                        : ListView.builder(
-                            itemCount: _transactions.length,
-                            itemBuilder: (context, index) => _buildTransactionTile(_transactions[index]),
+    return Directionality(
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+              : Column(
+                  crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              l10n.capitalPageTitle,
+                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              l10n.capitalPageSubtitle,
+                              style: const TextStyle(fontSize: 13, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _showInitialSetupDialog,
+                          icon: const Icon(Icons.tune_rounded, size: 18),
+                          label: Text(l10n.capitalInitialSetup),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFCB001D),
+                            foregroundColor: Colors.white,
                           ),
-                  ),
-                ],
-              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _buildSummaryCard(
+                          l10n.capitalTotal,
+                          '${_formatCurrency(totalAssets)} ${l10n.capitalAfghani}',
+                          Icons.account_balance_wallet_rounded,
+                          const Color(0xFFCB001D),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildSummaryCard(
+                          l10n.capitalFixed,
+                          '${_formatCurrency(fixedAsset != null ? (fixedAsset['current_balance'] ?? 0) : 0)} ${l10n.capitalAfghani}',
+                          Icons.business_center_rounded,
+                          Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildSummaryCard(
+                          l10n.capitalCash,
+                          '${_formatCurrency(cashAsset != null ? (cashAsset['current_balance'] ?? 0) : 0)} ${l10n.capitalAfghani}',
+                          Icons.attach_money_rounded,
+                          Colors.green.shade700,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildAssetCard(
+                            'fixed',
+                            l10n.capitalFixedTitle,
+                            l10n.capitalFixedDesc,
+                            const Color(0xFFCB001D),
+                            l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildAssetCard(
+                            'cash',
+                            l10n.capitalCashTitle,
+                            l10n.capitalCashDesc,
+                            Colors.green.shade700,
+                            l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      l10n.capitalRecentTransactions,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: _transactions.isEmpty
+                          ? Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                              child: Center(
+                                child: Text(
+                                  l10n.capitalNoTransactions,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _transactions.length,
+                              itemBuilder: (context, index) => _buildTransactionTile(_transactions[index], l10n),
+                            ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

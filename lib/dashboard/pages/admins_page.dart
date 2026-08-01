@@ -2,7 +2,10 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class AdminsPage extends StatefulWidget {
   final Map<String, dynamic> currentUser;
@@ -57,7 +60,8 @@ class _AdminsPageState extends State<AdminsPage> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      _showSnackbar('خطا در بارگذاری مدیران', Colors.red);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar(l10n.adminsLoadError, Colors.red);
     }
   }
 
@@ -140,6 +144,7 @@ class _AdminsPageState extends State<AdminsPage> {
   }
 
   Future<void> _pickImage() async {
+    final l10n = AppLocalizations.of(context)!;
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -154,22 +159,24 @@ class _AdminsPageState extends State<AdminsPage> {
         });
       }
     } catch (e) {
-      _showSnackbar('خطا در انتخاب عکس', Colors.red);
+      _showSnackbar(l10n.adminsPhotoError, Colors.red);
     }
   }
 
   void _openAddDialog() {
     _clearForm();
+    final l10n = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => _buildDialog(
-        title: 'افزودن مدیر جدید',
+        title: l10n.adminsAddAdmin,
         isEdit: false,
       ),
     );
   }
 
   void _openEditDialog(Map<String, dynamic> admin) {
+    final l10n = AppLocalizations.of(context)!;
     _usernameController.text = admin['username'] ?? '';
     _passwordController.text = '';
     _fullNameController.text = admin['full_name'] ?? '';
@@ -181,7 +188,7 @@ class _AdminsPageState extends State<AdminsPage> {
     showDialog(
       context: context,
       builder: (context) => _buildDialog(
-        title: 'ویرایش مدیر',
+        title: l10n.adminsEditAdmin,
         isEdit: true,
       ),
     );
@@ -191,8 +198,12 @@ class _AdminsPageState extends State<AdminsPage> {
     required String title,
     required bool isEdit,
   }) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
@@ -253,7 +264,7 @@ class _AdminsPageState extends State<AdminsPage> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'انتخاب عکس',
+                                l10n.adminsChoosePhoto,
                                 style: TextStyle(
                                   color: Colors.grey.shade400,
                                   fontSize: 10,
@@ -268,10 +279,10 @@ class _AdminsPageState extends State<AdminsPage> {
 
                 TextField(
                   controller: _fullNameController,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.right,
+                  textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+                  textAlign: isEnglish ? TextAlign.left : TextAlign.right,
                   decoration: InputDecoration(
-                    labelText: 'نام کامل *',
+                    labelText: l10n.adminsFullName,
                     labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -289,10 +300,10 @@ class _AdminsPageState extends State<AdminsPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _usernameController,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.right,
+                  textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+                  textAlign: isEnglish ? TextAlign.left : TextAlign.right,
                   decoration: InputDecoration(
-                    labelText: 'نام کاربری *',
+                    labelText: l10n.adminsUsername,
                     labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -310,11 +321,11 @@ class _AdminsPageState extends State<AdminsPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _passwordController,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.right,
+                  textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+                  textAlign: isEnglish ? TextAlign.left : TextAlign.right,
                   obscureText: true,
                   decoration: InputDecoration(
-                    labelText: isEdit ? 'رمز عبور جدید (اختیاری)' : 'رمز عبور *',
+                    labelText: isEdit ? l10n.adminsNewPassword : l10n.adminsPassword,
                     labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -332,11 +343,11 @@ class _AdminsPageState extends State<AdminsPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _emailController,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.right,
+                  textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+                  textAlign: isEnglish ? TextAlign.left : TextAlign.right,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    labelText: 'ایمیل',
+                    labelText: l10n.adminsEmail,
                     labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -358,9 +369,9 @@ class _AdminsPageState extends State<AdminsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'لغو',
-              style: TextStyle(color: Colors.grey, fontSize: 13),
+            child: Text(
+              l10n.adminsCancel,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
           ),
           ElevatedButton(
@@ -381,7 +392,7 @@ class _AdminsPageState extends State<AdminsPage> {
                     ),
                   )
                 : Text(
-                    isEdit ? 'ذخیره' : 'افزودن',
+                    isEdit ? l10n.adminsSave : l10n.adminsAdd,
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
           ),
@@ -391,16 +402,18 @@ class _AdminsPageState extends State<AdminsPage> {
   }
 
   Future<void> _saveAdmin(bool isEdit) async {
+    final l10n = AppLocalizations.of(context)!;
+    
     if (_fullNameController.text.trim().isEmpty) {
-      _showSnackbar('لطفاً نام کامل را وارد کنید', Colors.red);
+      _showSnackbar(l10n.adminsRequiredFullName, Colors.red);
       return;
     }
     if (_usernameController.text.trim().isEmpty) {
-      _showSnackbar('لطفاً نام کاربری را وارد کنید', Colors.red);
+      _showSnackbar(l10n.adminsRequiredUsername, Colors.red);
       return;
     }
     if (!isEdit && _passwordController.text.trim().isEmpty) {
-      _showSnackbar('لطفاً رمز عبور را وارد کنید', Colors.red);
+      _showSnackbar(l10n.adminsRequiredPassword, Colors.red);
       return;
     }
 
@@ -420,26 +433,28 @@ class _AdminsPageState extends State<AdminsPage> {
           adminData['password'] = _passwordController.text.trim();
         }
         await _db.updateAdmin(_editingId!, adminData);
-        _showSnackbar('مدیر ویرایش شد ✅', Colors.green);
+        _showSnackbar(l10n.adminsEditSuccess, Colors.green);
       } else {
         adminData['password'] = _passwordController.text.trim();
         await _db.insertAdmin(adminData);
-        _showSnackbar('مدیر اضافه شد ✅', Colors.green);
+        _showSnackbar(l10n.adminsAddSuccess, Colors.green);
       }
 
       Navigator.pop(context);
       _clearForm();
       await _loadAdmins();
     } catch (e) {
-      _showSnackbar(e.toString(), Colors.red);
+      _showSnackbar(isEdit ? l10n.adminsEditError : l10n.adminsAddError, Colors.red);
     } finally {
       setState(() => _isProcessing = false);
     }
   }
 
   Future<void> _deleteAdmin(Map<String, dynamic> admin) async {
+    final l10n = AppLocalizations.of(context)!;
+    
     if (admin['id'] == widget.currentUser['id']) {
-      _showSnackbar('نمی‌توانید خودتان را حذف کنید', Colors.red);
+      _showSnackbar(l10n.adminsCannotDeleteSelf, Colors.red);
       return;
     }
 
@@ -452,13 +467,13 @@ class _AdminsPageState extends State<AdminsPage> {
           titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
           contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
           actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
-              SizedBox(width: 10),
+              const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
+              const SizedBox(width: 10),
               Text(
-                'حذف مدیر',
-                style: TextStyle(
+                l10n.adminsDeleteAdmin,
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1A1A2E),
@@ -467,14 +482,14 @@ class _AdminsPageState extends State<AdminsPage> {
             ],
           ),
           content: Text(
-            'آیا از حذف "${admin['full_name']}" اطمینان دارید؟',
+            '${l10n.adminsDeleteConfirm} "${admin['full_name']}"؟',
             textAlign: TextAlign.right,
             style: const TextStyle(fontSize: 13),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('لغو', style: TextStyle(fontSize: 13)),
+              child: Text(l10n.adminsCancel, style: const TextStyle(fontSize: 13)),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
@@ -484,7 +499,7 @@ class _AdminsPageState extends State<AdminsPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('حذف', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              child: Text(l10n.adminsDelete, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             ),
           ],
         ),
@@ -495,16 +510,17 @@ class _AdminsPageState extends State<AdminsPage> {
       setState(() => _isLoading = true);
       try {
         await _db.deleteAdmin(admin['id']);
-        _showSnackbar('مدیر حذف شد 🗑️', Colors.green);
+        _showSnackbar(l10n.adminsDeleteSuccess, Colors.green);
         await _loadAdmins();
       } catch (e) {
-        _showSnackbar(e.toString(), Colors.red);
+        _showSnackbar(l10n.adminsDeleteError, Colors.red);
         setState(() => _isLoading = false);
       }
     }
   }
 
   void _deleteSelected() {
+    final l10n = AppLocalizations.of(context)!;
     if (_selectedIds.isEmpty) return;
 
     showDialog(
@@ -516,13 +532,13 @@ class _AdminsPageState extends State<AdminsPage> {
           titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
           contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
           actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
-              SizedBox(width: 10),
+              const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 22),
+              const SizedBox(width: 10),
               Text(
-                'حذف انتخاب‌شده‌ها',
-                style: TextStyle(
+                l10n.adminsDeleteSelected,
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1A1A2E),
@@ -531,14 +547,14 @@ class _AdminsPageState extends State<AdminsPage> {
             ],
           ),
           content: Text(
-            'آیا از حذف ${_selectedIds.length} مدیر انتخاب‌شده اطمینان دارید؟',
+            '${l10n.adminsDeleteSelectedConfirm} ${_selectedIds.length} ${l10n.adminsSelectedAdmins}؟',
             textAlign: TextAlign.right,
             style: const TextStyle(fontSize: 13),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('لغو', style: TextStyle(fontSize: 13)),
+              child: Text(l10n.adminsCancel, style: const TextStyle(fontSize: 13)),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
@@ -548,7 +564,7 @@ class _AdminsPageState extends State<AdminsPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('حذف همه', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              child: Text(l10n.adminsDeleteAll, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             ),
           ],
         ),
@@ -561,10 +577,10 @@ class _AdminsPageState extends State<AdminsPage> {
             if (id == widget.currentUser['id']) continue;
             await _db.deleteAdmin(id);
           }
-          _showSnackbar('${_selectedIds.length} مدیر حذف شدند 🗑️', Colors.green);
+          _showSnackbar('${_selectedIds.length} ${l10n.adminsSelectedAdmins} ${l10n.adminsDeleteSuccess}', Colors.green);
           await _loadAdmins();
         } catch (e) {
-          _showSnackbar(e.toString(), Colors.red);
+          _showSnackbar(l10n.adminsDeleteError, Colors.red);
           setState(() => _isLoading = false);
         }
       }
@@ -573,23 +589,27 @@ class _AdminsPageState extends State<AdminsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: Container(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
             // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                   children: [
-                    Text('مدیران سیستم', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                    SizedBox(height: 2),
-                    Text('مدیریت حساب‌های کاربری با دسترسی کامل', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                    Text(l10n.adminsPageTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                    const SizedBox(height: 2),
+                    Text(l10n.adminsPageSubtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                   ],
                 ),
                 Row(
@@ -606,7 +626,7 @@ class _AdminsPageState extends State<AdminsPage> {
                             const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
                             const SizedBox(width: 4),
                             Text(
-                              '${_selectedIds.length} انتخاب شده',
+                              '${_selectedIds.length} ${l10n.adminsSelected}',
                               style: const TextStyle(color: Color(0xFFCB001D), fontSize: 11, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -617,7 +637,7 @@ class _AdminsPageState extends State<AdminsPage> {
                       IconButton(
                         onPressed: _deleteSelected,
                         icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                        tooltip: 'حذف انتخاب‌شده‌ها',
+                        tooltip: l10n.adminsDeleteSelected,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
@@ -626,7 +646,7 @@ class _AdminsPageState extends State<AdminsPage> {
                     ElevatedButton.icon(
                       onPressed: _openAddDialog,
                       icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                      label: const Text('مدیر جدید', style: TextStyle(color: Colors.white, fontSize: 12)),
+                      label: Text(l10n.adminsAddNew, style: const TextStyle(color: Colors.white, fontSize: 12)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFCB001D),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -642,11 +662,11 @@ class _AdminsPageState extends State<AdminsPage> {
             // Stats
             Row(
               children: [
-                _buildStatCard('تعداد کل مدیران', _admins.length.toString()),
+                _buildStatCard(l10n.adminsTotalAdmins, _admins.length.toString()),
                 const SizedBox(width: 12),
-                _buildStatCard('مدیران فعال', _admins.length.toString()),
+                _buildStatCard(l10n.adminsActiveAdmins, _admins.length.toString()),
                 const SizedBox(width: 12),
-                _buildStatCard('خودتان', '1', Icons.person, Colors.blue),
+                _buildStatCard(l10n.adminsYourself, '1', Icons.person, Colors.blue),
               ],
             ),
             const SizedBox(height: 16),
@@ -656,15 +676,15 @@ class _AdminsPageState extends State<AdminsPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
                   : _admins.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.admin_panel_settings, size: 48, color: Colors.grey),
-                              SizedBox(height: 12),
-                              Text('هیچ مدیری یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                              SizedBox(height: 6),
-                              Text('روی دکمه "مدیر جدید" کلیک کنید', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              const Icon(Icons.admin_panel_settings, size: 48, color: Colors.grey),
+                              const SizedBox(height: 12),
+                              Text(l10n.adminsNoAdminsFound, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                              const SizedBox(height: 6),
+                              Text(l10n.adminsClickAddButton, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                             ],
                           ),
                         )
@@ -710,12 +730,12 @@ class _AdminsPageState extends State<AdminsPage> {
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
-                                                _buildHeaderCell('عکس', 50),
+                                                _buildHeaderCell(l10n.adminsProfilePhoto, 50),
                                                 _buildHeaderCell('#', 35),
-                                                _buildHeaderCell('نام کامل', 150),
-                                                _buildHeaderCell('نام کاربری', 120),
-                                                _buildHeaderCell('ایمیل', 180),
-                                                _buildHeaderCell('وضعیت', 80),
+                                                _buildHeaderCell(l10n.adminsFullName, 150),
+                                                _buildHeaderCell(l10n.adminsUsername, 120),
+                                                _buildHeaderCell(l10n.adminsEmail, 180),
+                                                _buildHeaderCell(l10n.adminsStatus, 80),
                                                 const SizedBox(width: 80),
                                               ],
                                             ),
@@ -805,9 +825,9 @@ class _AdminsPageState extends State<AdminsPage> {
                                                           color: const Color(0xFFCB001D),
                                                           borderRadius: BorderRadius.circular(8),
                                                         ),
-                                                        child: const Text(
-                                                          'خود',
-                                                          style: TextStyle(
+                                                        child: Text(
+                                                          l10n.adminsSelf,
+                                                          style: const TextStyle(
                                                             color: Colors.white,
                                                             fontSize: 8,
                                                             fontWeight: FontWeight.w600,
@@ -828,9 +848,9 @@ class _AdminsPageState extends State<AdminsPage> {
                                                     color: Colors.green.withOpacity(0.1),
                                                     borderRadius: BorderRadius.circular(10),
                                                   ),
-                                                  child: const Text(
-                                                    'فعال',
-                                                    style: TextStyle(
+                                                  child: Text(
+                                                    l10n.adminsActive,
+                                                    style: const TextStyle(
                                                       fontSize: 10,
                                                       fontWeight: FontWeight.w600,
                                                       color: Colors.green,
@@ -848,7 +868,7 @@ class _AdminsPageState extends State<AdminsPage> {
                                                     padding: EdgeInsets.zero,
                                                     constraints: const BoxConstraints(),
                                                     onPressed: () => _openEditDialog(admin),
-                                                    tooltip: 'ویرایش',
+                                                    tooltip: l10n.adminsEdit,
                                                   ),
                                                   IconButton(
                                                     icon: Icon(
@@ -859,7 +879,7 @@ class _AdminsPageState extends State<AdminsPage> {
                                                     padding: EdgeInsets.zero,
                                                     constraints: const BoxConstraints(),
                                                     onPressed: isSelf ? null : () => _deleteAdmin(admin),
-                                                    tooltip: isSelf ? 'نمی‌توانید خود را حذف کنید' : 'حذف',
+                                                    tooltip: isSelf ? l10n.adminsCannotDeleteSelf : l10n.adminsDelete,
                                                   ),
                                                 ],
                                               ),
@@ -889,7 +909,7 @@ class _AdminsPageState extends State<AdminsPage> {
                                 children: [
                                   Row(
                                     children: [
-                                      const Text('نمایش:', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                                      Text(l10n.adminsShow, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                                       const SizedBox(width: 6),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -913,12 +933,12 @@ class _AdminsPageState extends State<AdminsPage> {
                                         ),
                                       ),
                                       const SizedBox(width: 4),
-                                      Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                      Text(l10n.adminsPerPage, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                                     ],
                                   ),
                                   Row(
                                     children: [
-                                      Text('صفحه $_currentPage از $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                                      Text('${l10n.adminsPage} $_currentPage ${l10n.adminsOf} $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                                       const SizedBox(width: 12),
                                       IconButton(
                                         icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),

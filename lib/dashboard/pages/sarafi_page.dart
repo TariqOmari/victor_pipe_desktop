@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../utils/sarafi_balance_utils.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class SarafiPage extends StatefulWidget {
   const SarafiPage({super.key});
@@ -43,7 +46,8 @@ class _SarafiPageState extends State<SarafiPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showSnackbar('خطا در بارگذاری اطلاعات صرافی', Colors.red.shade700);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar(l10n.sarafiLoadError, Colors.red.shade700);
     }
   }
 
@@ -69,18 +73,19 @@ class _SarafiPageState extends State<SarafiPage> {
   // ==================== PDF & PRINT FUNCTIONS ====================
 
   Future<void> _printTransactionReceipt(Map<String, dynamic> transaction) async {
+    final l10n = AppLocalizations.of(context)!;
     try {
-      final pdf = await _generateReceiptPDF(transaction);
+      final pdf = await _generateReceiptPDF(transaction, l10n);
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf,
-        name: 'رسید_تراکنش_صرافی_${transaction['id']}',
+        name: '${l10n.sarafiReceipt}_${transaction['id']}',
       );
     } catch (e) {
-      _showSnackbar('خطا در چاپ رسید: $e', Colors.red.shade700);
+      _showSnackbar('${l10n.sarafiPrintError} $e', Colors.red.shade700);
     }
   }
 
-  Future<Uint8List> _generateReceiptPDF(Map<String, dynamic> transaction) async {
+  Future<Uint8List> _generateReceiptPDF(Map<String, dynamic> transaction, AppLocalizations l10n) async {
     final isDeposit = transaction['transaction_type'] == 'deposit';
     final amount = double.tryParse(transaction['amount_usd']?.toString() ?? '0') ?? 0;
     final balanceAfter = double.tryParse(transaction['balance_after']?.toString() ?? '0') ?? 0;
@@ -88,7 +93,6 @@ class _SarafiPageState extends State<SarafiPage> {
     final afnAmount = amount * exchangeRate;
     final balanceBefore = isDeposit ? balanceAfter - amount : balanceAfter + amount;
 
-    // Load font
     late final pw.Font ttf;
     try {
       final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
@@ -118,7 +122,6 @@ class _SarafiPageState extends State<SarafiPage> {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  // Header - Company Logo & Title
                   pw.Center(
                     child: pw.Column(
                       children: [
@@ -129,7 +132,7 @@ class _SarafiPageState extends State<SarafiPage> {
                             borderRadius: pw.BorderRadius.circular(6),
                           ),
                           child: pw.Text(
-                            'صرافی',
+                            l10n.sarafiPageTitle,
                             style: pw.TextStyle(
                               font: ttf,
                               color: PdfColors.white,
@@ -140,7 +143,7 @@ class _SarafiPageState extends State<SarafiPage> {
                         ),
                         pw.SizedBox(height: 6),
                         pw.Text(
-                          isDeposit ? 'رسید واریز' : 'رسید برداشت',
+                          isDeposit ? l10n.sarafiDepositReceipt : l10n.sarafiWithdrawalReceipt,
                           style: pw.TextStyle(
                             font: ttf,
                             fontSize: 14,
@@ -150,7 +153,7 @@ class _SarafiPageState extends State<SarafiPage> {
                         ),
                         pw.SizedBox(height: 4),
                         pw.Text(
-                          'شماره تراکنش: ${transaction['id']}',
+                          '${l10n.sarafiTransactionNumber} ${transaction['id']}',
                           style: pw.TextStyle(
                             font: ttf,
                             fontSize: 9,
@@ -168,17 +171,14 @@ class _SarafiPageState extends State<SarafiPage> {
                       ],
                     ),
                   ),
-
                   pw.SizedBox(height: 12),
                   pw.Divider(thickness: 1, color: PdfColors.grey300),
-
-                  // Amount
                   pw.SizedBox(height: 8),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'مبلغ:',
+                        l10n.sarafiAmount,
                         style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold),
                       ),
                       pw.Text(
@@ -192,17 +192,14 @@ class _SarafiPageState extends State<SarafiPage> {
                       ),
                     ],
                   ),
-
                   pw.SizedBox(height: 6),
                   pw.Divider(thickness: 0.5, color: PdfColors.grey200),
-
-                  // Exchange Rate & AFN
                   pw.SizedBox(height: 6),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'نرخ ارز:',
+                        l10n.sarafiExchangeRate,
                         style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700),
                       ),
                       pw.Text(
@@ -216,7 +213,7 @@ class _SarafiPageState extends State<SarafiPage> {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'معادل افغانی:',
+                        l10n.sarafiAfnEquivalent,
                         style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700),
                       ),
                       pw.Text(
@@ -225,28 +222,22 @@ class _SarafiPageState extends State<SarafiPage> {
                       ),
                     ],
                   ),
-
                   pw.SizedBox(height: 8),
                   pw.Divider(thickness: 1, color: PdfColors.grey300),
-
-                  // Source Info
                   pw.SizedBox(height: 6),
-                  _buildPdfRow(ttf, 'نام فرد/شرکت', transaction['source_name']?.toString() ?? '-', PdfColors.black),
-                  _buildPdfRow(ttf, 'شماره حساب منبع', transaction['source_account']?.toString() ?? '-', PdfColors.black),
-                  _buildPdfRow(ttf, 'ایمیل', transaction['source_email']?.toString() ?? '-', PdfColors.black),
-                  _buildPdfRow(ttf, 'تلفن', transaction['source_phone']?.toString() ?? '-', PdfColors.black),
-                  _buildPdfRow(ttf, 'آدرس', transaction['address']?.toString() ?? '-', PdfColors.black),
-
+                  _buildPdfRow(ttf, l10n.sarafiSourceName, transaction['source_name']?.toString() ?? '-', PdfColors.black),
+                  _buildPdfRow(ttf, l10n.sarafiSourceAccount, transaction['source_account']?.toString() ?? '-', PdfColors.black),
+                  _buildPdfRow(ttf, l10n.sarafiSourceEmail, transaction['source_email']?.toString() ?? '-', PdfColors.black),
+                  _buildPdfRow(ttf, l10n.sarafiSourcePhone, transaction['source_phone']?.toString() ?? '-', PdfColors.black),
+                  _buildPdfRow(ttf, l10n.sarafiSourceAddress, transaction['address']?.toString() ?? '-', PdfColors.black),
                   pw.SizedBox(height: 6),
                   pw.Divider(thickness: 0.5, color: PdfColors.grey200),
-
-                  // Balance Info
                   pw.SizedBox(height: 6),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'موجودی قبل:',
+                        l10n.sarafiBalanceBefore,
                         style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700),
                       ),
                       pw.Text(
@@ -259,7 +250,7 @@ class _SarafiPageState extends State<SarafiPage> {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'موجودی بعد:',
+                        l10n.sarafiBalanceAfter,
                         style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700),
                       ),
                       pw.Text(
@@ -273,15 +264,12 @@ class _SarafiPageState extends State<SarafiPage> {
                       ),
                     ],
                   ),
-
                   pw.SizedBox(height: 8),
                   pw.Divider(thickness: 1, color: PdfColors.grey300),
-
-                  // Note
                   if (transaction['note'] != null && transaction['note'] != 'بدون یادداشت' && transaction['note'] != '-') ...[
                     pw.SizedBox(height: 6),
                     pw.Text(
-                      'یادداشت:',
+                      '${l10n.sarafiNote}:',
                       style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey600),
                     ),
                     pw.Text(
@@ -290,28 +278,25 @@ class _SarafiPageState extends State<SarafiPage> {
                       maxLines: 2,
                     ),
                   ],
-
                   pw.Spacer(),
-
-                  // Footer
                   pw.Divider(thickness: 0.5, color: PdfColors.grey300),
                   pw.SizedBox(height: 4),
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        'امضا: _________________',
+                        l10n.sarafiSignature,
                         style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600),
                       ),
                       pw.Text(
-                        'تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().day.toString().padLeft(2, '0')}',
+                        '${l10n.sarafiPrintDate} ${DateTime.now().year}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().day.toString().padLeft(2, '0')}',
                         style: pw.TextStyle(font: ttf, fontSize: 6, color: PdfColors.grey600),
                       ),
                     ],
                   ),
                   pw.Center(
                     child: pw.Text(
-                      'ویکتور پایپ صنعت - سامانه مدیریت یکپارچه',
+                      l10n.sarafiFooter,
                       style: pw.TextStyle(font: ttf, fontSize: 6, color: PdfColors.grey500),
                     ),
                   ),
@@ -333,7 +318,7 @@ class _SarafiPageState extends State<SarafiPage> {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            '$label:',
+            label,
             style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey600),
           ),
           pw.Expanded(
@@ -351,6 +336,10 @@ class _SarafiPageState extends State<SarafiPage> {
   // ==================== UI FUNCTIONS ====================
 
   Future<void> _showInitialSetupDialog() async {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final isEnglish = languageProvider.isEnglish;
+    
     final accountController = TextEditingController();
     final balanceController = TextEditingController(text: '20000');
     final noteController = TextEditingController();
@@ -359,7 +348,7 @@ class _SarafiPageState extends State<SarafiPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
@@ -373,8 +362,7 @@ class _SarafiPageState extends State<SarafiPage> {
                 child: const Icon(Icons.account_balance, color: Color(0xFFCB001D)),
               ),
               const SizedBox(width: 12),
-              const Text('افزودن حساب صرافی',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(l10n.sarafiAccountSetup, style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           content: SingleChildScrollView(
@@ -383,12 +371,11 @@ class _SarafiPageState extends State<SarafiPage> {
               children: [
                 TextField(
                   controller: accountController,
+                  textDirection: TextDirection.rtl,
                   decoration: InputDecoration(
-                    labelText: 'شماره حساب',
-                    hintText: 'مثال: 1234567890',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    labelText: l10n.sarafiAccountNumber,
+                    hintText: l10n.sarafiAccountNumberHint,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.person_outline),
                   ),
                 ),
@@ -396,24 +383,22 @@ class _SarafiPageState extends State<SarafiPage> {
                 TextField(
                   controller: balanceController,
                   keyboardType: TextInputType.number,
+                  textDirection: TextDirection.rtl,
                   decoration: InputDecoration(
-                    labelText: 'مبلغ اولیه (USD)',
-                    hintText: 'مثال: 20000',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    labelText: l10n.sarafiInitialBalance,
+                    hintText: l10n.sarafiInitialBalanceHint,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.attach_money),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: noteController,
+                  textDirection: TextDirection.rtl,
                   decoration: InputDecoration(
-                    labelText: 'یادداشت',
-                    hintText: 'توضیحات اولیه...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    labelText: l10n.sarafiNote,
+                    hintText: l10n.sarafiNoteHint,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.note_outlined),
                   ),
                 ),
@@ -423,18 +408,18 @@ class _SarafiPageState extends State<SarafiPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('لغو', style: TextStyle(color: Colors.grey)),
+              child: Text(l10n.cancelBtn, style: const TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               onPressed: () async {
                 final accountNumber = accountController.text.trim();
                 final amount = double.tryParse(balanceController.text) ?? 0;
                 if (accountNumber.isEmpty) {
-                  _showSnackbar('شماره حساب را وارد کنید', Colors.red.shade700);
+                  _showSnackbar(l10n.sarafiEnterAccountNumber, Colors.red.shade700);
                   return;
                 }
                 if (amount <= 0) {
-                  _showSnackbar('مبلغ باید بیشتر از صفر باشد', Colors.red.shade700);
+                  _showSnackbar(l10n.sarafiAmountPositive, Colors.red.shade700);
                   return;
                 }
 
@@ -446,7 +431,7 @@ class _SarafiPageState extends State<SarafiPage> {
                 });
 
                 if (insertedId == -1) {
-                  _showSnackbar('ذخیره حساب انجام نشد', Colors.red.shade700);
+                  _showSnackbar(l10n.sarafiAddAccountError, Colors.red.shade700);
                   return;
                 }
 
@@ -457,27 +442,25 @@ class _SarafiPageState extends State<SarafiPage> {
                   'exchange_rate': 1.0,
                   'amount_afn': amount,
                   'balance_after': amount,
-                  'source_name': 'موجودی اولیه',
+                  'source_name': l10n.sarafiInitialBalance,
                   'source_account': accountNumber,
                   'source_email': '-',
                   'source_phone': '-',
                   'date': PersianDateConverter.getCurrentPersianDate(),
                   'date_en': PersianDateConverter.getCurrentEnglishDate(),
                   'address': '-',
-                  'note': noteController.text.isEmpty ? 'موجودی اولیه' : noteController.text,
+                  'note': noteController.text.isEmpty ? l10n.sarafiInitialBalance : noteController.text,
                 });
 
-                _showSnackbar('حساب با موفقیت ذخیره شد', Colors.green.shade700);
+                _showSnackbar(l10n.sarafiAddAccountSuccess, Colors.green.shade700);
                 _loadData();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFCB001D),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('ذخیره'),
+              child: Text(l10n.save),
             ),
           ],
         ),
@@ -486,9 +469,13 @@ class _SarafiPageState extends State<SarafiPage> {
   }
 
   Future<void> _showTransactionDialog(String transactionType) async {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final isEnglish = languageProvider.isEnglish;
+    
     final account = _activeAccount;
     if (account == null) {
-      _showSnackbar('ابتدا حساب را ایجاد کنید', Colors.red.shade700);
+      _showSnackbar(l10n.sarafiNoAccount, Colors.red.shade700);
       return;
     }
 
@@ -509,7 +496,7 @@ class _SarafiPageState extends State<SarafiPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return Directionality(
-            textDirection: TextDirection.rtl,
+            textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
             child: AlertDialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -536,7 +523,9 @@ class _SarafiPageState extends State<SarafiPage> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    transactionType == 'deposit' ? 'واریز به موجودی' : 'برداشت از موجودی',
+                    transactionType == 'deposit' 
+                        ? l10n.sarafiDeposit 
+                        : l10n.sarafiWithdrawal,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -548,36 +537,31 @@ class _SarafiPageState extends State<SarafiPage> {
                     TextField(
                       controller: amountController,
                       keyboardType: TextInputType.number,
+                      textDirection: TextDirection.rtl,
                       decoration: InputDecoration(
-                        labelText: 'مبلغ (USD)',
-                        hintText: 'مثال: 1000',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        labelText: '${l10n.sarafiAmount} (USD)',
+                        hintText: '${l10n.sarafiAmount} (USD)',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         prefixIcon: const Icon(Icons.attach_money),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: sourceNameController,
+                      textDirection: TextDirection.rtl,
                       decoration: InputDecoration(
-                        labelText: 'نام فرد/شرکت',
-                        hintText: 'نام کامل...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        labelText: l10n.sarafiSourceName,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         prefixIcon: const Icon(Icons.person_outline),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: sourceAccountController,
+                      textDirection: TextDirection.rtl,
                       decoration: InputDecoration(
-                        labelText: 'شماره حساب منبع',
-                        hintText: 'شماره حساب...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        labelText: l10n.sarafiSourceAccount,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         prefixIcon: const Icon(Icons.account_balance_outlined),
                       ),
                     ),
@@ -587,12 +571,10 @@ class _SarafiPageState extends State<SarafiPage> {
                         Expanded(
                           child: TextField(
                             controller: emailController,
+                            textDirection: TextDirection.rtl,
                             decoration: InputDecoration(
-                              labelText: 'ایمیل',
-                              hintText: 'example@email.com',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              labelText: l10n.sarafiSourceEmail,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               prefixIcon: const Icon(Icons.email_outlined),
                             ),
                           ),
@@ -601,12 +583,10 @@ class _SarafiPageState extends State<SarafiPage> {
                         Expanded(
                           child: TextField(
                             controller: phoneController,
+                            textDirection: TextDirection.rtl,
                             decoration: InputDecoration(
-                              labelText: 'تلفن',
-                              hintText: '09xxxxxxxxx',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              labelText: l10n.sarafiSourcePhone,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               prefixIcon: const Icon(Icons.phone_outlined),
                             ),
                           ),
@@ -616,12 +596,10 @@ class _SarafiPageState extends State<SarafiPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: addressController,
+                      textDirection: TextDirection.rtl,
                       decoration: InputDecoration(
-                        labelText: 'آدرس',
-                        hintText: 'آدرس کامل...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        labelText: l10n.sarafiSourceAddress,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         prefixIcon: const Icon(Icons.location_on_outlined),
                       ),
                     ),
@@ -632,12 +610,10 @@ class _SarafiPageState extends State<SarafiPage> {
                           child: TextField(
                             controller: exchangeRateController,
                             keyboardType: TextInputType.number,
+                            textDirection: TextDirection.rtl,
                             decoration: InputDecoration(
-                              labelText: 'نرخ ارز (USD/AFN)',
-                              hintText: 'مثال: 1.0',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              labelText: l10n.sarafiExchangeRate,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               prefixIcon: const Icon(Icons.currency_exchange),
                             ),
                           ),
@@ -647,11 +623,10 @@ class _SarafiPageState extends State<SarafiPage> {
                           child: TextField(
                             controller: dateController,
                             readOnly: true,
+                            textDirection: TextDirection.rtl,
                             decoration: InputDecoration(
-                              labelText: 'تاریخ',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              labelText: l10n.sarafiDate,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               suffixIcon: Icon(
                                 Icons.calendar_today,
                                 color: const Color(0xFFCB001D),
@@ -683,12 +658,10 @@ class _SarafiPageState extends State<SarafiPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: noteController,
+                      textDirection: TextDirection.rtl,
                       decoration: InputDecoration(
-                        labelText: 'یادداشت',
-                        hintText: 'توضیحات اضافی...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        labelText: l10n.sarafiNote,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         prefixIcon: const Icon(Icons.note_outlined),
                       ),
                     ),
@@ -698,7 +671,7 @@ class _SarafiPageState extends State<SarafiPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('لغو', style: TextStyle(color: Colors.grey)),
+                  child: Text(l10n.cancelBtn, style: const TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   onPressed: () async {
@@ -706,12 +679,12 @@ class _SarafiPageState extends State<SarafiPage> {
                     final exchangeRate =
                         double.tryParse(exchangeRateController.text) ?? 1;
                     if (amount <= 0) {
-                      _showSnackbar('مبلغ باید بیشتر از صفر باشد',
+                      _showSnackbar(l10n.sarafiAmountPositive,
                           Colors.red.shade700);
                       return;
                     }
                     if (exchangeRate <= 0) {
-                      _showSnackbar('نرخ ارز باید بیشتر از صفر باشد',
+                      _showSnackbar(l10n.sarafiExchangeRatePositive,
                           Colors.red.shade700);
                       return;
                     }
@@ -723,7 +696,7 @@ class _SarafiPageState extends State<SarafiPage> {
                             0;
                     if (transactionType == 'withdrawal' &&
                         amount > currentBalance) {
-                      _showSnackbar('مبلغ برداشت بیشتر از موجودی است',
+                      _showSnackbar(l10n.sarafiInsufficientBalance,
                           Colors.red.shade700);
                       return;
                     }
@@ -762,12 +735,12 @@ class _SarafiPageState extends State<SarafiPage> {
                           ? '-'
                           : addressController.text.trim(),
                       'note': noteController.text.trim().isEmpty
-                          ? 'بدون یادداشت'
+                          ? l10n.sarafiNote
                           : noteController.text.trim(),
                     });
 
                     if (txId == -1) {
-                      _showSnackbar('ثبت تراکنش انجام نشد',
+                      _showSnackbar(l10n.sarafiAddAccountError,
                           Colors.red.shade700);
                       return;
                     }
@@ -778,8 +751,8 @@ class _SarafiPageState extends State<SarafiPage> {
                     );
                     _showSnackbar(
                       transactionType == 'deposit'
-                          ? 'واریز با موفقیت ثبت شد'
-                          : 'برداشت با موفقیت ثبت شد',
+                          ? l10n.sarafiDepositSuccess
+                          : l10n.sarafiWithdrawalSuccess,
                       Colors.green.shade700,
                     );
                     _loadData();
@@ -791,7 +764,7 @@ class _SarafiPageState extends State<SarafiPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text('ثبت'),
+                  child: Text(l10n.save),
                 ),
               ],
             ),
@@ -802,6 +775,7 @@ class _SarafiPageState extends State<SarafiPage> {
   }
 
   Future<void> _showTransactionDetails(Map<String, dynamic> transaction) async {
+    final l10n = AppLocalizations.of(context)!;
     final isDeposit = transaction['transaction_type'] == 'deposit';
     final amount = double.tryParse(transaction['amount_usd']?.toString() ?? '0') ?? 0;
     final balanceAfter = double.tryParse(transaction['balance_after']?.toString() ?? '0') ?? 0;
@@ -858,7 +832,7 @@ class _SarafiPageState extends State<SarafiPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isDeposit ? 'واریز' : 'برداشت',
+                            isDeposit ? l10n.sarafiDeposit : l10n.sarafiWithdrawal,
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -895,27 +869,27 @@ class _SarafiPageState extends State<SarafiPage> {
                     children: [
                       _buildDetailRow(
                         icon: Icons.person_outline,
-                        label: 'نام فرد/شرکت',
+                        label: l10n.sarafiSourceName,
                         value: transaction['source_name']?.toString() ?? '-',
                       ),
                       _buildDetailRow(
                         icon: Icons.account_balance_outlined,
-                        label: 'شماره حساب منبع',
+                        label: l10n.sarafiSourceAccount,
                         value: transaction['source_account']?.toString() ?? '-',
                       ),
                       _buildDetailRow(
                         icon: Icons.email_outlined,
-                        label: 'ایمیل',
+                        label: l10n.sarafiSourceEmail,
                         value: transaction['source_email']?.toString() ?? '-',
                       ),
                       _buildDetailRow(
                         icon: Icons.phone_outlined,
-                        label: 'تلفن',
+                        label: l10n.sarafiSourcePhone,
                         value: transaction['source_phone']?.toString() ?? '-',
                       ),
                       _buildDetailRow(
                         icon: Icons.location_on_outlined,
-                        label: 'آدرس',
+                        label: l10n.sarafiSourceAddress,
                         value: transaction['address']?.toString() ?? '-',
                       ),
                       const Divider(height: 24, thickness: 1),
@@ -923,7 +897,7 @@ class _SarafiPageState extends State<SarafiPage> {
                         children: [
                           Expanded(
                             child: _buildDetailCard(
-                              label: 'نرخ ارز',
+                              label: l10n.sarafiExchangeRate,
                               value: '${_formatCurrency(exchangeRate)} AFN',
                               icon: Icons.currency_exchange,
                               color: Colors.blue,
@@ -932,7 +906,7 @@ class _SarafiPageState extends State<SarafiPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _buildDetailCard(
-                              label: 'معادل افغانی',
+                              label: l10n.sarafiAfnEquivalent,
                               value: '${_formatCurrency(afnAmount)} AFN',
                               icon: Icons.money,
                               color: Colors.orange,
@@ -945,7 +919,7 @@ class _SarafiPageState extends State<SarafiPage> {
                         children: [
                           Expanded(
                             child: _buildDetailCard(
-                              label: 'موجودی قبل',
+                              label: l10n.sarafiBalanceBefore,
                               value: _formatBalance(
                                 isDeposit
                                     ? balanceAfter - amount
@@ -958,7 +932,7 @@ class _SarafiPageState extends State<SarafiPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _buildDetailCard(
-                              label: 'موجودی بعد',
+                              label: l10n.sarafiBalanceAfter,
                               value: _formatBalance(balanceAfter),
                               icon: Icons.account_balance,
                               color: const Color(0xFFCB001D),
@@ -969,8 +943,8 @@ class _SarafiPageState extends State<SarafiPage> {
                       const SizedBox(height: 12),
                       _buildDetailRow(
                         icon: Icons.note_outlined,
-                        label: 'یادداشت',
-                        value: transaction['note']?.toString() ?? 'بدون یادداشت',
+                        label: l10n.sarafiNote,
+                        value: transaction['note']?.toString() ?? l10n.sarafiNote,
                         isMultiline: true,
                       ),
                       const SizedBox(height: 20),
@@ -983,7 +957,7 @@ class _SarafiPageState extends State<SarafiPage> {
                                 _printTransactionReceipt(transaction);
                               },
                               icon: const Icon(Icons.print, color: Color(0xFFCB001D)),
-                              label: const Text('چاپ رسید', style: TextStyle(color: Color(0xFFCB001D))),
+                              label: Text(l10n.print, style: const TextStyle(color: Color(0xFFCB001D))),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(color: Color(0xFFCB001D)),
                                 shape: RoundedRectangleBorder(
@@ -1000,7 +974,7 @@ class _SarafiPageState extends State<SarafiPage> {
                                 _deleteTransaction(transaction);
                               },
                               icon: const Icon(Icons.delete_outline, color: Colors.red),
-                              label: const Text('حذف تراکنش', style: TextStyle(color: Colors.red)),
+                              label: Text(l10n.delete, style: const TextStyle(color: Colors.red)),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(color: Colors.red),
                                 shape: RoundedRectangleBorder(
@@ -1119,9 +1093,10 @@ class _SarafiPageState extends State<SarafiPage> {
   }
 
   Future<void> _deleteTransaction(Map<String, dynamic> transaction) async {
+    final l10n = AppLocalizations.of(context)!;
     final account = _activeAccount;
     if (account == null) {
-      _showSnackbar('حسابی برای ویرایش وجود ندارد', Colors.red.shade700);
+      _showSnackbar(l10n.sarafiNoAccount, Colors.red.shade700);
       return;
     }
 
@@ -1129,12 +1104,12 @@ class _SarafiPageState extends State<SarafiPage> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('حذف تراکنش'),
-        content: const Text('آیا از حذف این تراکنش اطمینان دارید؟'),
+        title: Text(l10n.sarafiDeleteTransaction),
+        content: Text(l10n.sarafiDeleteConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('لغو'),
+            child: Text(l10n.cancelBtn),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -1142,7 +1117,7 @@ class _SarafiPageState extends State<SarafiPage> {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('حذف'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -1150,11 +1125,9 @@ class _SarafiPageState extends State<SarafiPage> {
 
     if (confirm != true) return;
 
-    final amount = double.tryParse(transaction['amount_usd']?.toString() ?? '0') ?? 0;
-
     final result = await _db.deleteSarafiTransaction(transaction['id']);
     if (result == -1) {
-      _showSnackbar('حذف تراکنش انجام نشد', Colors.red.shade700);
+      _showSnackbar(l10n.sarafiDeleteError, Colors.red.shade700);
       return;
     }
 
@@ -1164,7 +1137,7 @@ class _SarafiPageState extends State<SarafiPage> {
         : 0.0;
 
     await _db.updateSarafiAccountBalance(account['id'] as int, newBalance);
-    _showSnackbar('تراکنش حذف شد', Colors.green.shade700);
+    _showSnackbar(l10n.sarafiDeleteSuccess, Colors.green.shade700);
     _loadData();
   }
 
@@ -1243,6 +1216,7 @@ class _SarafiPageState extends State<SarafiPage> {
   }
 
   Widget _buildTransactionTile(Map<String, dynamic> transaction) {
+    final l10n = AppLocalizations.of(context)!;
     final isDeposit = transaction['transaction_type'] == 'deposit';
     final color = isDeposit ? Colors.green.shade700 : Colors.red.shade700;
     final amount = double.tryParse(transaction['amount_usd']?.toString() ?? '0') ?? 0;
@@ -1321,7 +1295,7 @@ class _SarafiPageState extends State<SarafiPage> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        'موجودی: ${_formatCurrency(balanceAfter)}',
+                        '${l10n.sarafiCurrentBalance}: ${_formatCurrency(balanceAfter)}',
                         style: const TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
@@ -1358,7 +1332,7 @@ class _SarafiPageState extends State<SarafiPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    isDeposit ? 'واریز' : 'برداشت',
+                    isDeposit ? l10n.sarafiDeposit : l10n.sarafiWithdrawal,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
@@ -1382,6 +1356,10 @@ class _SarafiPageState extends State<SarafiPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+    
     final account = _activeAccount;
     final currentBalance =
         account != null
@@ -1394,358 +1372,361 @@ class _SarafiPageState extends State<SarafiPage> {
                 0
             : 0;
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child:
-              _isLoading
-                  ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFFCB001D),
-                    ),
-                  )
-                  : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFCB001D), Color(0xFFA00016)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFCB001D).withOpacity(0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
+    return Directionality(
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child:
+                _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFCB001D),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(14),
+                      )
+                    : Column(
+                        crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                        children: [
+                          // Header
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFCB001D), Color(0xFFA00016)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                              child: const Icon(
-                                Icons.currency_exchange_rounded,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
-                                    'صرافی',
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    'مدیریت حساب و تراکنش‌ها',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (account != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFCB001D).withOpacity(0.3),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  'موجودی: ${_formatCurrency(currentBalance)}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Account Section
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: const Color(0xFFCB001D).withOpacity(0.12),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                            child: Row(
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    account == null
-                                        ? 'هنوز حسابی ثبت نشده'
-                                        : 'حساب فعلی صرافی',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF1A1A1A),
-                                    ),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: const Icon(
+                                    Icons.currency_exchange_rounded,
+                                    color: Colors.white,
+                                    size: 28,
                                   ),
                                 ),
-                                if (account == null)
-                                  ElevatedButton.icon(
-                                    onPressed: _showInitialSetupDialog,
-                                    icon: const Icon(
-                                      Icons.add_circle_outline,
-                                      size: 18,
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        l10n.sarafiPageTitle,
+                                        style: const TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        l10n.sarafiPageSubtitle,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (account != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
                                     ),
-                                    label: const Text('افزودن حساب'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFCB001D),
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      '${l10n.sarafiCurrentBalance}: ${_formatCurrency(currentBalance)}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
                                       ),
                                     ),
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            if (account == null)
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade50,
-                                  borderRadius: BorderRadius.circular(12),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Account Section
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: const Color(0xFFCB001D).withOpacity(0.12),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 4),
                                 ),
-                                child: const Row(
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                              children: [
+                                Row(
                                   children: [
-                                    Icon(
-                                      Icons.info_outline,
-                                      color: Colors.grey,
-                                    ),
-                                    SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
-                                        'شماره حساب و مبلغ اولیه را وارد کنید. این مقدار یک بار ثبت می‌شود و بعد از آن فقط با تراکنش‌های واریز/برداشت قابل تغییر است.',
-                                        style: TextStyle(
-                                          fontSize: 13,
+                                        account == null
+                                            ? l10n.sarafiNoAccount
+                                            : l10n.sarafiAccountNumberLabel,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF1A1A1A),
+                                        ),
+                                      ),
+                                    ),
+                                    if (account == null)
+                                      ElevatedButton.icon(
+                                        onPressed: _showInitialSetupDialog,
+                                        icon: const Icon(
+                                          Icons.add_circle_outline,
+                                          size: 18,
+                                        ),
+                                        label: Text(l10n.sarafiAddAccount),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFCB001D),
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                if (account == null)
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.info_outline,
                                           color: Colors.grey,
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else ...[
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade50,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.account_balance,
-                                      color: Color(0xFFCB001D),
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'شماره حساب: ${account['account_number']}',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  _buildSummaryCard(
-                                    'موجودی فعلی',
-                                    '${_formatCurrency(currentBalance)} USD',
-                                    Icons.account_balance_wallet_rounded,
-                                    const Color(0xFFCB001D),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _buildSummaryCard(
-                                    'موجودی اولیه',
-                                    '${_formatCurrency(initialBalance)} USD',
-                                    Icons.savings_rounded,
-                                    Colors.blue.shade700,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      onPressed: () =>
-                                          _showTransactionDialog('deposit'),
-                                      icon: const Icon(
-                                        Icons.add_circle_outline,
-                                        size: 18,
-                                      ),
-                                      label: const Text('واریز'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green.shade700,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            l10n.sarafiAccountInfo,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.grey,
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      onPressed: () =>
-                                          _showTransactionDialog('withdrawal'),
-                                      icon: const Icon(
-                                        Icons.remove_circle_outline,
-                                        size: 18,
-                                      ),
-                                      label: const Text('برداشت'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red.shade700,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
+                                  )
+                                else ...[
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.account_balance,
+                                          color: Color(0xFFCB001D),
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            '${l10n.sarafiAccountNumberLabel} ${account['account_number']}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
                                     ),
                                   ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Transactions Header
-                      Row(
-                        children: [
-                          const Text(
-                            'تراکنش‌ها',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFCB001D).withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${_transactions.length} مورد',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFCB001D),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Transactions List
-                      Expanded(
-                        child:
-                            _transactions.isEmpty
-                                ? Container(
-                                  padding: const EdgeInsets.all(24),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                  const SizedBox(height: 12),
+                                  Row(
                                     children: [
-                                      Icon(
-                                        Icons.receipt_long_outlined,
-                                        size: 48,
-                                        color: Colors.grey.shade300,
+                                      _buildSummaryCard(
+                                        l10n.sarafiCurrentBalance,
+                                        '${_formatCurrency(currentBalance)} USD',
+                                        Icons.account_balance_wallet_rounded,
+                                        const Color(0xFFCB001D),
                                       ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'هنوز تراکنشی ثبت نشده است',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.grey.shade500,
+                                      const SizedBox(width: 8),
+                                      _buildSummaryCard(
+                                        l10n.sarafiInitialBalanceLabel,
+                                        '${_formatCurrency(initialBalance)} USD',
+                                        Icons.savings_rounded,
+                                        Colors.blue.shade700,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: () =>
+                                              _showTransactionDialog('deposit'),
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
+                                            size: 18,
+                                          ),
+                                          label: Text(l10n.sarafiDeposit),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green.shade700,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(
+                                                12,
+                                              ),
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'با دکمه‌های واریز یا برداشت شروع کنید',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade400,
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: () =>
+                                              _showTransactionDialog('withdrawal'),
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            size: 18,
+                                          ),
+                                          label: Text(l10n.sarafiWithdrawal),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red.shade700,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(
+                                                12,
+                                              ),
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                )
-                                : ListView.builder(
-                                  itemCount: _transactions.length,
-                                  itemBuilder: (context, index) =>
-                                      _buildTransactionTile(
-                                        _transactions[index],
-                                      ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Transactions Header
+                          Row(
+                            children: [
+                              Text(
+                                l10n.sarafiTransactions,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1A1A1A),
                                 ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCB001D).withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${_transactions.length} ${l10n.sarafiTotalItems}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFCB001D),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Transactions List
+                          Expanded(
+                            child:
+                                _transactions.isEmpty
+                                    ? Container(
+                                        padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.receipt_long_outlined,
+                                              size: 48,
+                                              color: Colors.grey.shade300,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Text(
+                                              l10n.sarafiNoTransactions,
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                color: Colors.grey.shade500,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              l10n.sarafiStartTransaction,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade400,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        itemCount: _transactions.length,
+                                        itemBuilder: (context, index) =>
+                                            _buildTransactionTile(
+                                              _transactions[index],
+                                            ),
+                                      ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+          ),
         ),
       ),
     );

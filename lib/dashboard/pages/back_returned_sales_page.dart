@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class BackReturnedSalesPage extends StatefulWidget {
   const BackReturnedSalesPage({super.key});
@@ -42,11 +45,13 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showSnackbar('بارگذاری برگشتی فروشات با خطا مواجه شد', Colors.red);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar(l10n.errorLoadingReturnedSales, Colors.red);
     }
   }
 
   Future<void> _showAddReturnedSaleDialog() async {
+    final l10n = AppLocalizations.of(context)!;
     final reasonController = TextEditingController();
     final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
     String selectedEnglishDate = PersianDateConverter.getEnglishDate(DateTime.now());
@@ -60,7 +65,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              title: const Text('ثبت برگشتی فروش', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
+              title: Text(l10n.addReturnedSale, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
               content: SizedBox(
                 width: 720,
                 child: SingleChildScrollView(
@@ -69,7 +74,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                     children: [
                       DropdownButtonFormField<Map<String, dynamic>>(
                         value: selectedSale,
-                        decoration: const InputDecoration(labelText: 'انتخاب فاکتور فروش', border: OutlineInputBorder()),
+                        decoration: InputDecoration(labelText: l10n.selectSaleInvoice, border: const OutlineInputBorder()),
                         items: availableSales.map((sale) {
                           return DropdownMenuItem<Map<String, dynamic>>(
                             value: sale,
@@ -84,22 +89,22 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       ),
                       const SizedBox(height: 16),
                       if (selectedSale != null) ...[
-                        _buildReadOnlyField('شماره فاکتور', selectedSale!['invoice_number']?.toString() ?? '-'),
+                        _buildReadOnlyField(l10n.invoiceNumberLabel, selectedSale!['invoice_number']?.toString() ?? '-', l10n),
                         const SizedBox(height: 12),
-                        _buildReadOnlyField('نام مشتری', selectedSale!['customer_name']?.toString() ?? '-'),
+                        _buildReadOnlyField(l10n.customerName, selectedSale!['customer_name']?.toString() ?? '-', l10n),
                         const SizedBox(height: 12),
-                        _buildReadOnlyField('شرکت', selectedSale!['customer_company']?.toString() ?? '-'),
+                        _buildReadOnlyField(l10n.company, selectedSale!['customer_company']?.toString() ?? '-', l10n),
                         const SizedBox(height: 12),
-                        _buildReadOnlyField('محصول', selectedSale!['product_name']?.toString() ?? '-'),
+                        _buildReadOnlyField(l10n.productName, selectedSale!['product_name']?.toString() ?? '-', l10n),
                         const SizedBox(height: 12),
-                        _buildReadOnlyField('قیمت نهایی', _formatCurrency(selectedSale!['final_price'])),
+                        _buildReadOnlyField(l10n.finalPrice, _formatCurrency(selectedSale!['final_price']), l10n),
                         const SizedBox(height: 12),
                       ],
                       TextField(
                         controller: reasonController,
                         maxLines: 3,
                         decoration: InputDecoration(
-                          labelText: 'دلیل برگشت',
+                          labelText: l10n.returnReason,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
@@ -108,7 +113,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                         controller: dateController,
                         readOnly: true,
                         decoration: InputDecoration(
-                          labelText: 'تاریخ برگشتی (شمسی)',
+                          labelText: l10n.returnDatePersian,
                           prefixIcon: const Icon(Icons.date_range_outlined, color: Color(0xFFCB001D)),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
@@ -132,7 +137,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
                 ElevatedButton(
                   onPressed: selectedSale == null || reasonController.text.trim().isEmpty
                       ? null
@@ -145,19 +150,19 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                           };
                           final result = await _db.updateSalesInvoice(selectedSale!['id'], payload);
                           if (result == -1) {
-                            _showSnackbar('ذخیره برگشتی با خطا مواجه شد', Colors.red);
+                            _showSnackbar(l10n.errorSavingReturnedSale, Colors.red);
                             return;
                           }
                           await _loadData();
                           Navigator.pop(context);
                           final updatedSale = await _db.getSalesInvoiceById(selectedSale!['id']);
                           if (updatedSale != null) {
-                            _showReturnInvoiceModal(context, updatedSale['invoice_number']?.toString() ?? '-', updatedSale);
+                            _showReturnInvoiceModal(context, updatedSale['invoice_number']?.toString() ?? '-', updatedSale, l10n);
                           }
-                          _showSnackbar('برگشتی فروش با موفقیت ثبت شد', Colors.green);
+                          _showSnackbar(l10n.returnedSaleSavedSuccess, Colors.green);
                         },
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white),
-                  child: const Text('ثبت برگشتی'),
+                  child: Text(l10n.saveReturnedSale),
                 ),
               ],
             ),
@@ -167,7 +172,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
-  Widget _buildReadOnlyField(String label, String value) {
+  Widget _buildReadOnlyField(String label, String value, AppLocalizations l10n) {
     return TextField(
       readOnly: true,
       controller: TextEditingController(text: value),
@@ -178,7 +183,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
-  void _showReturnInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice) {
+  void _showReturnInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice, AppLocalizations l10n) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -219,12 +224,12 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Column(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('برگشتی فروشات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
-                        SizedBox(height: 2),
-                        Text('رسید برگشت فروش و چاپ فاکتور', style: TextStyle(fontSize: 11, color: Color(0xFF888888))),
+                        Text(l10n.returnedSales, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+                        const SizedBox(height: 2),
+                        Text(l10n.returnInvoiceReceipt, style: const TextStyle(fontSize: 11, color: Color(0xFF888888))),
                       ],
                     ),
                   ]),
@@ -232,10 +237,10 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                      child: Text('شماره: $invoiceNumber', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12)),
+                      child: Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12)),
                     ),
                     const SizedBox(height: 6),
-                    Text('تاریخ برگشتی: ${invoice['back_return_date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
+                    Text('${l10n.returnDate}: ${invoice['back_return_date'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
                     Text('Date (EN): ${invoice['back_return_date_en'] ?? '-'}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
                   ]),
                 ],
@@ -245,9 +250,9 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade200, width: 1)),
                 child: Row(children: [
-                  Expanded(child: Text('مشتری: ${invoice['customer_name'] ?? '-'}', style: const TextStyle(fontSize: 10))),
-                  Expanded(child: Text('شرکت: ${invoice['customer_company'] ?? '-'}', style: const TextStyle(fontSize: 10))),
-                  Expanded(child: Text('محل تخلیه: ${invoice['customer_address'] ?? '-'}', style: const TextStyle(fontSize: 10))),
+                  Expanded(child: Text('${l10n.customer}: ${invoice['customer_name'] ?? '-'}', style: const TextStyle(fontSize: 10))),
+                  Expanded(child: Text('${l10n.company}: ${invoice['customer_company'] ?? '-'}', style: const TextStyle(fontSize: 10))),
+                  Expanded(child: Text('${l10n.dischargeLocation}: ${invoice['customer_address'] ?? '-'}', style: const TextStyle(fontSize: 10))),
                 ]),
               ),
               const SizedBox(height: 12),
@@ -255,10 +260,10 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: const Color(0xFFF1F8FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2))),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('دلیل برگشت: ${invoice['back_return_reason'] ?? '-'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                  Text('${l10n.returnReason}: ${invoice['back_return_reason'] ?? '-'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 6),
-                  Text('محصول: ${invoice['product_name'] ?? '-'}', style: const TextStyle(fontSize: 10)),
-                  Text('مبلغ نهایی: ${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? ''}', style: const TextStyle(fontSize: 10)),
+                  Text('${l10n.product}: ${invoice['product_name'] ?? '-'}', style: const TextStyle(fontSize: 10)),
+                  Text('${l10n.finalPrice}: ${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? ''}', style: const TextStyle(fontSize: 10)),
                 ]),
               ),
               const SizedBox(height: 12),
@@ -270,13 +275,13 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
                       decoration: const BoxDecoration(color: Color(0xFFCB001D), borderRadius: BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(4))),
                       child: Row(children: [
-                        _buildInvoiceHeaderCell('نام مشتری', 100),
-                        _buildInvoiceHeaderCell('شرکت', 80),
-                        _buildInvoiceHeaderCell('محصول', 100),
-                        _buildInvoiceHeaderCell('جنس', 80),
-                        _buildInvoiceHeaderCell('سایز', 80),
-                        _buildInvoiceHeaderCell('وزن', 80),
-                        _buildInvoiceHeaderCell('مبلغ نهایی', 100),
+                        _buildInvoiceHeaderCell(l10n.customerName, 100),
+                        _buildInvoiceHeaderCell(l10n.company, 80),
+                        _buildInvoiceHeaderCell(l10n.productName, 100),
+                        _buildInvoiceHeaderCell(l10n.gender, 80),
+                        _buildInvoiceHeaderCell(l10n.size, 80),
+                        _buildInvoiceHeaderCell(l10n.weight, 80),
+                        _buildInvoiceHeaderCell(l10n.finalPrice, 100),
                       ]),
                     ),
                     Expanded(
@@ -298,25 +303,25 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
               ),
               const SizedBox(height: 12),
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('بستن', style: TextStyle(fontSize: 12))),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.close, style: const TextStyle(fontSize: 12))),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    _generatePdfReturnInvoice(invoice, invoiceNumber);
+                    _generatePdfReturnInvoice(invoice, invoiceNumber, l10n);
                   },
                   icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.white),
-                  label: const Text('PDF', style: TextStyle(fontSize: 12, color: Colors.white)),
+                  label: Text(l10n.pdf, style: const TextStyle(fontSize: 12, color: Colors.white)),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    _generatePdfReturnInvoice(invoice, invoiceNumber);
+                    _generatePdfReturnInvoice(invoice, invoiceNumber, l10n);
                   },
                   icon: const Icon(Icons.print, size: 18, color: Colors.white),
-                  label: const Text('چاپ', style: TextStyle(fontSize: 12, color: Colors.white)),
+                  label: Text(l10n.print, style: const TextStyle(fontSize: 12, color: Colors.white)),
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
                 ),
               ]),
@@ -327,7 +332,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
-  Future<void> _generatePdfReturnInvoice(Map<String, dynamic> invoice, String invoiceNumber) async {
+  Future<void> _generatePdfReturnInvoice(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
     late final pw.Font ttf;
     try {
       final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
@@ -349,9 +354,9 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
               children: [
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                   pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                    pw.Text('ویکتور پایپ صنعت', style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                    pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 4),
-                    pw.Text('رسید برگشت فروش', style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
+                    pw.Text(l10n.returnReceipt, style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
                   ]),
                   pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                     pw.Container(
@@ -360,8 +365,8 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       child: pw.Text('RETURN', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
                     ),
                     pw.SizedBox(height: 6),
-                    pw.Text('شماره: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('تاریخ برگشتی: ${invoice['back_return_date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                    pw.Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('${l10n.returnDate}: ${invoice['back_return_date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                     pw.Text('Date (EN): ${invoice['back_return_date_en'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                   ]),
                 ]),
@@ -370,16 +375,16 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
                   child: pw.Row(children: [
-                    pw.Expanded(child: pw.Text('مشتری: ${invoice['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('شرکت: ${invoice['customer_company'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('آدرس: ${invoice['customer_address'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('${l10n.customer}: ${invoice['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('${l10n.company}: ${invoice['customer_company'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('${l10n.address}: ${invoice['customer_address'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
                   ]),
                 ),
                 pw.SizedBox(height: 12),
-                pw.Text('دلیل برگشت: ${invoice['back_return_reason'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                pw.Text('${l10n.returnReason}: ${invoice['back_return_reason'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10)),
                 pw.SizedBox(height: 12),
                 pw.Table.fromTextArray(
-                  headers: ['نام مشتری', 'شرکت', 'محصول', 'جنس', 'سایز', 'وزن', 'مبلغ نهایی'],
+                  headers: [l10n.customerName, l10n.company, l10n.productName, l10n.gender, l10n.size, l10n.weight, l10n.finalPrice],
                   data: [
                     [
                       invoice['customer_name'] ?? '-',
@@ -398,8 +403,8 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                 ),
                 pw.Spacer(),
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text('امضا: ______________________', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                  pw.Text('تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                 ]),
               ],
             ),
@@ -427,7 +432,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -439,23 +444,23 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
             child: const Icon(Icons.assignment_return_outlined, color: Color(0xFFCB001D), size: 28),
           ),
           const SizedBox(width: 12),
-          const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('برگشتی فروشات', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-            SizedBox(height: 4),
-            Text('ثبت، مشاهده و چاپ برگشتی فروش‌ها', style: TextStyle(fontSize: 13, color: Colors.grey)),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(l10n.returnedSales, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+            const SizedBox(height: 4),
+            Text(l10n.returnedSalesSubtitle, style: const TextStyle(fontSize: 13, color: Colors.grey)),
           ]),
         ]),
         ElevatedButton.icon(
           onPressed: _showAddReturnedSaleDialog,
           icon: const Icon(Icons.add_circle_outline),
-          label: const Text('ثبت برگشتی جدید'),
+          label: Text(l10n.addReturnedSale),
           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
         ),
       ],
     );
   }
 
-  Widget _buildFilterAndSearch() {
+  Widget _buildFilterAndSearch(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))]),
@@ -464,7 +469,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           child: TextField(
             onChanged: (value) => setState(() => _searchQuery = value),
             decoration: InputDecoration(
-              hintText: 'جستجو بر اساس شماره فاکتور، مشتری یا محصول...',
+              hintText: l10n.searchReturnedSales,
               prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
@@ -476,7 +481,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
-  Widget _buildReturnsTable(List<Map<String, dynamic>> data) {
+  Widget _buildReturnsTable(List<Map<String, dynamic>> data, AppLocalizations l10n) {
     final totalPages = (data.length / _rowsPerPage).ceil();
     final start = (_currentPage * _rowsPerPage).clamp(0, data.length);
     final paged = data.skip(start).take(_rowsPerPage).toList();
@@ -487,24 +492,24 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: const BorderRadius.only(topLeft: Radius.circular(14), topRight: Radius.circular(14))),
-          child: Row(children: const [
-            Expanded(flex: 1, child: Text('شماره فاکتور')),
-            Expanded(flex: 2, child: Text('مشتری')),
-            Expanded(flex: 2, child: Text('محصول')),
-            Expanded(flex: 1, child: Text('مبلغ نهایی')),
-            Expanded(flex: 1, child: Text('تاریخ برگشتی')),
-            Expanded(flex: 1, child: Text('عملیات')),
+          child: Row(children: [
+            Expanded(flex: 1, child: Text(l10n.invoiceNumberLabel)),
+            Expanded(flex: 2, child: Text(l10n.customer)),
+            Expanded(flex: 2, child: Text(l10n.productName)),
+            Expanded(flex: 1, child: Text(l10n.finalPrice)),
+            Expanded(flex: 1, child: Text(l10n.returnDate)),
+            Expanded(flex: 1, child: Text(l10n.actions)),
           ]),
         ),
         Expanded(
           child: paged.isEmpty
-              ? const Center(child: Text('هیچ برگشتی‌ای وجود ندارد', style: TextStyle(color: Colors.grey)))
+              ? Center(child: Text(l10n.noReturnedSales, style: const TextStyle(color: Colors.grey)))
               : ListView.builder(
                   itemCount: paged.length,
                   itemBuilder: (context, index) {
                     final sale = paged[index];
                     return InkWell(
-                      onTap: () => _showReturnInvoiceModal(context, sale['invoice_number']?.toString() ?? '-', sale),
+                      onTap: () => _showReturnInvoiceModal(context, sale['invoice_number']?.toString() ?? '-', sale, l10n),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1))),
@@ -512,12 +517,12 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                           Expanded(flex: 1, child: Text(sale['invoice_number']?.toString() ?? '-')),
                           Expanded(flex: 2, child: Text(sale['customer_name']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w700))),
                           Expanded(flex: 2, child: Text(sale['product_name']?.toString() ?? '-', style: const TextStyle(fontSize: 13))),
-                          Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price'])),),
+                          Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price']))),
                           Expanded(flex: 1, child: Text(sale['back_return_date']?.toString() ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))),
                           Expanded(
                             flex: 1,
                             child: Row(children: [
-                              IconButton(onPressed: () => _showReturnInvoiceModal(context, sale['invoice_number']?.toString() ?? '-', sale), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)),
+                              IconButton(onPressed: () => _showReturnInvoiceModal(context, sale['invoice_number']?.toString() ?? '-', sale, l10n), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)),
                             ]),
                           ),
                         ]),
@@ -530,13 +535,13 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Row(children: [
-              Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}'),
+              Text('${l10n.page} ${_currentPage + 1} ${l10n.pageOf} ${totalPages == 0 ? 1 : totalPages}'),
               const SizedBox(width: 12),
               IconButton(onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null, icon: const Icon(Icons.chevron_left)),
               IconButton(onPressed: (_currentPage + 1) < totalPages ? () => setState(() => _currentPage++) : null, icon: const Icon(Icons.chevron_right)),
             ]),
             Row(children: [
-              const Text('تعداد ردیف‌ها:'),
+              Text(l10n.rowsPerPage),
               const SizedBox(width: 8),
               DropdownButton<int>(
                 value: _rowsPerPage,
@@ -574,6 +579,10 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     final filtered = _returnedSales.where((sale) {
       final search = _searchQuery.toLowerCase();
       return (sale['invoice_number']?.toString().toLowerCase().contains(search) ?? false) ||
@@ -581,19 +590,22 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           (sale['product_name']?.toString().toLowerCase().contains(search) ?? false);
     }).toList();
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
-            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _buildHeader(),
-                const SizedBox(height: 20),
-                _buildFilterAndSearch(),
-                const SizedBox(height: 16),
-                Expanded(child: _buildReturnsTable(filtered)),
-              ]),
+    return Directionality(
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _buildHeader(l10n),
+                  const SizedBox(height: 20),
+                  _buildFilterAndSearch(l10n),
+                  const SizedBox(height: 16),
+                  Expanded(child: _buildReturnsTable(filtered, l10n)),
+                ]),
+        ),
       ),
     );
   }

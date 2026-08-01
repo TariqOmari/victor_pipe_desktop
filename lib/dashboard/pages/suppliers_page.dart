@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class SuppliersPage extends StatefulWidget {
   const SuppliersPage({super.key});
@@ -114,32 +117,36 @@ class _SuppliersPageState extends State<SuppliersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: Container(
         padding: const EdgeInsets.all(24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
             // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'مدیریت فروشندگان',
-                      style: TextStyle(
+                      l10n.suppliers,
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF1A1A2E),
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      'مدیریت اطلاعات فروشندگان و تامین‌کنندگان',
-                      style: TextStyle(
+                      l10n.suppliersSubtitle ?? 'مدیریت اطلاعات فروشندگان و تامین‌کنندگان',
+                      style: const TextStyle(
                         fontSize: 13,
                         color: Color(0xFF888888),
                       ),
@@ -164,7 +171,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${_selectedIds.length} انتخاب شده',
+                              '${_selectedIds.length} ${l10n.selected}',
                               style: const TextStyle(
                                 color: Color(0xFFCB001D),
                                 fontSize: 12,
@@ -178,9 +185,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
                     ElevatedButton.icon(
                       onPressed: _showAddSupplierDialog,
                       icon: const Icon(Icons.add, color: Colors.white),
-                      label: const Text(
-                        'افزودن فروشنده',
-                        style: TextStyle(
+                      label: Text(
+                        l10n.addSupplier,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
@@ -206,9 +213,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
             // Stats Cards
             Row(
               children: [
-                _buildStatCard('کل فروشندگان', _suppliers.length.toString(), Icons.business_outlined),
+                _buildStatCard(l10n.totalSuppliers, _suppliers.length.toString(), Icons.business_outlined, l10n),
                 const SizedBox(width: 16),
-                _buildStatCard('فعال', _suppliers.length.toString(), Icons.check_circle_outline, Colors.green),
+                _buildStatCard(l10n.active, _suppliers.length.toString(), Icons.check_circle_outline, l10n, Colors.green),
               ],
             ),
             const SizedBox(height: 20),
@@ -230,7 +237,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                   });
                 },
                 decoration: InputDecoration(
-                  hintText: 'جستجوی فروشندگان...',
+                  hintText: l10n.searchSuppliers,
                   hintStyle: TextStyle(
                     color: Colors.grey.shade400,
                   ),
@@ -257,19 +264,19 @@ class _SuppliersPageState extends State<SuppliersPage> {
                       ),
                     )
                   : _filteredSuppliers.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.business_outlined,
                                 size: 64,
                                 color: Colors.grey,
                               ),
-                              SizedBox(height: 16),
+                              const SizedBox(height: 16),
                               Text(
-                                'هیچ فروشنده‌ای یافت نشد',
-                                style: TextStyle(
+                                l10n.noSuppliersFound,
+                                style: const TextStyle(
                                   fontSize: 16,
                                   color: Colors.grey,
                                 ),
@@ -331,22 +338,22 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                               ),
                                             ),
                                             const SizedBox(width: 16),
-                                            const Expanded(
+                                            Expanded(
                                               flex: 2,
                                               child: Text(
-                                                'نام فروشنده',
-                                                style: TextStyle(
+                                                l10n.supplierName,
+                                                style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 13,
                                                   color: Color(0xFF1A1A2E),
                                                 ),
                                               ),
                                             ),
-                                            const Expanded(
+                                            Expanded(
                                               flex: 1,
                                               child: Text(
-                                                'تلفن',
-                                                style: TextStyle(
+                                                l10n.phone,
+                                                style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 13,
                                                   color: Color(0xFF1A1A2E),
@@ -354,11 +361,11 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                 textAlign: TextAlign.center,
                                               ),
                                             ),
-                                            const Expanded(
+                                            Expanded(
                                               flex: 1,
                                               child: Text(
-                                                'ایمیل',
-                                                style: TextStyle(
+                                                l10n.email,
+                                                style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 13,
                                                   color: Color(0xFF1A1A2E),
@@ -366,11 +373,11 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                 textAlign: TextAlign.center,
                                               ),
                                             ),
-                                            const Expanded(
+                                            Expanded(
                                               flex: 2,
                                               child: Text(
-                                                'آدرس',
-                                                style: TextStyle(
+                                                l10n.address,
+                                                style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 13,
                                                   color: Color(0xFF1A1A2E),
@@ -492,9 +499,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                   color: Colors.blue.shade700,
                                                   size: 20,
                                                 ),
-                                                tooltip: 'جزئیات فروشنده',
+                                                tooltip: l10n.supplierDetails,
                                                 onPressed: () {
-                                                  _showSupplierDetailsDialog(supplier);
+                                                  _showSupplierDetailsDialog(supplier, l10n);
                                                 },
                                               ),
                                               IconButton(
@@ -504,7 +511,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                   size: 20,
                                                 ),
                                                 onPressed: () {
-                                                  _showEditSupplierDialog(supplier);
+                                                  _showEditSupplierDialog(supplier, l10n);
                                                 },
                                               ),
                                               IconButton(
@@ -514,7 +521,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                   size: 20,
                                                 ),
                                                 onPressed: () {
-                                                  _showDeleteDialog(supplier);
+                                                  _showDeleteDialog(supplier, l10n);
                                                 },
                                               ),
                                             ],
@@ -549,9 +556,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                   // Items per page
                                   Row(
                                     children: [
-                                      const Text(
-                                        'نمایش:',
-                                        style: TextStyle(
+                                      Text(
+                                        l10n.show,
+                                        style: const TextStyle(
                                           fontSize: 13,
                                           color: Color(0xFF888888),
                                         ),
@@ -590,7 +597,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        'در هر صفحه',
+                                        l10n.perPage,
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: Colors.grey.shade600,
@@ -602,8 +609,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                   // Page info and controls
                                   Row(
                                     children: [
-                                      Text(
-                                        'صفحه $_currentPage از $_totalPages',
+                                   Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages',
                                         style: const TextStyle(
                                           fontSize: 13,
                                           color: Color(0xFF888888),
@@ -642,7 +648,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, [Color? color]) {
+  Widget _buildStatCard(String title, String value, IconData icon, AppLocalizations l10n, [Color? color]) {
     final cardColor = color ?? const Color(0xFFCB001D);
     return Expanded(
       child: Container(
@@ -704,6 +710,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
   }
 
   void _showAddSupplierDialog() {
+    final l10n = AppLocalizations.of(context)!;
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final emailController = TextEditingController();
@@ -712,9 +719,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'افزودن فروشنده جدید',
-          style: TextStyle(
+        title: Text(
+          l10n.addSupplier,
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF1A1A2E),
           ),
@@ -727,27 +734,27 @@ class _SuppliersPageState extends State<SuppliersPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField('نام فروشنده *', Icons.business_outlined, nameController),
+              _buildTextField(l10n.supplierNameRequired, Icons.business_outlined, nameController, l10n),
               const SizedBox(height: 12),
-              _buildTextField('تلفن *', Icons.phone_outlined, phoneController),
+              _buildTextField(l10n.phoneRequired, Icons.phone_outlined, phoneController, l10n),
               const SizedBox(height: 12),
-              _buildTextField('ایمیل', Icons.email_outlined, emailController),
+              _buildTextField(l10n.email, Icons.email_outlined, emailController, l10n),
               const SizedBox(height: 12),
-              _buildTextField('آدرس', Icons.location_on_outlined, addressController),
+              _buildTextField(l10n.address, Icons.location_on_outlined, addressController, l10n),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888))),
+            child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888))),
           ),
           ElevatedButton(
             onPressed: () async {
               if (nameController.text.isEmpty || phoneController.text.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('لطفاً نام و تلفن را وارد کنید'),
+                  SnackBar(
+                    content: Text(l10n.pleaseEnterNameAndPhone),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -766,16 +773,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
 
               if (result != -1) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ فروشنده با موفقیت اضافه شد'),
+                  SnackBar(
+                    content: Text(l10n.supplierAddedSuccess),
                     backgroundColor: Colors.green,
                   ),
                 );
                 _loadSuppliers();
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ خطا در افزودن فروشنده'),
+                  SnackBar(
+                    content: Text(l10n.errorAddingSupplier),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -784,14 +791,14 @@ class _SuppliersPageState extends State<SuppliersPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFCB001D),
             ),
-            child: const Text('ذخیره'),
+            child: Text(l10n.save),
           ),
         ],
       ),
     );
   }
 
-  void _showEditSupplierDialog(Map<String, dynamic> supplier) {
+  void _showEditSupplierDialog(Map<String, dynamic> supplier, AppLocalizations l10n) {
     final nameController = TextEditingController(text: supplier['name']);
     final phoneController = TextEditingController(text: supplier['phone']);
     final emailController = TextEditingController(text: supplier['email'] ?? '');
@@ -800,9 +807,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'ویرایش فروشنده',
-          style: TextStyle(
+        title: Text(
+          l10n.editSupplier,
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF1A1A2E),
           ),
@@ -815,27 +822,27 @@ class _SuppliersPageState extends State<SuppliersPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField('نام فروشنده *', Icons.business_outlined, nameController),
+              _buildTextField(l10n.supplierNameRequired, Icons.business_outlined, nameController, l10n),
               const SizedBox(height: 12),
-              _buildTextField('تلفن *', Icons.phone_outlined, phoneController),
+              _buildTextField(l10n.phoneRequired, Icons.phone_outlined, phoneController, l10n),
               const SizedBox(height: 12),
-              _buildTextField('ایمیل', Icons.email_outlined, emailController),
+              _buildTextField(l10n.email, Icons.email_outlined, emailController, l10n),
               const SizedBox(height: 12),
-              _buildTextField('آدرس', Icons.location_on_outlined, addressController),
+              _buildTextField(l10n.address, Icons.location_on_outlined, addressController, l10n),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888))),
+            child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888))),
           ),
           ElevatedButton(
             onPressed: () async {
               if (nameController.text.isEmpty || phoneController.text.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('لطفاً نام و تلفن را وارد کنید'),
+                  SnackBar(
+                    content: Text(l10n.pleaseEnterNameAndPhone),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -854,16 +861,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
 
               if (result != -1) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ فروشنده با موفقیت ویرایش شد'),
+                  SnackBar(
+                    content: Text(l10n.supplierUpdatedSuccess),
                     backgroundColor: Colors.green,
                   ),
                 );
                 _loadSuppliers();
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ خطا در ویرایش فروشنده'),
+                  SnackBar(
+                    content: Text(l10n.errorUpdatingSupplier),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -872,21 +879,21 @@ class _SuppliersPageState extends State<SuppliersPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFCB001D),
             ),
-            child: const Text('به‌روزرسانی'),
+            child: Text(l10n.update),
           ),
         ],
       ),
     );
   }
 
-  void _showSupplierDetailsDialog(Map<String, dynamic> supplier) async {
+  void _showSupplierDetailsDialog(Map<String, dynamic> supplier, AppLocalizations l10n) async {
     final rawMaterials = await _db.getRawMaterialsBySupplier(supplier['id']);
     final loans = await _db.getSellLoans(source: 'supplier', supplierId: supplier['id']);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('جزئیات فروشنده: ${supplier['name'] ?? '-'}'),
+        title: Text('${l10n.supplierDetails}: ${supplier['name'] ?? '-'}'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         content: SizedBox(
           width: 600,
@@ -894,16 +901,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('تلفن: ${supplier['phone'] ?? '-'}'),
+                Text('${l10n.phone}: ${supplier['phone'] ?? '-'}'),
                 const SizedBox(height: 6),
-                Text('ایمیل: ${supplier['email'] ?? '-'}'),
+                Text('${l10n.email}: ${supplier['email'] ?? '-'}'),
                 const SizedBox(height: 6),
-                Text('آدرس: ${supplier['address'] ?? '-'}'),
+                Text('${l10n.address}: ${supplier['address'] ?? '-'}'),
                 const SizedBox(height: 12),
-                const Text('مواد خام مرتبط', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(l10n.relatedRawMaterials, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 if (rawMaterials.isEmpty)
-                  const Text('هیچ ماده خام مرتبطی ثبت نشده است.')
+                  Text(l10n.noRawMaterialsFound)
                 else
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -912,17 +919,17 @@ class _SuppliersPageState extends State<SuppliersPage> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('• ${material['name'] ?? '-'} - ${material['seller_payment'] ?? '-'} $currency / پرداخت اولیه: ${material['seller_paid_amount'] ?? '-'} $currency - روش: ${material['seller_payment_method'] == 'cash' ? 'نقد' : material['seller_payment_method'] == 'loan_full' ? 'قرض کامل' : material['seller_payment_method'] == 'loan_partial' ? 'قرض جزئی' : '-'}'),
+                          Text('• ${material['name'] ?? '-'} - ${material['seller_payment'] ?? '-'} $currency / ${l10n.initialPayment}: ${material['seller_paid_amount'] ?? '-'} $currency - ${l10n.method}: ${material['seller_payment_method'] == 'cash' ? l10n.cash : material['seller_payment_method'] == 'loan_full' ? l10n.fullLoan : material['seller_payment_method'] == 'loan_partial' ? l10n.partialLoan : '-'}'),
                           const SizedBox(height: 4),
                         ],
                       );
                     }).toList(),
                   ),
                 const SizedBox(height: 12),
-                const Text('قرضه‌های فروشنده', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(l10n.supplierLoans, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 if (loans.isEmpty)
-                  const Text('هیچ قرضه‌ای برای این فروشنده ثبت نشده است.')
+                  Text(l10n.noLoansFound)
                 else
                   Column(
                     children: loans.map((loan) {
@@ -936,14 +943,14 @@ class _SuppliersPageState extends State<SuppliersPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('فاکتور: ${loan['invoice_number'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${l10n.invoiceNumber}: ${loan['invoice_number'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 4),
-                            Text('نوع: ${loan['loan_type'] == 'full' ? 'قرض کامل' : loan['loan_type'] == 'partial' ? 'قرض جزئی' : '-'}'),
-                            Text('مبلغ کل: ${loan['total_amount'] ?? 0} ${loan['currency'] ?? ''}'),
-                            Text('پرداخت شده: ${loan['paid_amount'] ?? 0} ${loan['currency'] ?? ''}'),
-                            Text('باقی‌مانده: ${loan['remaining_amount'] ?? 0} ${loan['currency'] ?? ''}'),
-                            Text('تاریخ: ${loan['date'] ?? '-'}'),
-                            if (loan['created_at'] != null) Text('ثبت شده: ${loan['created_at']}'),
+                            Text('${l10n.loanType}: ${loan['loan_type'] == 'full' ? l10n.fullLoan : loan['loan_type'] == 'partial' ? l10n.partialLoan : '-'}'),
+                            Text('${l10n.totalAmount}: ${loan['total_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                            Text('${l10n.paidAmount}: ${loan['paid_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                            Text('${l10n.remainingAmount}: ${loan['remaining_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                            Text('${l10n.date}: ${loan['date'] ?? '-'}'),
+                            if (loan['created_at'] != null) Text('${l10n.createdAt}: ${loan['created_at']}'),
                           ],
                         ),
                       );
@@ -956,26 +963,26 @@ class _SuppliersPageState extends State<SuppliersPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('بستن', style: TextStyle(color: Color(0xFF888888))),
+            child: Text(l10n.close, style: const TextStyle(color: Color(0xFF888888))),
           ),
         ],
       ),
     );
   }
 
-  void _showDeleteDialog(Map<String, dynamic> supplier) {
+  void _showDeleteDialog(Map<String, dynamic> supplier, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(
-          'حذف فروشنده',
-          style: TextStyle(
+        title: Text(
+          l10n.deleteSupplier,
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF1A1A2E),
           ),
         ),
         content: Text(
-          'آیا از حذف فروشنده "${supplier['name']}" مطمئن هستید؟',
+          '${l10n.deleteConfirmation} "${supplier['name']}"؟',
           style: const TextStyle(fontSize: 14),
         ),
         shape: RoundedRectangleBorder(
@@ -984,7 +991,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888))),
+            child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888))),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -993,16 +1000,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
 
               if (result != -1) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ فروشنده با موفقیت حذف شد'),
+                  SnackBar(
+                    content: Text(l10n.supplierDeletedSuccess),
                     backgroundColor: Colors.green,
                   ),
                 );
                 _loadSuppliers();
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('❌ خطا در حذف فروشنده'),
+                  SnackBar(
+                    content: Text(l10n.errorDeletingSupplier),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -1011,14 +1018,14 @@ class _SuppliersPageState extends State<SuppliersPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
-            child: const Text('حذف'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTextField(String label, IconData icon, TextEditingController controller) {
+  Widget _buildTextField(String label, IconData icon, TextEditingController controller, AppLocalizations l10n) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(

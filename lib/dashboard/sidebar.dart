@@ -1,6 +1,8 @@
-// sidebar.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'dart:io';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 
 class Sidebar extends StatelessWidget {
   final int selectedIndex;
@@ -19,6 +21,20 @@ class Sidebar extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 1200;
     final sidebarWidth = isSmallScreen ? 220.0 : 260.0;
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+
+    // Get dynamic user name based on language
+    String displayName = user['full_name'] ?? (languageProvider.isEnglish ? 'User' : 'کاربر');
+    
+    // If admin, show translated name
+    if (user['role'] == 'admin' || user['role'] == 'مدیر') {
+      displayName = languageProvider.isEnglish ? 'System Admin' : 'مدیر سیستم';
+    }
+
+    // Create updated user map with translated name
+    final updatedUser = Map<String, dynamic>.from(user);
+    updatedUser['full_name'] = displayName;
 
     return Container(
       width: sidebarWidth,
@@ -47,7 +63,7 @@ class Sidebar extends StatelessWidget {
       child: Column(
         children: [
           // User Profile Header
-          _buildUserProfile(isSmallScreen),
+          _buildUserProfile(isSmallScreen, l10n, updatedUser),
           
           // Menu Items
           Expanded(
@@ -57,131 +73,119 @@ class Sidebar extends StatelessWidget {
                 horizontal: isSmallScreen ? 8 : 12,
               ),
               children: [
-                // Dashboard
                 _buildMenuItem(
                   context: context,
                   index: 0,
                   icon: Icons.dashboard_outlined,
-                  title: 'داشبورد',
+                  title: l10n.dashboard,
                   isSelected: selectedIndex == 0,
                 ),
-                // Customers
-                // _buildMenuItem(
-                //   context: context,
-                //   index: 1,
-                //   icon: Icons.people_alt_outlined,
-                //   title: 'مدیریت مشتریان',
-                //   isSelected: selectedIndex == 1,
-                // ),
-                // Suppliers
                 _buildMenuItem(
                   context: context,
                   index: 2,
                   icon: Icons.local_shipping_outlined,
-                  title: 'مدیریت فروشندگان',
+                  title: l10n.suppliers,
                   isSelected: selectedIndex == 2,
                 ),
-                // Raw Materials
                 _buildMenuItem(
                   context: context,
                   index: 3,
                   icon: Icons.warehouse_outlined,
-                  title: 'مدیریت مواد خام',
+                  title: l10n.rawMaterials,
                   isSelected: selectedIndex == 3,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 4,
                   icon: Icons.trending_up_rounded,
-                  title: 'مدیریت فروشات',
+                  title: l10n.sales,
                   isSelected: selectedIndex == 4,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 5,
                   icon: Icons.assignment_return_outlined,
-                  title: 'برگشتی فروشات',
+                  title: l10n.backReturnedSales,
                   isSelected: selectedIndex == 5,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 6,
                   icon: Icons.design_services_outlined,
-                  title: 'مدیریت خدمات',
+                  title: l10n.services,
                   isSelected: selectedIndex == 6,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 7,
                   icon: Icons.account_balance_wallet_outlined,
-                  title: 'مصارف روزمره',
+                  title: l10n.dailyExpenses,
                   isSelected: selectedIndex == 7,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 8,
                   icon: Icons.delete_outline,
-                  title: 'مدیریت کسرات',
+                  title: l10n.wastes,
                   isSelected: selectedIndex == 8,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 9,
                   icon: Icons.people_alt_outlined,
-                  title: 'مشتریان و شرکت‌ها',
+                  title: l10n.customersCompanies,
                   isSelected: selectedIndex == 9,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 10,
                   icon: Icons.factory_rounded,
-                  title: 'مدیریت تولید',
+                  title: l10n.productionManagement,
                   isSelected: selectedIndex == 10,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 11,
                   icon: Icons.report_rounded,
-                  title: 'گزارشات',
+                  title: l10n.reports,
                   isSelected: selectedIndex == 11,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 12,
                   icon: Icons.account_balance_rounded,
-                  title: 'سرمایه',
+                  title: l10n.capital,
                   isSelected: selectedIndex == 12,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 13,
                   icon: Icons.currency_exchange_rounded,
-                  title: 'صرافی',
+                  title: l10n.sarafi,
                   isSelected: selectedIndex == 13,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 14,
                   icon: Icons.admin_panel_settings_outlined,
-                  title: 'مدیریت مدیران',
+                  title: l10n.admins,
                   isSelected: selectedIndex == 14,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 15,
                   icon: Icons.account_balance_wallet,
-                  title: 'مدیریت قرضه مشتریان و شرکت‌ها',
+                  title: l10n.loans,
                   isSelected: selectedIndex == 15,
                 ),
                 _buildMenuItem(
                   context: context,
                   index: 16,
                   icon: Icons.storefront,
-                  title: 'مدیریت قرضه فروشندگان',
+                  title: l10n.supplierLoans,
                   isSelected: selectedIndex == 16,
                 ),
                 
-                // Divider
                 Padding(
                   padding: EdgeInsets.symmetric(
                     vertical: isSmallScreen ? 8 : 12,
@@ -194,31 +198,26 @@ class Sidebar extends StatelessWidget {
                   ),
                 ),
                 
-                // Logout
                 _buildMenuItem(
                   context: context,
                   index: -1,
                   icon: Icons.logout,
-                  title: 'خروج از سیستم',
+                  title: l10n.logout,
                   isSelected: false,
                   isLogout: true,
                 ),
               ],
             ),
           ),
-
-          // Footer با استایل جدید
-          // _buildFooter(isSmallScreen),
         ],
       ),
     );
   }
 
-  // ======================== USER PROFILE HEADER ========================
-  Widget _buildUserProfile(bool isSmallScreen) {
-    final String fullName = user['full_name'] ?? 'کاربر';
-    final String username = user['username'] ?? '';
-    final String? profilePic = user['profile_pic'];
+  Widget _buildUserProfile(bool isSmallScreen, AppLocalizations l10n, Map<String, dynamic> userData) {
+    final String fullName = userData['full_name'] ?? (l10n.language == 'en' ? 'User' : 'کاربر');
+    final String username = userData['username'] ?? '';
+    final String? profilePic = userData['profile_pic'];
     final String firstLetter = fullName.isNotEmpty ? fullName[0] : '?';
 
     return Container(
@@ -233,7 +232,6 @@ class Sidebar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Profile Photo - Circle with nice border
           Container(
             width: isSmallScreen ? 70 : 85,
             height: isSmallScreen ? 70 : 85,
@@ -279,7 +277,6 @@ class Sidebar extends StatelessWidget {
           
           const SizedBox(height: 10),
           
-          // User Name
           Text(
             fullName,
             style: TextStyle(
@@ -302,7 +299,6 @@ class Sidebar extends StatelessWidget {
           
           const SizedBox(height: 2),
           
-          // Role Badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
             decoration: BoxDecoration(
@@ -323,7 +319,7 @@ class Sidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  'مدیر',
+                  l10n.admin,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: isSmallScreen ? 10 : 12,
@@ -336,7 +332,6 @@ class Sidebar extends StatelessWidget {
           
           const SizedBox(height: 4),
           
-          // Username (small)
           if (username.isNotEmpty)
             Text(
               '@$username',
@@ -352,7 +347,6 @@ class Sidebar extends StatelessWidget {
     );
   }
 
-  // ======================== Avatar Fallback ========================
   Widget _buildAvatarFallback(String letter, bool isSmallScreen) {
     return Container(
       color: const Color(0xFF8B0000),
@@ -369,7 +363,6 @@ class Sidebar extends StatelessWidget {
     );
   }
 
-  // ======================== Menu Item ========================
   Widget _buildMenuItem({
     required BuildContext context,
     required int index,
@@ -380,6 +373,7 @@ class Sidebar extends StatelessWidget {
   }) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 1200;
+    final l10n = AppLocalizations.of(context)!;
 
     return Material(
       color: Colors.transparent,
@@ -469,7 +463,7 @@ class Sidebar extends StatelessWidget {
             ),
             onTap: () {
               if (isLogout) {
-                _showLogoutDialog(context);
+                _showLogoutDialog(context, l10n);
               } else {
                 onItemSelected(index);
               }
@@ -482,48 +476,7 @@ class Sidebar extends StatelessWidget {
     );
   }
 
-  // ======================== فوتر جدید ========================
-  // Widget _buildFooter(bool isSmallScreen) {
-  //   return Container(
-  //     padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-  //     decoration: BoxDecoration(
-  //       border: Border(
-  //         top: BorderSide(
-  //           color: Colors.white.withOpacity(0.15),
-  //           width: 1.5,
-  //         ),
-  //       ),
-  //     ),
-  //     child: Row(
-  //       mainAxisAlignment: MainAxisAlignment.center,
-  //       children: [
-  //         Container(
-  //           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-  //           decoration: BoxDecoration(
-  //             color: Colors.white.withOpacity(0.08),
-  //             borderRadius: BorderRadius.circular(20),
-  //             border: Border.all(
-  //               color: Colors.white.withOpacity(0.1),
-  //               width: 1,
-  //             ),
-  //           ),
-  //           child: Text(
-  //             '●  نسخه ۲.۰  ●',
-  //             style: TextStyle(
-  //               color: Colors.white.withOpacity(0.6),
-  //               fontSize: isSmallScreen ? 10 : 11,
-  //               fontWeight: FontWeight.w500,
-  //               letterSpacing: 1.5,
-  //             ),
-  //           ),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
-
-  // ======================== Logout Dialog ========================
-  void _showLogoutDialog(BuildContext context) {
+  void _showLogoutDialog(BuildContext context, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -561,18 +514,18 @@ class Sidebar extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'خروج از سیستم',
-                style: TextStyle(
+              Text(
+                l10n.logoutTitle,
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF1A1A1A),
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'آیا مطمئن هستید که می‌خواهید خارج شوید؟',
-                style: TextStyle(
+              Text(
+                l10n.logoutMessage,
+                style: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
                   fontWeight: FontWeight.w400,
@@ -592,9 +545,9 @@ class Sidebar extends StatelessWidget {
                         ),
                         backgroundColor: Colors.grey.shade100,
                       ),
-                      child: const Text(
-                        'انصراف',
-                        style: TextStyle(
+                      child: Text(
+                        l10n.cancel,
+                        style: const TextStyle(
                           color: Colors.grey,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
@@ -618,9 +571,9 @@ class Sidebar extends StatelessWidget {
                         ),
                         elevation: 0,
                       ),
-                      child: const Text(
-                        'خروج',
-                        style: TextStyle(
+                      child: Text(
+                        l10n.confirm,
+                        style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
                         ),

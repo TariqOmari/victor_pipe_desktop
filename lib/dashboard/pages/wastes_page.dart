@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class WastesPage extends StatefulWidget {
   const WastesPage({super.key});
@@ -62,11 +65,13 @@ class _WastesPageState extends State<WastesPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showSnackbar('خطا در بارگذاری کسورات', Colors.red);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar(l10n.errorLoadingWastes, Colors.red);
     }
   }
 
   Future<void> _showWasteDialog({Map<String, dynamic>? waste}) async {
+    final l10n = AppLocalizations.of(context)!;
     final dateController = TextEditingController(text: waste?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate());
     final partyDetailsController = TextEditingController(text: waste?['party_details']?.toString() ?? '');
     final wasteTypeController = TextEditingController(text: waste?['waste_type']?.toString() ?? '');
@@ -97,7 +102,7 @@ class _WastesPageState extends State<WastesPage> {
             textDirection: TextDirection.rtl,
             child: AlertDialog(
               title: Text(
-                waste == null ? 'ثبت کسورات جدید' : 'ویرایش کسورات',
+                waste == null ? l10n.addWasteRecord : l10n.editWasteRecord,
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
               ),
               content: SizedBox(
@@ -108,9 +113,10 @@ class _WastesPageState extends State<WastesPage> {
                     children: [
                       _buildTextField(
                         controller: dateController,
-                        label: 'تاریخ',
+                        label: l10n.date,
                         icon: Icons.calendar_today_outlined,
                         readOnly: true,
+                        l10n: l10n,
                         onTap: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -127,41 +133,41 @@ class _WastesPageState extends State<WastesPage> {
                         },
                       ),
                       const SizedBox(height: 12),
-                      _buildTextField(controller: partyDetailsController, label: 'مشخصات طرف / شرکت', icon: Icons.business_outlined),
+                      _buildTextField(controller: partyDetailsController, label: l10n.partyDetailsLabel, icon: Icons.business_outlined, l10n: l10n),
                       const SizedBox(height: 12),
-                      _buildTextField(controller: wasteTypeController, label: 'نوع کسورات', icon: Icons.category_outlined),
+                      _buildTextField(controller: wasteTypeController, label: l10n.wasteTypeLabel, icon: Icons.category_outlined, l10n: l10n),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: weightController, label: 'وزن', icon: Icons.scale_outlined, keyboardType: TextInputType.number)),
+                          Expanded(child: _buildTextField(controller: weightController, label: l10n.weightKgLabel, icon: Icons.scale_outlined, keyboardType: TextInputType.number, l10n: l10n)),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: quantityController, label: 'تعداد', icon: Icons.numbers_outlined, keyboardType: TextInputType.number)),
+                          Expanded(child: _buildTextField(controller: quantityController, label: l10n.quantityAmountLabel, icon: Icons.numbers_outlined, keyboardType: TextInputType.number, l10n: l10n)),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: valueController, label: 'ارزش مالی', icon: Icons.attach_money_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                          Expanded(child: _buildTextField(controller: valueController, label: l10n.wasteValueLabel, icon: Icons.attach_money_outlined, keyboardType: TextInputType.number, l10n: l10n, onChanged: (_) => setDialogState(updateTotals))),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: priceRateController, label: 'نرخ اسعار (از سیستم یا ورود دستی)', icon: Icons.currency_exchange, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals))),
+                          Expanded(child: _buildTextField(controller: priceRateController, label: l10n.exchangeRate, icon: Icons.currency_exchange, keyboardType: TextInputType.number, l10n: l10n, onChanged: (_) => setDialogState(updateTotals))),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: afnEquivalentController, label: selectedCurrency == 'AFN' ? 'معادل به دالر' : 'معادل به افغانی', icon: Icons.currency_exchange, readOnly: true)),
+                          Expanded(child: _buildTextField(controller: afnEquivalentController, label: selectedCurrency == 'AFN' ? l10n.usdEquivalentLabel : l10n.afnEquivalentLabel, icon: Icons.currency_exchange, readOnly: true, l10n: l10n)),
                           const SizedBox(width: 12),
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               value: selectedCurrency,
-                              decoration: const InputDecoration(
-                                labelText: 'واحد پول',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.request_quote_outlined),
+                              decoration: InputDecoration(
+                                labelText: l10n.currency,
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.request_quote_outlined),
                               ),
                               items: const [
-                                DropdownMenuItem(value: 'USD', child: Text('دلار')),
-                                DropdownMenuItem(value: 'AFN', child: Text('افغانی')),
+                                DropdownMenuItem(value: 'USD', child: Text('USD')),
+                                DropdownMenuItem(value: 'AFN', child: Text('AFN')),
                               ],
                               onChanged: (value) {
                                 if (value == null) return;
@@ -175,13 +181,13 @@ class _WastesPageState extends State<WastesPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _buildTextField(controller: descriptionController, label: 'تفصیل', icon: Icons.description_outlined, maxLines: 3),
+                      _buildTextField(controller: descriptionController, label: l10n.description, icon: Icons.description_outlined, maxLines: 3, l10n: l10n),
                     ],
                   ),
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
                 ElevatedButton.icon(
                   onPressed: () async {
                     final payload = {
@@ -208,14 +214,14 @@ class _WastesPageState extends State<WastesPage> {
                       if (!mounted) return;
                       Navigator.pop(context);
                       await _loadWastes();
-                      _showSnackbar(waste == null ? 'کسورات با موفقیت ثبت شد' : 'کسورات با موفقیت ویرایش شد', Colors.green);
+                      _showSnackbar(waste == null ? l10n.wasteAddedSuccess : l10n.wasteUpdatedSuccess, Colors.green);
                     } catch (e) {
                       if (!mounted) return;
-                      _showSnackbar('خطا در ذخیره‌سازی کسورات', Colors.red);
+                      _showSnackbar(l10n.errorSavingWaste, Colors.red);
                     }
                   },
                   icon: const Icon(Icons.save_outlined),
-                  label: Text(waste == null ? 'ثبت کسورات' : 'ذخیره تغییرات'),
+                  label: Text(waste == null ? l10n.addWasteRecord : l10n.saveChanges),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCB001D),
                     foregroundColor: Colors.white,
@@ -230,14 +236,15 @@ class _WastesPageState extends State<WastesPage> {
   }
 
   Future<void> _deleteWaste(Map<String, dynamic> waste) async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('حذف کسورات'),
-        content: Text('آیا از حذف این مورد مطمئن هستید؟'),
+        title: Text(l10n.deleteWasteRecord),
+        content: Text(l10n.deleteConfirmation),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700), child: const Text('حذف')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700), child: Text(l10n.delete)),
         ],
       ),
     );
@@ -247,27 +254,26 @@ class _WastesPageState extends State<WastesPage> {
     try {
       await _db.deleteWasteRecord(waste['id']);
       await _loadWastes();
-      _showSnackbar('مورد حذف شد', Colors.orange);
+      _showSnackbar(l10n.wasteDeletedSuccess, Colors.orange);
     } catch (e) {
-      _showSnackbar('خطا در حذف مورد', Colors.red);
+      _showSnackbar(l10n.errorDeletingWaste, Colors.red);
     }
   }
-
-  // ==================== PDF & PRINT FUNCTIONS ====================
 
   Future<void> _printWasteInvoice(Map<String, dynamic> waste) async {
+    final l10n = AppLocalizations.of(context)!;
     try {
-      final pdf = await _generateWastePDF(waste);
+      final pdf = await _generateWastePDF(waste, l10n);
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf,
-        name: 'فاکتور_کسورات_${waste['id']}',
+        name: '${l10n.wasteInvoice}_${waste['id']}',
       );
     } catch (e) {
-      _showSnackbar('خطا در چاپ فاکتور: $e', Colors.red);
+      _showSnackbar('${l10n.errorPrintingWasteInvoice}: $e', Colors.red);
     }
   }
 
-  Future<Uint8List> _generateWastePDF(Map<String, dynamic> waste) async {
+  Future<Uint8List> _generateWastePDF(Map<String, dynamic> waste, AppLocalizations l10n) async {
     late final pw.Font ttf;
     try {
       final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
@@ -288,7 +294,6 @@ class _WastesPageState extends State<WastesPage> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Header
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                   decoration: pw.BoxDecoration(
@@ -300,9 +305,9 @@ class _WastesPageState extends State<WastesPage> {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                        pw.Text('ویکتور پایپ صنعت', style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+                        pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
                         pw.SizedBox(height: 4),
-                        pw.Text('سامانه مدیریت یکپارچه', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
+                        pw.Text(l10n.integratedSystem, style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
                       ]),
                       pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                         pw.Container(
@@ -311,16 +316,14 @@ class _WastesPageState extends State<WastesPage> {
                           child: pw.Text('Waste Invoice', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
                         ),
                         pw.SizedBox(height: 6),
-                        pw.Text('شماره: ${waste['invoice_number'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)),
-                        pw.Text('تاریخ (شمسی): ${waste['date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text('${l10n.invoiceNumber}: ${waste['invoice_number'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('${l10n.persianDate}: ${waste['date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                         pw.Text('Date (EN): ${waste['date_en'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                       ]),
                     ],
                   ),
                 ),
                 pw.SizedBox(height: 12),
-
-                // Party Info
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
@@ -328,21 +331,19 @@ class _WastesPageState extends State<WastesPage> {
                     borderRadius: pw.BorderRadius.circular(8),
                   ),
                   child: pw.Row(children: [
-                    pw.Expanded(child: pw.Text('طرف / شرکت: ${waste['party_details'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('نوع کسورات: ${waste['waste_type'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('${l10n.partyDetailsLabel}: ${waste['party_details'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    pw.Expanded(child: pw.Text('${l10n.wasteTypeLabel}: ${waste['waste_type'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
                   ]),
                 ),
                 pw.SizedBox(height: 16),
-
-                // Waste Details Table
                 pw.Table.fromTextArray(
-                  headers: ['شرح', 'مقدار'],
+                  headers: [l10n.description, 'مبلغ'],
                   data: [
-                    ['وزن', '${_formatNumber(waste['weight'])} کیلوگرم'],
-                    ['تعداد', _formatNumber(waste['quantity'])],
-                    ['ارزش مالی', '${_formatNumber(waste['value'])} ${waste['currency'] ?? 'USD'}'],
-                    ['نرخ ارز', _formatNumber(waste['exchange_rate'])],
-                    ['معادل افغانی', '${_formatNumber(waste['afn_equivalent'])} AFN'],
+                    [l10n.weightKgLabel, '${_formatNumber(waste['weight'])} ${l10n.kgUnit}'],
+                    [l10n.quantityAmountLabel, _formatNumber(waste['quantity'])],
+                    [l10n.wasteValueLabel, '${_formatNumber(waste['value'])} ${waste['currency'] ?? 'USD'}'],
+                    [l10n.exchangeRate, _formatNumber(waste['exchange_rate'])],
+                    [l10n.afnEquivalentLabel, '${_formatNumber(waste['afn_equivalent'])} AFN'],
                   ],
                   headerStyle: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                   headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
@@ -354,8 +355,6 @@ class _WastesPageState extends State<WastesPage> {
                   ),
                 ),
                 pw.SizedBox(height: 16),
-
-                // Description
                 if (waste['description'] != null && waste['description'].toString().isNotEmpty)
                   pw.Container(
                     padding: const pw.EdgeInsets.all(10),
@@ -364,18 +363,16 @@ class _WastesPageState extends State<WastesPage> {
                       borderRadius: pw.BorderRadius.circular(8),
                       border: pw.Border.all(color: PdfColors.grey300),
                     ),
-                    child: pw.Text('تفصیل: ${waste['description']}', style: pw.TextStyle(font: ttf, fontSize: 10)),
+                    child: pw.Text('${l10n.description}: ${waste['description']}', style: pw.TextStyle(font: ttf, fontSize: 10)),
                   ),
                 pw.Spacer(),
-
-                // Footer
                 pw.Divider(color: PdfColors.grey300, thickness: 0.5),
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text('امضا: ______________________', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                  pw.Text('تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                 ]),
                 pw.Center(
-                  child: pw.Text('ویکتور پایپ صنعت - سامانه مدیریت یکپارچه', style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500)),
+                  child: pw.Text(l10n.footerText, style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500)),
                 ),
               ],
             ),
@@ -387,9 +384,7 @@ class _WastesPageState extends State<WastesPage> {
     return await pdf.save();
   }
 
-  // ==================== UI BUILDERS ====================
-
-  Widget _buildHeader() {
+  Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -405,11 +400,11 @@ class _WastesPageState extends State<WastesPage> {
               child: const Icon(Icons.delete_outline, color: Color(0xFFCB001D), size: 28),
             ),
             const SizedBox(width: 12),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('مدیریت کسورات', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-                Text('ثبت، ذخیره و مدیریت کسورات و اتلافات', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                Text(l10n.wastesManagement, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+                Text(l10n.wastesManagementSubtitle, style: const TextStyle(fontSize: 13, color: Colors.grey)),
               ],
             ),
           ],
@@ -417,7 +412,7 @@ class _WastesPageState extends State<WastesPage> {
         ElevatedButton.icon(
           onPressed: () => _showWasteDialog(),
           icon: const Icon(Icons.add_circle_outline),
-          label: const Text('ثبت کسورات جدید'),
+          label: Text(l10n.addWasteRecord),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFCB001D),
             foregroundColor: Colors.white,
@@ -428,18 +423,18 @@ class _WastesPageState extends State<WastesPage> {
     );
   }
 
-  Widget _buildQuickStats() {
+  Widget _buildQuickStats(AppLocalizations l10n) {
     final totalWastes = _wastes.length;
     final totalValue = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['value']?.toString() ?? '0') ?? 0));
     final totalAfn = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0));
     
     return Row(
       children: [
-        _buildStatCard('تعداد کسورات', totalWastes.toString(), Icons.delete_outline, const Color(0xFFCB001D)),
+        _buildStatCard(l10n.totalWastesCount, totalWastes.toString(), Icons.delete_outline, const Color(0xFFCB001D)),
         const SizedBox(width: 12),
-        _buildStatCard('جمع ارزش مالی', _formatNumber(totalValue), Icons.attach_money_outlined, Colors.blue.shade700),
+        _buildStatCard(l10n.totalWasteValue, _formatNumber(totalValue), Icons.attach_money_outlined, Colors.blue.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('جمع معادل افغانی', _formatNumber(totalAfn), Icons.currency_exchange, Colors.green.shade700),
+        _buildStatCard(l10n.totalAfnEquivalentWaste, _formatNumber(totalAfn), Icons.currency_exchange, Colors.green.shade700),
       ],
     );
   }
@@ -466,8 +461,8 @@ class _WastesPageState extends State<WastesPage> {
     );
   }
 
-  Widget _buildFilterAndSearch() {
-    final filters = ['همه', 'کسورات'];
+  Widget _buildFilterAndSearch(AppLocalizations l10n) {
+    final filters = [l10n.all, l10n.wastesFilter];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -481,7 +476,7 @@ class _WastesPageState extends State<WastesPage> {
             controller: _searchController,
             onChanged: (value) => setState(() => _searchQuery = value),
             decoration: InputDecoration(
-              hintText: 'جستجو بر اساس طرف، نوع کسورات یا شماره...',
+              hintText: l10n.searchWastes,
               prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
@@ -505,7 +500,7 @@ class _WastesPageState extends State<WastesPage> {
     );
   }
 
-  Widget _buildWastesTable(List<Map<String, dynamic>> data) {
+  Widget _buildWastesTable(List<Map<String, dynamic>> data, AppLocalizations l10n) {
     final totalPages = (data.length / _rowsPerPage).ceil();
     final start = (_currentPage * _rowsPerPage).clamp(0, data.length);
     final paged = data.skip(start).take(_rowsPerPage).toList();
@@ -519,7 +514,6 @@ class _WastesPageState extends State<WastesPage> {
       ),
       child: Column(
         children: [
-          // Header Row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -551,26 +545,25 @@ class _WastesPageState extends State<WastesPage> {
                       },
                     ),
                   ),
-                  _buildHeaderCell('شماره', 70),
-                  _buildHeaderCell('تاریخ', 100),
-                  _buildHeaderCell('طرف / شرکت', 130),
-                  _buildHeaderCell('نوع کسورات', 120),
-                  _buildHeaderCell('وزن', 80),
-                  _buildHeaderCell('تعداد', 80),
-                  _buildHeaderCell('ارزش مالی', 90),
-                  _buildHeaderCell('ارز', 60),
-                  _buildHeaderCell('نرخ ارز', 80),
-                  _buildHeaderCell('معادل افغانی', 100),
-                  _buildHeaderCell('تفصیل', 150),
-                  _buildHeaderCell('عملیات', 140),
+                  _buildHeaderCell(l10n.invoiceNumberLabel, 70),
+                  _buildHeaderCell(l10n.date, 100),
+                  _buildHeaderCell(l10n.partyDetailsLabel, 130),
+                  _buildHeaderCell(l10n.wasteTypeLabel, 120),
+                  _buildHeaderCell(l10n.weightKgLabel, 80),
+                  _buildHeaderCell(l10n.quantityAmountLabel, 80),
+                  _buildHeaderCell(l10n.wasteValueLabel, 90),
+                  _buildHeaderCell(l10n.currency, 60),
+                  _buildHeaderCell(l10n.exchangeRate, 80),
+                  _buildHeaderCell(l10n.afnEquivalentLabel, 100),
+                  _buildHeaderCell(l10n.description, 150),
+                  _buildHeaderCell(l10n.actions, 140),
                 ],
               ),
             ),
           ),
-          // Data Rows
           Expanded(
             child: paged.isEmpty
-                ? const Center(child: Text('هیچ موردی ثبت نشده است', style: TextStyle(color: Colors.grey)))
+                ? Center(child: Text(l10n.noWastesFound, style: const TextStyle(color: Colors.grey)))
                 : SingleChildScrollView(
                     scrollDirection: Axis.vertical,
                     child: SingleChildScrollView(
@@ -651,7 +644,6 @@ class _WastesPageState extends State<WastesPage> {
                     ),
                   ),
           ),
-          // Pagination
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -661,7 +653,7 @@ class _WastesPageState extends State<WastesPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(children: [
-                  Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}'),
+                  Text('${l10n.page} ${_currentPage + 1} ${l10n.pageOf} ${totalPages == 0 ? 1 : totalPages}'),
                   const SizedBox(width: 12),
                   IconButton(
                     onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
@@ -691,18 +683,16 @@ class _WastesPageState extends State<WastesPage> {
                   ),
                 ]),
                 Row(children: [
-                  Text('انتخاب شده: ${_selectedWastes.length}'),
+                  Text('${l10n.selected}: ${_selectedWastes.length}'),
                   const SizedBox(width: 12),
                   ElevatedButton(
-                    onPressed: _selectedWastes.isEmpty ? null : () {
-                      // Bulk actions placeholder
-                    },
+                    onPressed: _selectedWastes.isEmpty ? null : () {},
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFCB001D),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
-                    child: const Text('عملیات جمعی'),
+                    child: Text(l10n.bulkActions),
                   ),
                 ]),
               ],
@@ -713,7 +703,6 @@ class _WastesPageState extends State<WastesPage> {
     );
   }
 
-  // Helper widgets for table
   Widget _buildHeaderCell(String text, double width) {
     return SizedBox(
       width: width,
@@ -752,6 +741,7 @@ class _WastesPageState extends State<WastesPage> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    required AppLocalizations l10n,
     TextInputType keyboardType = TextInputType.text,
     bool readOnly = false,
     int maxLines = 1,
@@ -797,6 +787,10 @@ class _WastesPageState extends State<WastesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     final filteredData = _wastes.where((waste) {
       final search = _searchQuery.toLowerCase();
       final matchesSearch = (waste['party_details'] ?? '').toString().toLowerCase().contains(search) ||
@@ -806,21 +800,24 @@ class _WastesPageState extends State<WastesPage> {
       return matchesSearch;
     }).toList();
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
-            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _buildHeader(),
-                const SizedBox(height: 20),
-                _buildQuickStats(),
-                const SizedBox(height: 20),
-                _buildFilterAndSearch(),
-                const SizedBox(height: 16),
-                Expanded(child: _buildWastesTable(filteredData)),
-              ]),
+    return Directionality(
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _buildHeader(l10n),
+                  const SizedBox(height: 20),
+                  _buildQuickStats(l10n),
+                  const SizedBox(height: 20),
+                  _buildFilterAndSearch(l10n),
+                  const SizedBox(height: 16),
+                  Expanded(child: _buildWastesTable(filteredData, l10n)),
+                ]),
+        ),
       ),
     );
   }

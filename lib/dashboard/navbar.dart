@@ -1,5 +1,9 @@
-// navbar.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ← ADD THIS
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
+import 'dashboard_screen.dart'; // ← ADD THIS IMPORT
 
 class Navbar extends StatelessWidget {
   final Map<String, dynamic> user;
@@ -12,9 +16,11 @@ class Navbar extends StatelessWidget {
     final isMobile = screenWidth < 600;
     final isTablet = screenWidth >= 600 && screenWidth < 1200;
     final isDesktop = screenWidth >= 1200;
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
 
     return Container(
-      height: isMobile ? 80.0 : 96.0, // ← INCREASED HEIGHT TO FIT BIG LOGO
+      height: isMobile ? 80.0 : 96.0,
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 16.0 : (isTablet ? 24.0 : 32.0),
         vertical: 0.0,
@@ -43,24 +49,29 @@ class Navbar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // LEFT SIDE - LOGO ONLY (CLEAN)
+          // LEFT - LOGO
           _buildLogo(isMobile, isTablet, isDesktop),
           
-          // RIGHT SIDE - NOTIFICATION BELL ONLY
-          _buildNotificationBell(context, isMobile),
+          // RIGHT - LANGUAGE SWITCHER + NOTIFICATIONS
+          Row(
+            children: [
+              // Language Switcher
+              _buildLanguageSwitcher(context, isMobile, languageProvider, l10n),
+              const SizedBox(width: 8),
+              // Notification Bell
+              _buildNotificationBell(context, isMobile, l10n),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  // ======================== CLEAN LOGO ========================
   Widget _buildLogo(bool isMobile, bool isTablet, bool isDesktop) {
-    // ← MASSIVE LOGO SIZE
     final double logoSize = isMobile ? 80.0 : (isTablet ? 100.0 : 120.0);
     
     return Row(
       children: [
-        // Logo - Clean without background
         Container(
           width: logoSize,
           height: logoSize,
@@ -89,21 +100,118 @@ class Navbar extends StatelessWidget {
             ),
           ),
         ),
-        
         SizedBox(width: isMobile ? 14.0 : 20.0),
-        
-        // Company Name
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-         
-        ),
       ],
     );
   }
 
-  // ======================== NOTIFICATION BELL ========================
-  Widget _buildNotificationBell(BuildContext context, bool isMobile) {
+  Widget _buildLanguageSwitcher(
+    BuildContext context,
+    bool isMobile,
+    LanguageProvider languageProvider,
+    AppLocalizations l10n,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: PopupMenuButton<String>(
+        onSelected: (value) {
+          languageProvider.setLanguage(value);
+          // Save preference
+          _saveLanguagePreference(value);
+          
+          // Rebuild the entire app with new direction
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(user: user),
+            ),
+          );
+        },
+        offset: const Offset(0, 50),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 4,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Colors.grey.shade200,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.language,
+                color: Colors.grey.shade700,
+                size: isMobile ? 18 : 22,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                languageProvider.isEnglish ? 'EN' : 'FA',
+                style: TextStyle(
+                  color: Colors.grey.shade800,
+                  fontWeight: FontWeight.w600,
+                  fontSize: isMobile ? 12 : 14,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.arrow_drop_down,
+                color: Colors.grey.shade600,
+                size: isMobile ? 18 : 22,
+              ),
+            ],
+          ),
+        ),
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'fa',
+            child: Row(
+              children: [
+                const Icon(Icons.flag, color: Colors.green),
+                const SizedBox(width: 12),
+                Text(l10n.persian),
+                if (!languageProvider.isEnglish) ...[
+                  const Spacer(),
+                  const Icon(Icons.check, color: Color(0xFFCB001D), size: 18),
+                ],
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'en',
+            child: Row(
+              children: [
+                const Icon(Icons.flag, color: Colors.blue),
+                const SizedBox(width: 12),
+                Text(l10n.english),
+                if (languageProvider.isEnglish) ...[
+                  const Spacer(),
+                  const Icon(Icons.check, color: Color(0xFFCB001D), size: 18),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _saveLanguagePreference(String languageCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language', languageCode);
+  }
+
+  Widget _buildNotificationBell(
+    BuildContext context,
+    bool isMobile,
+    AppLocalizations l10n,
+  ) {
     return Container(
       padding: const EdgeInsets.all(4.0),
       child: Stack(
@@ -111,11 +219,11 @@ class Navbar extends StatelessWidget {
           IconButton(
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🔔 هیچ اعلان جدیدی وجود ندارد'),
-                  duration: Duration(seconds: 2),
+                SnackBar(
+                  content: Text(l10n.noNotifications),
+                  duration: const Duration(seconds: 2),
                   behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(Radius.circular(10)),
                   ),
                 ),
@@ -129,7 +237,6 @@ class Navbar extends StatelessWidget {
             splashRadius: 20,
             padding: const EdgeInsets.all(8.0),
           ),
-          // Notification Badge
           Positioned(
             right: 2,
             top: 2,

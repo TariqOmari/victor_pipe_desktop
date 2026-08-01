@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class RawMaterialsPage extends StatefulWidget {
   const RawMaterialsPage({super.key});
@@ -29,6 +32,16 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
   // Class level variable for English date
   String? selectedEnglishDate;
+
+  // Unit translation helper
+  String _translateUnit(String unit, AppLocalizations l10n) {
+    if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') return l10n.kgUnit;
+    if (unit == 'تن' || unit == 'ton' || unit == 'Ton') return l10n.tonUnit;
+    if (unit == 'متر' || unit == 'm' || unit == 'M') return l10n.meterUnit;
+    if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return l10n.pcsUnit;
+    if (unit == 'لیتر' || unit == 'l' || unit == 'L') return l10n.literUnit;
+    return unit;
+  }
 
   @override
   void initState() {
@@ -74,26 +87,28 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
   // ============ CUT FROM UNIT TOTAL ============
   Future<void> _showCutUnitDialog(String unit, double totalWeight) async {
+    final l10n = AppLocalizations.of(context)!;
     final weightController = TextEditingController();
-    String selectedType = 'تخلیه شده';
+    String selectedType = l10n.discharged;
+    final translatedUnit = _translateUnit(unit, l10n);
 
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text('کسر از موجودی ${unit == 'نامشخص' ? '' : '(' + unit + ')'}'),
+          title: Text('${l10n.cutFromStock} ${unit == 'نامشخص' ? '' : '(' + translatedUnit + ')'}'),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'مجموع موجودی این واحد:',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
+              Text(
+                l10n.totalStockForUnit,
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
               ),
               const SizedBox(height: 4),
               Text(
-                '$totalWeight $unit',
+                '$totalWeight $translatedUnit',
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -102,14 +117,14 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'نوع کسر',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.cutType,
+                  border: const OutlineInputBorder(),
                 ),
                 value: selectedType,
-                items: const [
-                  DropdownMenuItem(value: 'تخلیه شده', child: Text('تخلیه شده')),
-                  DropdownMenuItem(value: 'قطع شده', child: Text('قطع شده')),
+                items: [
+                  DropdownMenuItem(value: l10n.discharged, child: Text(l10n.discharged)),
+                  DropdownMenuItem(value: l10n.cut, child: Text(l10n.cut)),
                 ],
                 onChanged: (value) {
                   if (value != null) selectedType = value;
@@ -118,9 +133,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               const SizedBox(height: 8),
               TextField(
                 controller: weightController,
-                decoration: const InputDecoration(
-                  labelText: 'مقدار کسر',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.cutAmount,
+                  border: const OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
               ),
@@ -129,21 +144,21 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+              child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               onPressed: () async {
                 final weight = double.tryParse(weightController.text) ?? 0;
                 if (weight <= 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('مقدار معتبر وارد کنید'), backgroundColor: Colors.red),
+                    SnackBar(content: Text(l10n.enterValidAmount), backgroundColor: Colors.red),
                   );
                   return;
                 }
 
                 if (weight > totalWeight) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('موجودی کافی نیست!'), backgroundColor: Colors.red),
+                    SnackBar(content: Text(l10n.insufficientStock), backgroundColor: Colors.red),
                   );
                   return;
                 }
@@ -173,7 +188,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('✅ $weight $unit ${selectedType == 'تخلیه شده' ? 'تخلیه' : 'قطع'} شد از مجموع ${itemsToUpdate.length} آیتم'),
+                    content: Text('✅ $weight $translatedUnit ${selectedType == l10n.discharged ? l10n.discharged : l10n.cut} ${l10n.from} ${itemsToUpdate.length} ${l10n.items}'),
                     backgroundColor: Colors.green,
                   ),
                 );
@@ -182,7 +197,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFCB001D),
               ),
-              child: const Text('تایید'),
+              child: Text(l10n.confirm),
             ),
           ],
         ),
@@ -191,7 +206,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
   }
 
   // ============ BUILD UNIT CARDS (TAB 2 - STOCK OVERVIEW) ============
-  List<Widget> _buildUnitStockCards() {
+  List<Widget> _buildUnitStockCards(AppLocalizations l10n) {
     Map<String, double> unitTotals = _getUnitTotals();
 
     if (unitTotals.isEmpty) {
@@ -206,9 +221,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               width: 1,
             ),
           ),
-          child: const Text(
-            'هیچ ماده خامی در انبار نیست',
-            style: TextStyle(
+          child: Text(
+            l10n.noRawMaterialsInStock,
+            style: const TextStyle(
               color: Color(0xFF888888),
               fontSize: 13,
             ),
@@ -221,6 +236,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     unitTotals.forEach((unit, total) {
       // Get items count for this unit
       int itemCount = materials.where((m) => m['unit'] == unit).length;
+      final translatedUnit = _translateUnit(unit, l10n);
       
       cards.add(
         Container(
@@ -262,7 +278,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      unit == 'نامشخص' ? 'بدون واحد' : unit,
+                      unit == 'نامشخص' ? l10n.noUnit : translatedUnit,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -276,9 +292,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'مجموع موجودی:',
-                    style: TextStyle(
+                  Text(
+                    l10n.totalStock,
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF888888),
                     ),
@@ -298,7 +314,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'تعداد آیتم‌ها: $itemCount',
+                    '${l10n.itemsCount}: $itemCount',
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF888888),
@@ -319,12 +335,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.cut, color: Colors.orange, size: 14),
-                          SizedBox(width: 4),
+                        children: [
+                          const Icon(Icons.cut, color: Colors.orange, size: 14),
+                          const SizedBox(width: 4),
                           Text(
-                            'کسر',
-                            style: TextStyle(
+                            l10n.cut,
+                            style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                               color: Colors.orange,
@@ -346,7 +362,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
   }
 
   // ============ BUILD UNIT SUMMARY CARDS (TAB 1) ============
-  List<Widget> _buildUnitSummaryCards() {
+  List<Widget> _buildUnitSummaryCards(AppLocalizations l10n) {
     Map<String, Map<String, double>> unitTotals = {};
     
     for (var material in materials) {
@@ -373,9 +389,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               width: 1,
             ),
           ),
-          child: const Text(
-            'هیچ ماده خامی در انبار نیست',
-            style: TextStyle(
+          child: Text(
+            l10n.noRawMaterialsInStock,
+            style: const TextStyle(
               color: Color(0xFF888888),
               fontSize: 13,
             ),
@@ -386,6 +402,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
     List<Widget> cards = [];
     unitTotals.forEach((unit, totals) {
+      final translatedUnit = _translateUnit(unit, l10n);
       cards.add(
         Container(
           width: 170,
@@ -425,7 +442,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    unit,
+                    unit == 'نامشخص' ? l10n.noUnit : translatedUnit,
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -438,9 +455,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'خالص:',
-                    style: TextStyle(
+                  Text(
+                    l10n.netWeight,
+                    style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF888888),
                     ),
@@ -459,9 +476,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'ناخالص:',
-                    style: TextStyle(
+                  Text(
+                    l10n.grossWeight,
+                    style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF888888),
                     ),
@@ -485,8 +502,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     return cards;
   }
 
-  // ============ BUILD STOCK TABLE (Tab 2) - ONLY CARDS, NO DETAILS TABLE ============
-  Widget _buildStockTable() {
+  // ============ BUILD STOCK TABLE (Tab 2) ============
+  Widget _buildStockTable(AppLocalizations l10n) {
     if (isLoading) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
     }
@@ -494,13 +511,13 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     Map<String, double> unitTotals = _getUnitTotals();
 
     if (materials.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey),
-            SizedBox(height: 12),
-            Text('هیچ ماده خامی در انبار نیست', style: TextStyle(fontSize: 14, color: Colors.grey)),
+            const Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(l10n.noRawMaterialsInStock, style: const TextStyle(fontSize: 14, color: Colors.grey)),
           ],
         ),
       );
@@ -511,16 +528,16 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'موجودی بر اساس واحد:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+          Text(
+            l10n.stockByUnit,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
           ),
           const SizedBox(height: 12),
           // Stock Cards - Responsive grid
           Wrap(
             spacing: 12,
             runSpacing: 12,
-            children: _buildUnitStockCards(),
+            children: _buildUnitStockCards(l10n),
           ),
         ],
       ),
@@ -528,19 +545,19 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
   }
 
   // ============ BUILD MAIN TABLE (Tab 1) ============
-  Widget _buildMainTable() {
+  Widget _buildMainTable(AppLocalizations l10n) {
     if (isLoading) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
     }
 
     if (materials.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.warehouse_outlined, size: 48, color: Colors.grey),
-            SizedBox(height: 12),
-            Text('هیچ ماده خامی یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
+            const Icon(Icons.warehouse_outlined, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(l10n.noRawMaterialsFound, style: const TextStyle(fontSize: 14, color: Colors.grey)),
           ],
         ),
       );
@@ -571,33 +588,35 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                         children: [
                           const SizedBox(width: 40),
                           const SizedBox(width: 6),
-                          _buildHeaderCell('شماره', 60),
-                          _buildHeaderCell('نام مواد', 90),
-                          _buildHeaderCell('نام فروشنده', 120),
-                          _buildHeaderCell('تلفن فروشنده', 90),
-                          _buildHeaderCell('آدرس فروشنده', 120),
-                          _buildHeaderCell('تاریخ', 100),
-                          _buildHeaderCell('واحد', 60),
-                          _buildHeaderCell('وزن خالص', 65),
-                          _buildHeaderCell('وزن ناخالص', 65),
-                          _buildHeaderCell('قیمت واحد', 65),
-                          _buildHeaderCell('قیمت پایه فروشنده', 80),
-                          _buildHeaderCell('پرداخت اولیه', 80),
-                          _buildHeaderCell('روش پرداخت', 80),
-                          _buildHeaderCell('محصول', 60),
-                          _buildHeaderCell('کمیشن', 60),
-                          _buildHeaderCell('کرایه', 60),
-                          _buildHeaderCell('متفرقه', 60),
-                          _buildHeaderCell('غرفه داری', 60),
-                          _buildHeaderCell('بارچلانی', 60),
-                          _buildHeaderCell('نوع خرید', 70),
-                          _buildHeaderCell('قیمت نهایی', 80),
-                          _buildHeaderCell('عملیات', 80),
+                          _buildHeaderCell(l10n.id, 60),
+                          _buildHeaderCell(l10n.materialName, 90),
+                          _buildHeaderCell(l10n.supplierName, 120),
+                          _buildHeaderCell(l10n.supplierPhone, 90),
+                          _buildHeaderCell(l10n.supplierAddress, 120),
+                          _buildHeaderCell(l10n.date, 100),
+                          _buildHeaderCell(l10n.unit, 60),
+                          _buildHeaderCell(l10n.netWeight, 65),
+                          _buildHeaderCell(l10n.grossWeight, 65),
+                          _buildHeaderCell(l10n.unitPrice, 65),
+                          _buildHeaderCell(l10n.sellerBasePrice, 80),
+                          _buildHeaderCell(l10n.initialPayment, 80),
+                          _buildHeaderCell(l10n.paymentMethod, 80),
+                          _buildHeaderCell(l10n.product, 60),
+                          _buildHeaderCell(l10n.commission, 60),
+                          _buildHeaderCell(l10n.transferCost, 60),
+                          _buildHeaderCell(l10n.miscellaneous, 60),
+                          _buildHeaderCell(l10n.ghurfedari, 60),
+                          _buildHeaderCell(l10n.barchalani, 60),
+                          _buildHeaderCell(l10n.purchaseType, 70),
+                          _buildHeaderCell(l10n.finalPrice, 80),
+                          _buildHeaderCell(l10n.actions, 80),
                         ],
                       ),
                     ),
                     ..._paginatedMaterials.map((material) {
                       final isSelected = _selectedIds.contains(material['id'] as int);
+                      final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
+                      
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
@@ -649,18 +668,18 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                                 ],
                               ),
                             ),
-                            _buildDataCell(material['unit'] ?? '-', 60),
+                            _buildDataCell(translatedUnit, 60),
                             _buildDataCell(material['net_weight'] ?? '-', 65),
                             _buildDataCell(material['gross_weight'] ?? '-', 65),
                             _buildDataCell(material['unit_price'] ?? '-', 65),
                             _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
                             _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
                             _buildDataCell(material['seller_payment_method'] == 'cash'
-                                ? 'نقد'
+                                ? l10n.cash
                                 : material['seller_payment_method'] == 'loan_full'
-                                    ? 'قرض کامل'
+                                    ? l10n.fullLoan
                                     : material['seller_payment_method'] == 'loan_partial'
-                                        ? 'قرض جزئی'
+                                        ? l10n.partialLoan
                                         : '-', 80),
                             _buildDataCell(material['product'] ?? '-', 60),
                             _buildDataCell(material['commission'] ?? '-', 60),
@@ -670,7 +689,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             _buildDataCell(material['barchalani'] ?? '-', 60),
                             Container(
                               width: 70,
-                              child: _buildPurchaseTypeChip(material['purchase_type']),
+                              child: _buildPurchaseTypeChip(material['purchase_type'], l10n),
                             ),
                             _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80, isBold: true, isRed: true),
                             SizedBox(
@@ -682,16 +701,16 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                                     icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
-                                    onPressed: () => _showEditDialog(context, material),
-                                    tooltip: 'ویرایش',
+                                    onPressed: () => _showEditDialog(context, material, l10n),
+                                    tooltip: l10n.edit,
                                   ),
                                   const SizedBox(width: 4),
                                   IconButton(
                                     icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints(),
-                                    onPressed: () => _showDeleteDialog(context, material),
-                                    tooltip: 'حذف',
+                                    onPressed: () => _showDeleteDialog(context, material, l10n),
+                                    tooltip: l10n.delete,
                                   ),
                                 ],
                               ),
@@ -721,7 +740,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
             children: [
               Row(
                 children: [
-                  const Text('نمایش:', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  Text(l10n.show, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -745,12 +764,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  Text(l10n.perPage, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                 ],
               ),
               Row(
                 children: [
-                  Text('صفحه $_currentPage از $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
@@ -851,9 +870,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     );
   }
 
-  Widget _buildPurchaseTypeChip(String? purchaseType) {
-    final type = purchaseType ?? 'نامشخص';
-    final isDirect = type == 'مستقیم';
+  Widget _buildPurchaseTypeChip(String? purchaseType, AppLocalizations l10n) {
+    final type = purchaseType ?? l10n.unknown;
+    final isDirect = type == l10n.direct;
     
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -931,6 +950,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
   // ============ ADD DIALOG ============
   void _showAddDialog(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final nameController = TextEditingController();
     final netWeightController = TextEditingController();
     final grossWeightController = TextEditingController();
@@ -993,7 +1013,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              title: const Text('افزودن ماده خام جدید'),
+              title: Text(l10n.addRawMaterial),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               content: SizedBox(
                 width: 500,
@@ -1002,15 +1022,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(
-                          labelText: 'انتخاب فروشنده *',
-                          labelStyle: TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.selectSupplier,
+                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         value: selectedSupplierId,
                         items: [
-                          const DropdownMenuItem<String>(value: null, child: Text('انتخاب فروشنده...')),
+                          DropdownMenuItem<String>(value: null, child: Text(l10n.selectSupplier)),
                           ...suppliers.map((supplier) {
                             return DropdownMenuItem<String>(
                               value: supplier['id'].toString(),
@@ -1028,9 +1048,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       TextFormField(
                         controller: dateController,
                         decoration: InputDecoration(
-                          labelText: 'تاریخ *',
+                          labelText: l10n.dateRequired,
                           labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                          border: OutlineInputBorder(),
+                          border: const OutlineInputBorder(),
                           suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
@@ -1056,44 +1076,44 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       const SizedBox(height: 8),
                       TextField(
                         controller: nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'نام مواد ارسالی *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.materialNameRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: locationController,
-                        decoration: const InputDecoration(
-                          labelText: 'محل تخلیه *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.dischargeLocationRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: materialTypeController,
-                        decoration: const InputDecoration(
-                          labelText: 'نوع مواد *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.materialTypeRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(
-                          labelText: 'واحد *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.unitRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         value: unitController.text.isNotEmpty ? unitController.text : null,
-                        items: const [
-                          DropdownMenuItem<String>(value: 'کیلوگرم', child: Text('کیلوگرم (Kg)')),
-                          DropdownMenuItem<String>(value: 'تن', child: Text('تن (Ton)')),
-                          DropdownMenuItem<String>(value: 'متر', child: Text('متر (M)')),
-                          DropdownMenuItem<String>(value: 'عدد', child: Text('عدد (Pcs)')),
-                          DropdownMenuItem<String>(value: 'لیتر', child: Text('لیتر (L)')),
+                        items: [
+                          DropdownMenuItem<String>(value: 'کیلوگرم', child: Text(l10n.kgUnit)),
+                          DropdownMenuItem<String>(value: 'تن', child: Text(l10n.tonUnit)),
+                          DropdownMenuItem<String>(value: 'متر', child: Text(l10n.meterUnit)),
+                          DropdownMenuItem<String>(value: 'عدد', child: Text(l10n.pcsUnit)),
+                          DropdownMenuItem<String>(value: 'لیتر', child: Text(l10n.literUnit)),
                         ],
                         onChanged: (value) {
                           setStateDialog(() {
@@ -1104,24 +1124,24 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       const SizedBox(height: 8),
                       TextField(
                         controller: thicknessController,
-                        decoration: const InputDecoration(
-                          labelText: 'ضخامت *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.thicknessRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(
-                          labelText: 'نوع خرید *',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.purchaseTypeRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         value: selectedPurchaseType,
-                        items: const [
-                          DropdownMenuItem<String>(value: null, child: Text('انتخاب نوع خرید...')),
-                          DropdownMenuItem<String>(value: 'مستقیم', child: Text('مستقیم')),
-                          DropdownMenuItem<String>(value: 'غیر مستقیم', child: Text('غیر مستقیم')),
+                        items: [
+                          DropdownMenuItem<String>(value: null, child: Text(l10n.selectPurchaseType)),
+                          DropdownMenuItem<String>(value: 'مستقیم', child: Text(l10n.direct)),
+                          DropdownMenuItem<String>(value: 'غیر مستقیم', child: Text(l10n.indirect)),
                         ],
                         onChanged: (value) {
                           setStateDialog(() {
@@ -1135,10 +1155,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: netWeightController,
-                              decoration: const InputDecoration(
-                                labelText: 'وزن خالص *',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.netWeightRequired,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                             ),
@@ -1147,10 +1167,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: grossWeightController,
-                              decoration: const InputDecoration(
-                                labelText: 'وزن ناخالص *',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.grossWeightRequired,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1165,7 +1185,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                             child: TextField(
                               controller: unitPriceController,
                               decoration: InputDecoration(
-                                labelText: 'قیمت واحد (${selectedCurrency}) *',
+                                labelText: '${l10n.unitPrice} (${selectedCurrency}) *',
                                 border: const OutlineInputBorder(),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
@@ -1177,10 +1197,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               value: selectedCurrency,
-                              decoration: const InputDecoration(
-                                labelText: 'ارز قیمت',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.currencyPrice,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               items: const [
                                 DropdownMenuItem(value: 'AFN', child: Text('افغانی')),
@@ -1200,10 +1220,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       if (selectedCurrency == 'USD')
                         TextField(
                           controller: exchangeRateController,
-                          decoration: const InputDecoration(
-                            labelText: 'نرخ ارز (AFN/USD)',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: InputDecoration(
+                            labelText: l10n.exchangeRate,
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
                           keyboardType: TextInputType.number,
                           onChanged: (_) => _updateFinalPrice(),
@@ -1211,10 +1231,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       const SizedBox(height: 8),
                       TextField(
                         controller: productController,
-                        decoration: const InputDecoration(
-                          labelText: 'قیمت محصول (افغانی)',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: InputDecoration(
+                          labelText: l10n.productPrice,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         keyboardType: TextInputType.number,
                         onChanged: (_) => _updateFinalPrice(),
@@ -1227,7 +1247,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                               controller: sellerPaymentController,
                               enabled: false,
                               decoration: InputDecoration(
-                                labelText: 'مبلغ فروشنده (${selectedCurrency})',
+                                labelText: '${l10n.sellerAmount} (${selectedCurrency})',
                                 border: const OutlineInputBorder(),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
@@ -1238,10 +1258,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               value: selectedSellerPaymentMethod,
-                              decoration: const InputDecoration(
-                                labelText: 'روش پرداخت فروشنده',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.sellerPaymentMethod,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               items: const [
                                 DropdownMenuItem(value: 'cash', child: Text('نقد')),
@@ -1266,18 +1286,18 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                         const SizedBox(height: 8),
                         TextField(
                           controller: sellerPaidAmountController,
-                          decoration: const InputDecoration(
-                            labelText: 'مبلغ پرداختی اولیه فروشنده',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: InputDecoration(
+                            labelText: l10n.sellerInitialPayment,
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
                           keyboardType: TextInputType.number,
                         ),
                       ],
                       const SizedBox(height: 8),
-                      const Text(
-                        'قرض فروشنده فقط بر اساس مبلغ پایه محاسبه می‌شود. هزینه‌های اضافی مانند محصول، کمیشن، کرایه، غرفه‌داری، بارچلانی و متفرقه جداگانه پرداخت می‌شوند.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      Text(
+                        l10n.sellerLoanNote,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -1285,10 +1305,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: commissionController,
-                              decoration: const InputDecoration(
-                                labelText: 'کمیشن (افغانی)',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.commission,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1298,10 +1318,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: transferCostController,
-                              decoration: const InputDecoration(
-                                labelText: 'کرایه (افغانی)',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.transferCost,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1315,10 +1335,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: ghurfedariController,
-                              decoration: const InputDecoration(
-                                labelText: 'غرفه داری (افغانی)',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.ghurfedari,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1328,10 +1348,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: barchalaniController,
-                              decoration: const InputDecoration(
-                                labelText: 'بارچلانی (افغانی)',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.barchalani,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1345,10 +1365,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                           Expanded(
                             child: TextField(
                               controller: miscellaneousController,
-                              decoration: const InputDecoration(
-                                labelText: 'متفرقه (AFN)',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: InputDecoration(
+                                labelText: l10n.miscellaneous,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _updateFinalPrice(),
@@ -1360,7 +1380,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                               controller: finalPriceController,
                               enabled: false,
                               decoration: InputDecoration(
-                                labelText: 'قیمت تمام شد (${selectedCurrency})',
+                                labelText: '${l10n.finalTotalPrice} (${selectedCurrency})',
                                 border: const OutlineInputBorder(),
                                 fillColor: const Color(0xFFF5F0EB),
                                 filled: true,
@@ -1378,12 +1398,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       TextField(
                         controller: afnEquivalentController,
                         enabled: false,
-                        decoration: const InputDecoration(
-                          labelText: 'معادل افغانی',
-                          border: OutlineInputBorder(),
-                          fillColor: Color(0xFFF5F0EB),
+                        decoration: InputDecoration(
+                          labelText: l10n.afnEquivalent,
+                          border: const OutlineInputBorder(),
+                          fillColor: const Color(0xFFF5F0EB),
                           filled: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
@@ -1397,13 +1417,13 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+                  child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   onPressed: () async {
                     if (selectedSupplierId == null || nameController.text.isEmpty || selectedPurchaseType == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('لطفاً تمام فیلدهای ضروری را پر کنید'), backgroundColor: Colors.red),
+                        SnackBar(content: Text(l10n.fillAllRequiredFields), backgroundColor: Colors.red),
                       );
                       return;
                     }
@@ -1415,7 +1435,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
                     if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmount > sellerPayment) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('مبلغ پرداختی فروشنده نمی‌تواند بیشتر از مبلغ پایه باشد'), backgroundColor: Colors.red),
+                        SnackBar(content: Text(l10n.sellerPaymentExceedsBase), backgroundColor: Colors.red),
                       );
                       return;
                     }
@@ -1483,19 +1503,19 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
                     if (result != -1) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('✅ ماده خام با موفقیت اضافه شد'), backgroundColor: Colors.green),
+                        SnackBar(content: Text(l10n.rawMaterialAddedSuccess), backgroundColor: Colors.green),
                       );
                       _loadData();
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('❌ خطا در افزودن ماده خام'), backgroundColor: Colors.red),
+                        SnackBar(content: Text(l10n.errorAddingRawMaterial), backgroundColor: Colors.red),
                       );
                     }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCB001D),
                   ),
-                  child: const Text('ذخیره'),
+                  child: Text(l10n.save),
                 ),
               ],
             ),
@@ -1505,24 +1525,24 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     );
   }
 
-  void _showEditDialog(BuildContext context, Map<String, dynamic> material) {
+  void _showEditDialog(BuildContext context, Map<String, dynamic> material, AppLocalizations l10n) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ویرایش در حال توسعه...'), duration: Duration(seconds: 2)),
+      SnackBar(content: Text(l10n.editInDevelopment), duration: const Duration(seconds: 2)),
     );
   }
 
-  void _showDeleteDialog(BuildContext context, Map<String, dynamic> material) {
+  void _showDeleteDialog(BuildContext context, Map<String, dynamic> material, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('حذف ماده خام'),
-          content: Text('آیا از حذف ماده خام "${material['name']}" مطمئن هستید؟'),
+          title: Text(l10n.deleteRawMaterial),
+          content: Text('${l10n.deleteConfirmation} "${material['name']}"؟'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+              child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -1530,17 +1550,17 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                 Navigator.pop(context);
                 if (result != -1) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ ماده خام با موفقیت حذف شد'), backgroundColor: Colors.green),
+                    SnackBar(content: Text(l10n.rawMaterialDeletedSuccess), backgroundColor: Colors.green),
                   );
                   _loadData();
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('❌ خطا در حذف ماده خام'), backgroundColor: Colors.red),
+                    SnackBar(content: Text(l10n.errorDeletingRawMaterial), backgroundColor: Colors.red),
                   );
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('حذف'),
+              child: Text(l10n.delete),
             ),
           ],
         ),
@@ -1550,29 +1570,39 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: Container(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
             // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                   children: [
-                    Text('مدیریت مواد خام', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                    SizedBox(height: 2),
-                    Text('مدیریت و کنترل مواد اولیه انبار', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                    Text(
+                      l10n.rawMaterialsManagement,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      l10n.rawMaterialsSubtitle,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
+                    ),
                   ],
                 ),
                 ElevatedButton.icon(
                   onPressed: () { _showAddDialog(context); },
                   icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                  label: const Text('افزودن ماده خام', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  label: Text(l10n.addRawMaterial, style: const TextStyle(color: Colors.white, fontSize: 12)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCB001D),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1586,20 +1616,23 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
             // Stats
             Row(
               children: [
-                _buildStatCard('کل مواد', materials.length.toString()),
+                _buildStatCard(l10n.totalMaterials, materials.length.toString()),
                 const SizedBox(width: 12),
-                _buildStatCard('فروشندگان', suppliers.length.toString()),
+                _buildStatCard(l10n.suppliers, suppliers.length.toString()),
               ],
             ),
             const SizedBox(height: 12),
 
             // Unit-based totals cards - Summary (Tab 1 style)
             if (materials.isNotEmpty) ...[
-              const Text('خلاصه انبار موجود بر اساس واحد:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+              Text(
+                l10n.stockSummaryByUnit,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+              ),
               const SizedBox(height: 6),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: Row(children: _buildUnitSummaryCards()),
+                child: Row(children: _buildUnitSummaryCards(l10n)),
               ),
             ],
             const SizedBox(height: 14),
@@ -1618,9 +1651,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                   children: [
                     TabBar(
                       controller: _tabController,
-                      tabs: const [
-                        Tab(text: '📦 مدیریت مواد خام'),
-                        Tab(text: '📊 موجودی مواد خام'),
+                      tabs: [
+                        Tab(text: l10n.rawMaterialsTab),
+                        Tab(text: l10n.stockTab),
                       ],
                       labelColor: const Color(0xFFCB001D),
                       unselectedLabelColor: Colors.grey,
@@ -1634,8 +1667,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       child: TabBarView(
                         controller: _tabController,
                         children: [
-                          _buildMainTable(),
-                          _buildStockTable(),
+                          _buildMainTable(l10n),
+                          _buildStockTable(l10n),
                         ],
                       ),
                     ),

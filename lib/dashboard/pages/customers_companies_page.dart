@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class CustomersCompaniesPage extends StatefulWidget {
   const CustomersCompaniesPage({super.key});
@@ -18,7 +21,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   String _searchQuery = '';
   String _selectedTab = 'customers';
 
-  // کنترل‌های فرم مشتری
+  // Customer form controllers
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _customerNicknameController = TextEditingController();
   final TextEditingController _customerPhoneController = TextEditingController();
@@ -26,7 +29,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   final TextEditingController _customerAddressController = TextEditingController();
   final TextEditingController _customerTypeController = TextEditingController();
 
-  // کنترل‌های فرم شرکت
+  // Company form controllers
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _companyPhoneController = TextEditingController();
   final TextEditingController _companyEmailController = TextEditingController();
@@ -81,7 +84,8 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showSnackbar('خطا در بارگذاری داده‌ها', Colors.red);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar(l10n.errorLoadingDataCC, Colors.red);
     }
   }
 
@@ -106,8 +110,9 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     return jsonEncode(transactions);
   }
 
-  // ======================== متدهای مدیریت مشتری ========================
+  // ======================== Customer Management Methods ========================
   void _addCustomer() {
+    final l10n = AppLocalizations.of(context)!;
     _customerNameController.clear();
     _customerNicknameController.clear();
     _customerPhoneController.clear();
@@ -118,36 +123,36 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ثبت مشتری جدید', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
+        title: Text(l10n.addCustomer, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(controller: _customerNameController, label: 'نام کامل', icon: Icons.person_outline, hint: 'نام و نام خانوادگی'),
+              _buildTextField(controller: _customerNameController, label: l10n.fullNameLabel, icon: Icons.person_outline, hint: l10n.fullNameHint, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerNicknameController, label: 'تخلص', icon: Icons.badge_outlined, hint: 'تخلص یا نام مستعار'),
+              _buildTextField(controller: _customerNicknameController, label: l10n.nickname, icon: Icons.badge_outlined, hint: l10n.nicknameHint, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, hint: '۰۹۱۲۳۴۵۶۷۸۹', keyboardType: TextInputType.phone),
+              _buildTextField(controller: _customerPhoneController, label: l10n.phoneNumberLabel, icon: Icons.phone_outlined, hint: l10n.phoneHint, keyboardType: TextInputType.phone, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerEmailController, label: 'ایمیل', icon: Icons.email_outlined, hint: 'example@email.com', keyboardType: TextInputType.emailAddress),
+              _buildTextField(controller: _customerEmailController, label: l10n.emailLabel, icon: Icons.email_outlined, hint: l10n.emailHint, keyboardType: TextInputType.emailAddress, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerAddressController, label: 'آدرس', icon: Icons.location_on_outlined, hint: 'آدرس کامل', maxLines: 2),
+              _buildTextField(controller: _customerAddressController, label: l10n.addressLabel, icon: Icons.location_on_outlined, hint: l10n.addressHint, maxLines: 2, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقیقی یا حقوقی'),
+              _buildTextField(controller: _customerTypeController, label: l10n.type, icon: Icons.category_outlined, hint: l10n.typeHint, l10n: l10n),
             ],
           ),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
           ElevatedButton(
             onPressed: () async {
               if (_customerNameController.text.trim().isEmpty) {
-                _showSnackbar('لطفاً نام مشتری را وارد کنید', Colors.red);
+                _showSnackbar(l10n.pleaseEnterCustomerName, Colors.red);
                 return;
               }
-              final type = _customerTypeController.text.trim().isEmpty ? 'حقیقی' : _customerTypeController.text.trim();
+              final type = _customerTypeController.text.trim().isEmpty ? l10n.individual : _customerTypeController.text.trim();
               final payload = {
                 'name': _customerNameController.text.trim(),
                 'nickname': _customerNicknameController.text.trim(),
@@ -159,7 +164,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               };
               final id = await _db.insertCustomer(payload);
               if (id == -1) {
-                _showSnackbar('ثبت مشتری با خطا مواجه شد', Colors.red);
+                _showSnackbar(l10n.errorAddingCustomer, Colors.red);
                 return;
               }
               if (!mounted) return;
@@ -171,10 +176,10 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                 });
               });
               Navigator.pop(context);
-              _showSnackbar('مشتری با موفقیت ثبت شد', Colors.green);
+              _showSnackbar(l10n.customerAddedSuccess, Colors.green);
             },
             style: _buildButtonStyle(),
-            child: const Text('ثبت مشتری'),
+            child: Text(l10n.addCustomer),
           ),
         ],
       ),
@@ -182,6 +187,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   void _editCustomer(Map<String, dynamic> customer) {
+    final l10n = AppLocalizations.of(context)!;
     _customerNameController.text = customer['name']?.toString() ?? '';
     _customerNicknameController.text = customer['nickname']?.toString() ?? '';
     _customerPhoneController.text = customer['phone']?.toString() ?? '';
@@ -192,36 +198,36 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ویرایش مشتری', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
+        title: Text(l10n.editCustomer, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(controller: _customerNameController, label: 'نام کامل', icon: Icons.person_outline),
+              _buildTextField(controller: _customerNameController, label: l10n.fullNameLabel, icon: Icons.person_outline, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerNicknameController, label: 'تخلص', icon: Icons.badge_outlined),
+              _buildTextField(controller: _customerNicknameController, label: l10n.nickname, icon: Icons.badge_outlined, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, keyboardType: TextInputType.phone),
+              _buildTextField(controller: _customerPhoneController, label: l10n.phoneNumberLabel, icon: Icons.phone_outlined, keyboardType: TextInputType.phone, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerEmailController, label: 'ایمیل', icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+              _buildTextField(controller: _customerEmailController, label: l10n.emailLabel, icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerAddressController, label: 'آدرس', icon: Icons.location_on_outlined, maxLines: 2),
+              _buildTextField(controller: _customerAddressController, label: l10n.addressLabel, icon: Icons.location_on_outlined, maxLines: 2, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _customerTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقیقی یا حقوقی'),
+              _buildTextField(controller: _customerTypeController, label: l10n.type, icon: Icons.category_outlined, hint: l10n.typeHint, l10n: l10n),
             ],
           ),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
           ElevatedButton(
             onPressed: () async {
               if (_customerNameController.text.trim().isEmpty) {
-                _showSnackbar('لطفاً نام مشتری را وارد کنید', Colors.red);
+                _showSnackbar(l10n.pleaseEnterCustomerName, Colors.red);
                 return;
               }
-              final type = _customerTypeController.text.trim().isEmpty ? 'حقیقی' : _customerTypeController.text.trim();
+              final type = _customerTypeController.text.trim().isEmpty ? l10n.individual : _customerTypeController.text.trim();
               final transactions = List<Map<String, dynamic>>.from(customer['transactions'] ?? []);
               final payload = {
                 'name': _customerNameController.text.trim(),
@@ -234,7 +240,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               };
               final result = await _db.updateCustomer(customer['id'], payload);
               if (result == -1) {
-                _showSnackbar('ویرایش مشتری با خطا مواجه شد', Colors.red);
+                _showSnackbar(l10n.errorUpdatingCustomer, Colors.red);
                 return;
               }
               if (!mounted) return;
@@ -249,10 +255,10 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                 }
               });
               Navigator.pop(context);
-              _showSnackbar('مشتری با موفقیت ویرایش شد', Colors.blue);
+              _showSnackbar(l10n.customerUpdatedSuccess, Colors.blue);
             },
             style: _buildButtonStyle(),
-            child: const Text('ذخیره تغییرات'),
+            child: Text(l10n.saveChangesPage),
           ),
         ],
       ),
@@ -260,27 +266,30 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   void _deleteCustomer(Map<String, dynamic> customer) {
+    final l10n = AppLocalizations.of(context)!;
     _showDeleteDialog(
       context,
-      title: 'حذف مشتری',
-      content: 'آیا از حذف مشتری "${customer['name']}" مطمئن هستید؟',
+      title: l10n.deleteCustomer,
+      content: '${l10n.deleteConfirmation} "${customer['name']}"؟',
+      l10n: l10n,
       onConfirm: () async {
         final result = await _db.deleteCustomer(customer['id']);
         if (result == -1) {
-          _showSnackbar('حذف مشتری با خطا مواجه شد', Colors.red);
+          _showSnackbar(l10n.errorDeletingCustomer, Colors.red);
           return;
         }
         if (!mounted) return;
         setState(() {
           _customers.removeWhere((c) => c['id'] == customer['id']);
         });
-        _showSnackbar('مشتری با موفقیت حذف شد', Colors.red);
+        _showSnackbar(l10n.customerDeletedSuccess, Colors.red);
       },
     );
   }
 
-  // ======================== متدهای مدیریت شرکت ========================
+  // ======================== Company Management Methods ========================
   void _addCompany() {
+    final l10n = AppLocalizations.of(context)!;
     _companyNameController.clear();
     _companyPhoneController.clear();
     _companyEmailController.clear();
@@ -290,34 +299,34 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ثبت شرکت جدید', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
+        title: Text(l10n.addCompany, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(controller: _companyNameController, label: 'نام شرکت', icon: Icons.business_outlined, hint: 'نام کامل شرکت'),
+              _buildTextField(controller: _companyNameController, label: l10n.companyNameLabelPage, icon: Icons.business_outlined, hint: l10n.companyNameHint, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, hint: '۰۲۱۸۸۷۶۵۴۳۲', keyboardType: TextInputType.phone),
+              _buildTextField(controller: _companyPhoneController, label: l10n.phoneNumberLabel, icon: Icons.phone_outlined, hint: l10n.phoneHint, keyboardType: TextInputType.phone, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyEmailController, label: 'ایمیل', icon: Icons.email_outlined, hint: 'info@company.com', keyboardType: TextInputType.emailAddress),
+              _buildTextField(controller: _companyEmailController, label: l10n.emailLabel, icon: Icons.email_outlined, hint: l10n.emailHint, keyboardType: TextInputType.emailAddress, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyAddressController, label: 'آدرس', icon: Icons.location_on_outlined, hint: 'آدرس کامل شرکت', maxLines: 2),
+              _buildTextField(controller: _companyAddressController, label: l10n.addressLabel, icon: Icons.location_on_outlined, hint: l10n.companyAddressHint, maxLines: 2, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقوقی یا حقیقی'),
+              _buildTextField(controller: _companyTypeController, label: l10n.type, icon: Icons.category_outlined, hint: l10n.typeHint, l10n: l10n),
             ],
           ),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
           ElevatedButton(
             onPressed: () async {
               if (_companyNameController.text.trim().isEmpty) {
-                _showSnackbar('لطفاً نام شرکت را وارد کنید', Colors.red);
+                _showSnackbar(l10n.pleaseEnterCompanyName, Colors.red);
                 return;
               }
-              final type = _companyTypeController.text.trim().isEmpty ? 'حقوقی' : _companyTypeController.text.trim();
+              final type = _companyTypeController.text.trim().isEmpty ? l10n.corporate : _companyTypeController.text.trim();
               final payload = {
                 'name': _companyNameController.text.trim(),
                 'phone': _companyPhoneController.text.trim(),
@@ -328,7 +337,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               };
               final id = await _db.insertCompany(payload);
               if (id == -1) {
-                _showSnackbar('ثبت شرکت با خطا مواجه شد', Colors.red);
+                _showSnackbar(l10n.errorAddingCompany, Colors.red);
                 return;
               }
               if (!mounted) return;
@@ -340,10 +349,10 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                 });
               });
               Navigator.pop(context);
-              _showSnackbar('شرکت با موفقیت ثبت شد', Colors.green);
+              _showSnackbar(l10n.companyAddedSuccess, Colors.green);
             },
             style: _buildButtonStyle(),
-            child: const Text('ثبت شرکت'),
+            child: Text(l10n.addCompany),
           ),
         ],
       ),
@@ -351,6 +360,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   void _editCompany(Map<String, dynamic> company) {
+    final l10n = AppLocalizations.of(context)!;
     _companyNameController.text = company['name']?.toString() ?? '';
     _companyPhoneController.text = company['phone']?.toString() ?? '';
     _companyEmailController.text = company['email']?.toString() ?? '';
@@ -360,34 +370,34 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ویرایش شرکت', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
+        title: Text(l10n.editCompany, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Color(0xFF1A1A1A))),
         content: SizedBox(
           width: 500,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField(controller: _companyNameController, label: 'نام شرکت', icon: Icons.business_outlined),
+              _buildTextField(controller: _companyNameController, label: l10n.companyNameLabelPage, icon: Icons.business_outlined, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyPhoneController, label: 'شماره تماس', icon: Icons.phone_outlined, keyboardType: TextInputType.phone),
+              _buildTextField(controller: _companyPhoneController, label: l10n.phoneNumberLabel, icon: Icons.phone_outlined, keyboardType: TextInputType.phone, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyEmailController, label: 'ایمیل', icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+              _buildTextField(controller: _companyEmailController, label: l10n.emailLabel, icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyAddressController, label: 'آدرس', icon: Icons.location_on_outlined, maxLines: 2),
+              _buildTextField(controller: _companyAddressController, label: l10n.addressLabel, icon: Icons.location_on_outlined, maxLines: 2, l10n: l10n),
               const SizedBox(height: 10),
-              _buildTextField(controller: _companyTypeController, label: 'نوع', icon: Icons.category_outlined, hint: 'مثلاً حقوقی یا حقیقی'),
+              _buildTextField(controller: _companyTypeController, label: l10n.type, icon: Icons.category_outlined, hint: l10n.typeHint, l10n: l10n),
             ],
           ),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
           ElevatedButton(
             onPressed: () async {
               if (_companyNameController.text.trim().isEmpty) {
-                _showSnackbar('لطفاً نام شرکت را وارد کنید', Colors.red);
+                _showSnackbar(l10n.pleaseEnterCompanyName, Colors.red);
                 return;
               }
-              final type = _companyTypeController.text.trim().isEmpty ? 'حقوقی' : _companyTypeController.text.trim();
+              final type = _companyTypeController.text.trim().isEmpty ? l10n.corporate : _companyTypeController.text.trim();
               final transactions = List<Map<String, dynamic>>.from(company['transactions'] ?? []);
               final payload = {
                 'name': _companyNameController.text.trim(),
@@ -399,7 +409,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               };
               final result = await _db.updateCompany(company['id'], payload);
               if (result == -1) {
-                _showSnackbar('ویرایش شرکت با خطا مواجه شد', Colors.red);
+                _showSnackbar(l10n.errorUpdatingCompany, Colors.red);
                 return;
               }
               if (!mounted) return;
@@ -414,10 +424,10 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                 }
               });
               Navigator.pop(context);
-              _showSnackbar('شرکت با موفقیت ویرایش شد', Colors.blue);
+              _showSnackbar(l10n.companyUpdatedSuccess, Colors.blue);
             },
             style: _buildButtonStyle(),
-            child: const Text('ذخیره تغییرات'),
+            child: Text(l10n.saveChangesPage),
           ),
         ],
       ),
@@ -425,32 +435,35 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   }
 
   void _deleteCompany(Map<String, dynamic> company) {
+    final l10n = AppLocalizations.of(context)!;
     _showDeleteDialog(
       context,
-      title: 'حذف شرکت',
-      content: 'آیا از حذف شرکت "${company['name']}" مطمئن هستید؟',
+      title: l10n.deleteCompany,
+      content: '${l10n.deleteConfirmation} "${company['name']}"؟',
+      l10n: l10n,
       onConfirm: () async {
         final result = await _db.deleteCompany(company['id']);
         if (result == -1) {
-          _showSnackbar('حذف شرکت با خطا مواجه شد', Colors.red);
+          _showSnackbar(l10n.errorDeletingCompany, Colors.red);
           return;
         }
         if (!mounted) return;
         setState(() {
           _companies.removeWhere((c) => c['id'] == company['id']);
         });
-        _showSnackbar('شرکت با موفقیت حذف شد', Colors.red);
+        _showSnackbar(l10n.companyDeletedSuccess, Colors.red);
       },
     );
   }
 
-  // ======================== نمایش سوابق معاملات ========================
+  // ======================== Transaction History Display ========================
   Future<void> _showTransactionHistory(Map<String, dynamic> entity, bool isCustomer) async {
+    final l10n = AppLocalizations.of(context)!;
     final entityName = entity['name']?.toString() ?? '';
     final embeddedTransactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
     final salesHistory = await _getSalesHistoryForEntity(entityName, isCustomer);
     final transactions = salesHistory.isNotEmpty ? salesHistory : embeddedTransactions;
-    final title = isCustomer ? 'سوابق معاملات مشتری' : 'سوابق معاملات شرکت';
+    final title = isCustomer ? l10n.customerTransactionHistoryPage : l10n.companyTransactionHistoryPage;
 
     showDialog(
       context: context,
@@ -527,7 +540,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 16),
-              _buildTransactionStats(transactions),
+              _buildTransactionStats(transactions, l10n),
               const SizedBox(height: 16),
               Expanded(
                 child: transactions.isEmpty
@@ -542,7 +555,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'هیچ معامله‌ای برای این ${isCustomer ? 'مشتری' : 'شرکت'} ثبت نشده است',
+                              isCustomer ? l10n.noCustomerTransactions : l10n.noCompanyTransactions,
                               style: TextStyle(
                                 color: Colors.grey.shade500,
                                 fontSize: 14,
@@ -555,7 +568,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                         itemCount: transactions.length,
                         itemBuilder: (context, index) {
                           final transaction = transactions[index];
-                          return _buildTransactionItem(transaction, index);
+                          return _buildTransactionItem(transaction, index, l10n);
                         },
                       ),
               ),
@@ -566,7 +579,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  Widget _buildTransactionStats(List<Map<String, dynamic>> transactions) {
+  Widget _buildTransactionStats(List<Map<String, dynamic>> transactions, AppLocalizations l10n) {
     int total = 0;
     for (var t in transactions) {
       final amount = t['amount'];
@@ -577,16 +590,16 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
       }
     }
     
-    final completed = transactions.where((t) => t['status'] == 'تکمیل شده').length;
-    final pending = transactions.where((t) => t['status'] == 'در انتظار').length;
+    final completed = transactions.where((t) => t['status'] == l10n.completedStatusPage).length;
+    final pending = transactions.where((t) => t['status'] == l10n.pendingStatusPage).length;
 
     return Row(
       children: [
-        _buildStatChip('مجموع', total.toString(), Colors.blue),
+        _buildStatChip(l10n.totalAmountPage, total.toString(), Colors.blue),
         const SizedBox(width: 12),
-        _buildStatChip('تکمیل شده', completed.toString(), Colors.green),
+        _buildStatChip(l10n.completedStatusPage, completed.toString(), Colors.green),
         const SizedBox(width: 12),
-        _buildStatChip('در انتظار', pending.toString(), Colors.orange),
+        _buildStatChip(l10n.pendingStatusPage, pending.toString(), Colors.orange),
       ],
     );
   }
@@ -624,7 +637,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> transaction, int index) {
+  Widget _buildTransactionItem(Map<String, dynamic> transaction, int index, AppLocalizations l10n) {
     Color statusColor;
     switch (transaction['status']) {
       case 'تکمیل شده':
@@ -759,11 +772,12 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     }
   }
 
-  // ======================== ویجت‌های کمکی ========================
+  // ======================== Helper Widgets ========================
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    required AppLocalizations l10n,
     String? hint,
     TextInputType? keyboardType,
     int maxLines = 1,
@@ -816,12 +830,11 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  // ======================== کارت حرفه‌ای مشتریان و شرکت‌ها ========================
-  Widget _buildEntityCard(Map<String, dynamic> entity, bool isCustomer) {
+  Widget _buildEntityCard(Map<String, dynamic> entity, bool isCustomer, AppLocalizations l10n) {
     final transactions = List<Map<String, dynamic>>.from(entity['transactions'] ?? []);
     final totalTransactions = transactions.length;
     final entityType = (entity['type'] ?? '').toString().trim();
-    final typeLabel = entityType.isNotEmpty ? entityType : (isCustomer ? 'حقیقی' : 'حقوقی');
+    final typeLabel = entityType.isNotEmpty ? entityType : (isCustomer ? l10n.individual : l10n.corporate);
     
     int totalAmount = 0;
     for (var t in transactions) {
@@ -833,14 +846,9 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
       }
     }
 
-    // رنگ‌های متفاوت برای مشتری و شرکت
     final Color primaryColor = isCustomer 
-        ? const Color(0xFF2563EB) // آبی برای مشتریان
-        : const Color(0xFF7C3AED); // بنفش برای شرکت‌ها
-    
-    final Color lightColor = isCustomer
-        ? Colors.blue.shade50
-        : Colors.purple.shade50;
+        ? const Color(0xFF2563EB)
+        : const Color(0xFF7C3AED);
     
     final IconData mainIcon = isCustomer ? Icons.person_rounded : Icons.business_center_rounded;
 
@@ -863,7 +871,6 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
       ),
       child: Column(
         children: [
-          // ===== هدر کارت =====
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -875,7 +882,6 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
             ),
             child: Row(
               children: [
-                // آواتار
                 Container(
                   width: 48,
                   height: 48,
@@ -931,7 +937,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                'تخلص: ${entity['nickname']}',
+                                '${l10n.nickname}: ${entity['nickname']}',
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: Colors.grey.shade600,
@@ -989,7 +995,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '$totalTransactions معامله',
+                                  '$totalTransactions ${l10n.transactionsLabel}',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: Colors.green.shade700,
@@ -1007,13 +1013,10 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               ],
             ),
           ),
-
-          // ===== بدنه کارت =====
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                // اطلاعات تماس
                 Row(
                   children: [
                     Expanded(
@@ -1047,12 +1050,9 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                   height: 1,
                 ),
                 const SizedBox(height: 12),
-
-                // ===== پایین کارت =====
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // مجموع مبلغ
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
@@ -1069,8 +1069,8 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                           const SizedBox(width: 6),
                           Text(
                             totalAmount > 0
-                                ? '${totalAmount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')} ریال'
-                                : 'بدون معامله',
+                                ? '${totalAmount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')} ${l10n.rial}'
+                                : l10n.noTransaction,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -1080,11 +1080,8 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                         ],
                       ),
                     ),
-
-                    // دکمه‌های عملیات
                     Row(
                       children: [
-                        // دکمه سوابق
                         TextButton.icon(
                           onPressed: () => _showTransactionHistory(entity, isCustomer),
                           style: TextButton.styleFrom(
@@ -1102,7 +1099,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                             color: primaryColor,
                           ),
                           label: Text(
-                            'سوابق',
+                            l10n.history,
                             style: TextStyle(
                               fontSize: 11,
                               color: primaryColor,
@@ -1111,7 +1108,6 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        // دکمه ویرایش
                         CircleAvatar(
                           radius: 14,
                           backgroundColor: Colors.grey.shade100,
@@ -1129,7 +1125,6 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        // دکمه حذف
                         CircleAvatar(
                           radius: 14,
                           backgroundColor: Colors.red.shade50,
@@ -1192,9 +1187,9 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  Widget _buildHeader(bool isCustomer) {
+  Widget _buildHeader(bool isCustomer, AppLocalizations l10n) {
     final count = isCustomer ? _customers.length : _companies.length;
-    final title = isCustomer ? 'مشتریان' : 'شرکت‌ها';
+    final title = isCustomer ? l10n.customersCompaniesPage : l10n.companiesListPage;
     final icon = isCustomer
         ? Icons.people_alt_outlined
         : Icons.business_outlined;
@@ -1222,7 +1217,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'مدیریت $title',
+                  '${l10n.manage} $title',
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -1230,7 +1225,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                   ),
                 ),
                 Text(
-                  'تعداد $title: $count نفر',
+                  '${l10n.totalCount}: $count',
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey,
@@ -1254,7 +1249,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
           ),
           icon: const Icon(Icons.add, size: 20),
           label: Text(
-            'ثبت ${isCustomer ? 'مشتری' : 'شرکت'} جدید',
+            isCustomer ? l10n.addCustomer : l10n.addCompany,
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1265,7 +1260,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  Widget _buildSearchAndFilter() {
+  Widget _buildSearchAndFilter(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1285,7 +1280,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
             child: TextField(
               onChanged: (value) => setState(() => _searchQuery = value),
               decoration: InputDecoration(
-                hintText: 'جستجو بر اساس نام، تخلص، شرکت...',
+                hintText: l10n.searchByCustomerName,
                 hintStyle: TextStyle(
                   color: Colors.grey.shade400,
                   fontSize: 13,
@@ -1323,7 +1318,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  Widget _buildTabs() {
+  Widget _buildTabs(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -1341,7 +1336,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
         children: [
           Expanded(
             child: _buildTab(
-              title: 'مشتریان',
+              title: l10n.customersCompaniesPage,
               icon: Icons.people_alt_outlined,
               isSelected: _selectedTab == 'customers',
               count: _customers.length,
@@ -1351,7 +1346,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
           const SizedBox(width: 4),
           Expanded(
             child: _buildTab(
-              title: 'شرکت‌ها',
+              title: l10n.companiesListPage,
               icon: Icons.business_outlined,
               isSelected: _selectedTab == 'companies',
               count: _companies.length,
@@ -1438,6 +1433,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     BuildContext context, {
     required String title,
     required String content,
+    required AppLocalizations l10n,
     required VoidCallback onConfirm,
   }) {
     showDialog(
@@ -1461,9 +1457,9 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'انصراف',
-              style: TextStyle(color: Colors.grey),
+            child: Text(
+              l10n.cancel,
+              style: const TextStyle(color: Colors.grey),
             ),
           ),
           ElevatedButton(
@@ -1478,7 +1474,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            child: const Text('حذف'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -1509,9 +1505,12 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
-  // ======================== صفحه اصلی ========================
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     final searchText = _searchQuery.trim().toLowerCase();
     final filteredCustomers = _customers.where((c) {
       final haystack = '${c['name'] ?? ''} ${c['nickname'] ?? ''} ${c['phone'] ?? ''} ${c['type'] ?? ''}'.toLowerCase();
@@ -1526,60 +1525,63 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     final bool isEmpty = (_selectedTab == 'customers' && filteredCustomers.isEmpty) ||
         (_selectedTab == 'companies' && filteredCompanies.isEmpty);
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildTabs(),
-            const SizedBox(height: 24),
-            _buildHeader(_selectedTab == 'customers'),
-            const SizedBox(height: 20),
-            _buildSearchAndFilter(),
-            const SizedBox(height: 20),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
-                  : Container(
-                      decoration: BoxDecoration(color: Colors.transparent),
-                      child: isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _selectedTab == 'customers' ? Icons.people_outline : Icons.business_outlined,
-                                    size: 80,
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _selectedTab == 'customers' ? 'هیچ مشتریی یافت نشد' : 'هیچ شرکتی یافت نشد',
-                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 16, fontWeight: FontWeight.w600),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text('برای افزودن روی دکمه "+" کلیک کنید', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-                                ],
+    return Directionality(
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+            children: [
+              _buildTabs(l10n),
+              const SizedBox(height: 24),
+              _buildHeader(_selectedTab == 'customers', l10n),
+              const SizedBox(height: 20),
+              _buildSearchAndFilter(l10n),
+              const SizedBox(height: 20),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
+                    : Container(
+                        decoration: BoxDecoration(color: Colors.transparent),
+                        child: isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      _selectedTab == 'customers' ? Icons.people_outline : Icons.business_outlined,
+                                      size: 80,
+                                      color: Colors.grey.shade300,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      _selectedTab == 'customers' ? l10n.noCustomersFound : l10n.noCompaniesFound,
+                                      style: TextStyle(color: Colors.grey.shade500, fontSize: 16, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(l10n.clickAddButton, style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                                  ],
+                                ),
+                              )
+                            : SingleChildScrollView(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Column(
+                                  children: [
+                                    if (_selectedTab == 'customers')
+                                      ...filteredCustomers.map((customer) => _buildEntityCard(customer, true, l10n)),
+                                    if (_selectedTab == 'companies')
+                                      ...filteredCompanies.map((company) => _buildEntityCard(company, false, l10n)),
+                                  ],
+                                ),
                               ),
-                            )
-                          : SingleChildScrollView(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: Column(
-                                children: [
-                                  if (_selectedTab == 'customers')
-                                    ...filteredCustomers.map((customer) => _buildEntityCard(customer, true)),
-                                  if (_selectedTab == 'companies')
-                                    ...filteredCompanies.map((company) => _buildEntityCard(company, false)),
-                                ],
-                              ),
-                            ),
-                    ),
-            ),
-          ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-} 
+}

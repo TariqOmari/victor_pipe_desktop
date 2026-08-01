@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'sidebar.dart';
 import 'navbar.dart';
 import 'pages/home_page.dart';
@@ -18,6 +19,8 @@ import 'pages/loans_page.dart';
 import 'pages/supplier_loans_page.dart';
 import 'pages/capital_Page.dart';
 import 'pages/sarafi_page.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -30,7 +33,6 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
 
-  // FIXED: Cannot use widget.user here, use a getter or late initialization
   late final List<Widget> pages = [
     const HomePage(),
     const CustomersPage(),
@@ -46,20 +48,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const ReportsPage(),
     const CapitalPage(),
     const SarafiPage(),
-    AdminsPage(currentUser: widget.user),  // ✅ NOW widget.user is accessible inside late initialization
+    AdminsPage(currentUser: widget.user),
     const LoansPage(),
     const SupplierLoansPage(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final l10n = AppLocalizations.of(context)!;
+    final isEnglish = languageProvider.isEnglish;
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: Scaffold(
         body: LayoutBuilder(
           builder: (context, constraints) {
             return Row(
               children: [
+                // Sidebar - always on left in LTR, right in RTL
                 Sidebar(
                   selectedIndex: selectedIndex,
                   onItemSelected: (index) {
@@ -70,7 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text('صفحه مورد نظر در دسترس نیست'),
+                          content: Text(l10n.pageNotAvailable),
                           backgroundColor: Colors.red,
                         ),
                       );
@@ -85,10 +92,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: selectedIndex < pages.length
                             ? pages[selectedIndex]
-                            : const Center(
+                            : Center(
                                 child: Text(
-                                  'صفحه در حال ساخت...',
-                                  style: TextStyle(
+                                  l10n.pageUnderConstruction,
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     color: Colors.grey,
                                   ),

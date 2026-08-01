@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class ProductionManagementPage extends StatefulWidget {
   const ProductionManagementPage({super.key});
@@ -39,8 +42,9 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => isLoading = false);
+      final l10n = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ خطا در بارگذاری اطلاعات تولید'), backgroundColor: Colors.red),
+        SnackBar(content: Text(l10n.errorLoadingProduction), backgroundColor: Colors.red),
       );
     }
   }
@@ -151,16 +155,16 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('مدیریت تولید', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-            SizedBox(height: 2),
-            Text('ثبت، مشاهده و مدیریت موجودی محصولات تولیدشده', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+            Text(l10n.productionManagementTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+            const SizedBox(height: 2),
+            Text(l10n.productionManagementSubtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
           ],
         ),
         Row(
@@ -173,15 +177,15 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                   children: [
                     const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
                     const SizedBox(width: 4),
-                    Text('${_selectedIds.length} انتخاب شده', style: const TextStyle(color: Color(0xFFCB001D), fontSize: 11, fontWeight: FontWeight.w600)),
+                    Text('${_selectedIds.length} ${l10n.selected}', style: const TextStyle(color: Color(0xFFCB001D), fontSize: 11, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
             const SizedBox(width: 8),
             ElevatedButton.icon(
-              onPressed: () => _showProductDialog(context),
+              onPressed: () => _showProductDialog(context, l10n),
               icon: const Icon(Icons.add, color: Colors.white, size: 18),
-              label: const Text('ثبت تولید جدید', style: TextStyle(color: Colors.white, fontSize: 12)),
+              label: Text(l10n.addProductionRecord, style: const TextStyle(color: Colors.white, fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFCB001D),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -194,7 +198,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  Widget _buildStatsCards() {
+  Widget _buildStatsCards(AppLocalizations l10n) {
     final total = productions.length;
     final completed = productions.where((p) => p['status'] == 'تکمیل شده').length;
     final inProgress = productions.where((p) => p['status'] == 'در حال تولید').length;
@@ -202,18 +206,18 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
 
     return Row(
       children: [
-        _buildStatCard('کل تولیدات', total.toString(), Icons.factory_rounded, const Color(0xFFCB001D)),
+        _buildStatCard(l10n.totalProductionsCount, total.toString(), Icons.factory_rounded, const Color(0xFFCB001D)),
         const SizedBox(width: 12),
-        _buildStatCard('تکمیل شده', completed.toString(), Icons.check_circle_rounded, Colors.green.shade700),
+        _buildStatCard(l10n.completedStatus, completed.toString(), Icons.check_circle_rounded, Colors.green.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('در حال تولید', inProgress.toString(), Icons.pending_rounded, Colors.blue.shade700),
+        _buildStatCard(l10n.inProgressStatus, inProgress.toString(), Icons.pending_rounded, Colors.blue.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('در انتظار', pending.toString(), Icons.hourglass_empty_rounded, Colors.orange.shade700),
+        _buildStatCard(l10n.pendingStatus, pending.toString(), Icons.hourglass_empty_rounded, Colors.orange.shade700),
       ],
     );
   }
 
-  List<Widget> _buildUnitCards() {
+  List<Widget> _buildUnitCards(AppLocalizations l10n) {
     final unitTotals = _getUnitTotals();
     if (unitTotals.isEmpty) {
       return [
@@ -224,7 +228,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
           ),
-          child: const Text('هیچ محصولی ثبت نشده است', style: TextStyle(color: Color(0xFF888888), fontSize: 13)),
+          child: Text(l10n.noProductsFound, style: const TextStyle(color: Color(0xFF888888), fontSize: 13)),
         ),
       ];
     }
@@ -259,7 +263,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('مجموع: ', style: TextStyle(fontSize: 11, color: Color(0xFF888888))),
+                Text(l10n.totalLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF888888))),
                 Text(entry.value.toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1A1A2E))),
               ],
             ),
@@ -267,7 +271,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('تعداد اقلام: ', style: TextStyle(fontSize: 11, color: Color(0xFF888888))),
+                Text(l10n.itemsCountLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF888888))),
                 Text(itemCount.toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1A1A2E))),
               ],
             ),
@@ -291,25 +295,30 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  Widget _buildStatusChip(String? status) {
+  Widget _buildStatusChip(String? status, AppLocalizations l10n) {
     Color color;
     IconData icon;
+    String label;
     switch (status) {
       case 'تکمیل شده':
         color = Colors.green.shade700;
         icon = Icons.check_circle_rounded;
+        label = l10n.completedStatus;
         break;
       case 'در حال تولید':
         color = Colors.blue.shade700;
         icon = Icons.pending_rounded;
+        label = l10n.inProgressStatus;
         break;
       case 'در انتظار':
         color = Colors.orange.shade700;
         icon = Icons.hourglass_empty_rounded;
+        label = l10n.pendingStatus;
         break;
       default:
         color = Colors.grey.shade600;
         icon = Icons.help_rounded;
+        label = status ?? '-';
     }
 
     return Container(
@@ -320,13 +329,13 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
         children: [
           Icon(icon, color: color, size: 12),
           const SizedBox(width: 4),
-          Text(status ?? '-', style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 
-  Widget _buildSoldStatusChip(bool isSold, int saleCount) {
+  Widget _buildSoldStatusChip(bool isSold, int saleCount, AppLocalizations l10n) {
     if (isSold) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
@@ -342,7 +351,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
             const Icon(Icons.sell, color: Colors.red, size: 10),
             const SizedBox(width: 2),
             Text(
-              'فروخته شد ($saleCount)',
+              '${l10n.soldLabel} ($saleCount)',
               style: const TextStyle(
                 fontSize: 8,
                 fontWeight: FontWeight.w600,
@@ -363,12 +372,12 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(Icons.check_circle, color: Colors.green, size: 10),
-          SizedBox(width: 2),
+        children: [
+          const Icon(Icons.check_circle, color: Colors.green, size: 10),
+          const SizedBox(width: 2),
           Text(
-            'موجود',
-            style: TextStyle(
+            l10n.availableLabel,
+            style: const TextStyle(
               fontSize: 8,
               fontWeight: FontWeight.w600,
               color: Colors.green,
@@ -379,7 +388,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  void _showProductDialog(BuildContext context, {Map<String, dynamic>? product}) {
+  void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String, dynamic>? product}) {
     final isEditing = product != null;
     final nameController = TextEditingController(text: product?['product_name']?.toString() ?? '');
     final typeController = TextEditingController(text: product?['production_type']?.toString() ?? '');
@@ -404,7 +413,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              title: Text(isEditing ? 'ویرایش محصول تولیدی' : 'ثبت محصول تولیدی جدید'),
+              title: Text(isEditing ? l10n.editProductionRecord : l10n.addProductionRecord),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               content: SizedBox(
                 width: 520,
@@ -414,17 +423,17 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                     children: [
                       TextField(
                         controller: nameController,
-                        decoration: const InputDecoration(labelText: 'نام محصول *', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                        decoration: InputDecoration(labelText: l10n.productNameRequiredProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: typeController,
-                        decoration: const InputDecoration(labelText: 'نوع تولید *', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                        decoration: InputDecoration(labelText: l10n.productionTypeRequiredProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: loadingController,
-                        decoration: const InputDecoration(labelText: 'بارگیری', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                        decoration: InputDecoration(labelText: l10n.loadingProduction, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -432,14 +441,14 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: thicknessController,
-                              decoration: const InputDecoration(labelText: 'ضخامت', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                              decoration: InputDecoration(labelText: l10n.thicknessLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: lengthController,
-                              decoration: const InputDecoration(labelText: 'طول', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                              decoration: InputDecoration(labelText: l10n.lengthLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                             ),
                           ),
                         ],
@@ -450,7 +459,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: quantityController,
-                              decoration: const InputDecoration(labelText: 'تعداد تولید *', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                              decoration: InputDecoration(labelText: l10n.quantityRequiredProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                               keyboardType: TextInputType.number,
                             ),
                           ),
@@ -458,7 +467,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: weightController,
-                              decoration: const InputDecoration(labelText: 'وزن تولید', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                              decoration: InputDecoration(labelText: l10n.weightLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                               keyboardType: TextInputType.number,
                             ),
                           ),
@@ -469,7 +478,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              decoration: const InputDecoration(labelText: 'واحد *', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                              decoration: InputDecoration(labelText: l10n.unitRequiredProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                               value: selectedUnit,
                               items: const [
                                 DropdownMenuItem(value: 'متر', child: Text('متر')),
@@ -484,7 +493,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: dateController,
-                              decoration: InputDecoration(labelText: 'تاریخ *', border: const OutlineInputBorder(), suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                              decoration: InputDecoration(labelText: l10n.dateRequiredProd, border: const OutlineInputBorder(), suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                               readOnly: true,
                               onTap: () async {
                                 DateTime? picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2030));
@@ -503,7 +512,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'وضعیت', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                        decoration: InputDecoration(labelText: l10n.statusLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                         value: selectedStatus,
                         items: const [
                           DropdownMenuItem(value: 'در حال تولید', child: Text('در حال تولید')),
@@ -513,19 +522,19 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                         onChanged: (value) => setDialogState(() => selectedStatus = value),
                       ),
                       const SizedBox(height: 8),
-                      TextField(controller: batchController, decoration: const InputDecoration(labelText: 'شماره بچ', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
+                      TextField(controller: batchController, decoration: InputDecoration(labelText: l10n.batchLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
                       const SizedBox(height: 8),
-                      TextField(controller: descriptionController, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیحات', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
+                      TextField(controller: descriptionController, maxLines: 2, decoration: InputDecoration(labelText: l10n.description, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
                     ],
                   ),
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888)))),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888)))),
                 ElevatedButton(
                   onPressed: () async {
                     if (nameController.text.isEmpty || quantityController.text.isEmpty || selectedUnit == null || dateController.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لطفاً فیلدهای ضروری را پر کنید'), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.fillRequiredFieldsProd), backgroundColor: Colors.red));
                       return;
                     }
 
@@ -549,14 +558,14 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                     final result = isEditing ? await _db.updateProducedProduct(product!['id'], payload) : await _db.insertProducedProduct(payload);
                     if (!mounted) return;
                     if (result != -1) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? '✅ محصول با موفقیت به‌روزرسانی شد' : '✅ محصول با موفقیت ثبت شد'), backgroundColor: Colors.green));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? l10n.productUpdatedSuccess : l10n.productAddedSuccess), backgroundColor: Colors.green));
                       _loadData();
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ خطا در ذخیره‌سازی'), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.errorSavingProduct), backgroundColor: Colors.red));
                     }
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D)),
-                  child: Text(isEditing ? 'به‌روزرسانی' : 'ذخیره'),
+                  child: Text(isEditing ? l10n.update : l10n.save),
                 ),
               ],
             ),
@@ -566,30 +575,30 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  void _showDeleteDialog(BuildContext context, Map<String, dynamic> product) {
+  void _showDeleteDialog(BuildContext context, Map<String, dynamic> product, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('حذف محصول تولیدی'),
-          content: Text('آیا از حذف محصول "${product['product_name']}" مطمئن هستید؟'),
+          title: Text(l10n.deleteProductionRecord),
+          content: Text('${l10n.deleteConfirmation} "${product['product_name']}"؟'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف', style: TextStyle(color: Color(0xFF888888)))),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888)))),
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
                 final result = await _db.deleteProducedProduct(product['id']);
                 if (!mounted) return;
                 if (result != -1) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ محصول حذف شد'), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.productDeletedSuccess), backgroundColor: Colors.green));
                   _loadData();
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ خطا در حذف محصول'), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.errorDeletingProduct), backgroundColor: Colors.red));
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('حذف'),
+              child: Text(l10n.delete),
             ),
           ],
         ),
@@ -599,32 +608,36 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final isEnglish = languageProvider.isEnglish;
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: Container(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
-            _buildHeader(),
+            _buildHeader(l10n),
             const SizedBox(height: 16),
-            _buildStatsCards(),
+            _buildStatsCards(l10n),
             const SizedBox(height: 12),
-            const Text('خلاصه تولیدات بر اساس واحد:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+            Text(l10n.productionSummaryByUnit, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
             const SizedBox(height: 6),
-            SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: _buildUnitCards())),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: _buildUnitCards(l10n))),
             const SizedBox(height: 14),
             Expanded(
               child: isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)))
                   : productions.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.factory_outlined, size: 48, color: Colors.grey),
-                              SizedBox(height: 12),
-                              Text('هنوز محصولی ثبت نشده است', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                              const SizedBox(height: 12),
+                              Text(l10n.noProductsFound, style: const TextStyle(fontSize: 14, color: Colors.grey)),
                             ],
                           ),
                         )
@@ -682,19 +695,19 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                                       ),
                                                     ),
-                                                    _buildHeaderCell('شناسه', columnWidths['id']!),
-                                                    _buildHeaderCell('نام محصول', columnWidths['product']!),
-                                                    _buildHeaderCell('نوع', columnWidths['type']!),
-                                                    _buildHeaderCell('ضخامت', columnWidths['thickness']!),
-                                                    _buildHeaderCell('طول', columnWidths['length']!),
-                                                    _buildHeaderCell('تعداد', columnWidths['quantity']!),
-                                                    _buildHeaderCell('وزن', columnWidths['weight']!),
-                                                    _buildHeaderCell('واحد', columnWidths['unit']!),
-                                                    _buildHeaderCell('تاریخ', columnWidths['date']!),
-                                                    _buildHeaderCell('وضعیت', columnWidths['status']!),
-                                                    _buildHeaderCell('بچ', columnWidths['batch']!),
-                                                    _buildHeaderCell('وضعیت فروش', columnWidths['saleStatus']!),
-                                                    _buildHeaderCell('عملیات', columnWidths['actions']!),
+                                                    _buildHeaderCell(l10n.idLabelProd, columnWidths['id']!),
+                                                    _buildHeaderCell(l10n.productNameLabel, columnWidths['product']!),
+                                                    _buildHeaderCell(l10n.productionTypeLabel, columnWidths['type']!),
+                                                    _buildHeaderCell(l10n.thicknessLabelProd, columnWidths['thickness']!),
+                                                    _buildHeaderCell(l10n.lengthLabelProd, columnWidths['length']!),
+                                                    _buildHeaderCell(l10n.quantityLabelProd, columnWidths['quantity']!),
+                                                    _buildHeaderCell(l10n.weightLabelProd, columnWidths['weight']!),
+                                                    _buildHeaderCell(l10n.unitLabelProd, columnWidths['unit']!),
+                                                    _buildHeaderCell(l10n.productionDateLabel, columnWidths['date']!),
+                                                    _buildHeaderCell(l10n.statusLabelProd, columnWidths['status']!),
+                                                    _buildHeaderCell(l10n.batchLabelProd, columnWidths['batch']!),
+                                                    _buildHeaderCell(l10n.saleStatusLabel, columnWidths['saleStatus']!),
+                                                    _buildHeaderCell(l10n.actionsLabelProd, columnWidths['actions']!),
                                                   ],
                                                 ),
                                               );
@@ -732,11 +745,11 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                   _buildDataCell(product['weight']?.toString() ?? '-', columnWidths['weight']!),
                                                   _buildDataCell(product['unit']?.toString() ?? '-', columnWidths['unit']!),
                                                   _buildDataCell('${product['production_date']?.toString() ?? '-'}\n${product['production_date_en']?.toString() ?? '-'}', columnWidths['date']!),
-                                                  SizedBox(width: columnWidths['status']!, child: _buildStatusChip(product['status']?.toString())),
+                                                  SizedBox(width: columnWidths['status']!, child: _buildStatusChip(product['status']?.toString(), l10n)),
                                                   _buildDataCell(product['batch']?.toString() ?? '-', columnWidths['batch']!),
                                                   SizedBox(
                                                     width: columnWidths['saleStatus']!,
-                                                    child: _buildSoldStatusChip(isSold, saleCount),
+                                                    child: _buildSoldStatusChip(isSold, saleCount, l10n),
                                                   ),
                                                   SizedBox(
                                                     width: columnWidths['actions']!,
@@ -747,13 +760,13 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                           icon: const Icon(Icons.edit_outlined, color: Color(0xFFCB001D), size: 16),
                                                           padding: EdgeInsets.zero,
                                                           constraints: const BoxConstraints(),
-                                                          onPressed: () => _showProductDialog(context, product: product),
+                                                          onPressed: () => _showProductDialog(context, l10n, product: product),
                                                         ),
                                                         IconButton(
                                                           icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 16),
                                                           padding: EdgeInsets.zero,
                                                           constraints: const BoxConstraints(),
-                                                          onPressed: () => _showDeleteDialog(context, product),
+                                                          onPressed: () => _showDeleteDialog(context, product, l10n),
                                                         ),
                                                       ],
                                                     ),
@@ -781,7 +794,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                 children: [
                                   Row(
                                     children: [
-                                      const Text('نمایش:', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                                      Text(l10n.show, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                                       const SizedBox(width: 6),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -800,12 +813,12 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                         ),
                                       ),
                                       const SizedBox(width: 4),
-                                      Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                      Text(l10n.perPage, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                                     ],
                                   ),
                                   Row(
                                     children: [
-                                      Text('صفحه $_currentPage از $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                                      Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                                       const SizedBox(width: 12),
                                       IconButton(
                                         icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
@@ -832,4 +845,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
       ),
     );
   }
+
+
 }

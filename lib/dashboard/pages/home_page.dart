@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -68,9 +71,10 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print('❌ Error loading dashboard data: $e');
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطا در بارگذاری داده‌ها: $e'),
+            content: Text('${l10n.errorLoadingData}: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -97,7 +101,6 @@ class _HomePageState extends State<HomePage> {
       double cost = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
       totalRawMaterialCost += cost;
       
-      // Separate by unit - KG vs TON
       if (unit == 'ton' || unit == 't' || unit == 'تن') {
         totalWeightTON += weight;
         materialTypesTON[type] = (materialTypesTON[type] ?? 0) + weight;
@@ -144,7 +147,7 @@ class _HomePageState extends State<HomePage> {
     int totalProduced = producedProducts.length;
     int producedSold = producedProducts.where((p) => p['is_sold'] == 1).length;
 
-    // ============ LOAN STATS - SEPARATE USD AND AFN ============
+    // ============ LOAN STATS ============
     double totalCustomerLoansUSD = 0;
     double totalCustomerLoansAFN = 0;
     double totalCustomerLoansPaidUSD = 0;
@@ -189,7 +192,7 @@ class _HomePageState extends State<HomePage> {
       totalCapital += double.tryParse(asset['current_balance']?.toString() ?? '0') ?? 0;
     }
 
-    // ============ SARAFI STATS - SEPARATE USD AND AFN ============
+    // ============ SARAFI STATS ============
     double totalSarafiUSD = 0;
     double totalSarafiAFN = 0;
     int sarafiDeposits = 0;
@@ -295,58 +298,67 @@ class _HomePageState extends State<HomePage> {
     };
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFFCB001D),
-                ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 24),
-                  _buildStatsRow1(),
-                  const SizedBox(height: 16),
-                  _buildStatsRow2(),
-                  const SizedBox(height: 16),
-                  _buildStatsRow3(),
-                  const SizedBox(height: 24),
-                  _buildChartsRow(),
-                  const SizedBox(height: 24),
-                  _buildDetailedStats(),
-                  const SizedBox(height: 24),
-                  _buildQuickActions(),
-                ],
+@override
+Widget build(BuildContext context) {
+  final l10n = AppLocalizations.of(context)!;
+  final languageProvider = Provider.of<LanguageProvider>(context);
+  
+  final bool isEnglish = languageProvider.isEnglish;
+  
+  return Scaffold(
+    body: SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFCB001D),
               ),
-      ),
-    );
-  }
+            )
+          : Column(
+              crossAxisAlignment: isEnglish 
+                  ? CrossAxisAlignment.start 
+                  : CrossAxisAlignment.end,
+              children: [
+                _buildHeader(l10n, languageProvider),
+                const SizedBox(height: 24),
+                _buildStatsRow1(l10n, languageProvider),
+                const SizedBox(height: 16),
+                _buildStatsRow2(l10n, languageProvider),
+                const SizedBox(height: 16),
+                _buildStatsRow3(l10n, languageProvider),
+                const SizedBox(height: 24),
+                _buildChartsRow(l10n, languageProvider),
+                const SizedBox(height: 24),
+                _buildDetailedStats(l10n, languageProvider),
+                const SizedBox(height: 24),
+                _buildQuickActions(l10n, languageProvider),
+              ],
+            ),
+    ),
+  );
+}
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AppLocalizations l10n, LanguageProvider languageProvider) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Column(
+          crossAxisAlignment: languageProvider.isEnglish 
+              ? CrossAxisAlignment.start 
+              : CrossAxisAlignment.end,
           children: [
             Text(
-              '📊 داشبورد مدیریت',
-              style: TextStyle(
+              l10n.dashboardTitle,
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF1A1A2E),
               ),
             ),
-            SizedBox(height: 4),
+            const SizedBox(height: 4),
             Text(
-              'خلاصه کامل اطلاعات سیستم',
-              style: TextStyle(
+              l10n.dashboardSubtitle,
+              style: const TextStyle(
                 fontSize: 14,
                 color: Color(0xFF888888),
               ),
@@ -365,7 +377,7 @@ class _HomePageState extends State<HomePage> {
               const Icon(Icons.check_circle, color: Colors.green, size: 16),
               const SizedBox(width: 6),
               Text(
-                '${users.length} کاربر فعال',
+                '${users.length} ${l10n.activeUsers}',
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -379,32 +391,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildStatsRow1() {
-    // RAW MATERIALS - Show KG and TON separately
+  Widget _buildStatsRow1(AppLocalizations l10n, LanguageProvider languageProvider) {
     double kg = dashboardData['rawMaterials']?['weightKG'] ?? 0;
     double ton = dashboardData['rawMaterials']?['weightTON'] ?? 0;
     
-    // Determine which unit to show as main value
     String mainValue;
     String subtitleValue;
     if (ton > 0) {
-      mainValue = '${_formatNumber(ton)} تن';
-      subtitleValue = '${_formatNumber(kg)} کیلوگرم';
+      mainValue = '${_formatNumber(ton)} ${l10n.ton}';
+      subtitleValue = '${_formatNumber(kg)} ${l10n.kg}';
     } else {
-      mainValue = '${_formatNumber(kg)} کیلوگرم';
-      subtitleValue = '${_formatNumber(ton)} تن';
+      mainValue = '${_formatNumber(kg)} ${l10n.kg}';
+      subtitleValue = '${_formatNumber(ton)} ${l10n.ton}';
     }
 
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
-            title: 'مواد اولیه',
+            title: l10n.rawMaterials,
             value: mainValue,
             subtitle: subtitleValue,
             icon: Icons.warehouse,
             color: const Color(0xFFCB001D),
-            details: '${dashboardData['rawMaterials']?['count'] ?? 0} قلم - ارزش: ${_formatCurrency(dashboardData['rawMaterials']?['totalCost'] ?? 0)}',
+            details: '${dashboardData['rawMaterials']?['count'] ?? 0} ${l10n.items} - ${l10n.value}: ${_formatCurrency(dashboardData['rawMaterials']?['totalCost'] ?? 0)}',
             trend: '+12%',
             trendUp: true,
           ),
@@ -412,12 +422,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'فروش کل',
+            title: l10n.totalSales,
             value: _formatCurrency(dashboardData['sales']?['totalAmount'] ?? 0),
-            subtitle: '${dashboardData['sales']?['count'] ?? 0} فاکتور',
+            subtitle: '${dashboardData['sales']?['count'] ?? 0} ${l10n.invoices}',
             icon: Icons.attach_money,
             color: Colors.green,
-            details: 'پرداخت: ${_formatCurrency(dashboardData['sales']?['totalPaid'] ?? 0)} | باقیمانده: ${_formatCurrency(dashboardData['sales']?['totalRemaining'] ?? 0)}',
+            details: '${l10n.paid}: ${_formatCurrency(dashboardData['sales']?['totalPaid'] ?? 0)} | ${l10n.remaining}: ${_formatCurrency(dashboardData['sales']?['totalRemaining'] ?? 0)}',
             trend: '+8%',
             trendUp: true,
           ),
@@ -425,12 +435,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'تولیدات',
+            title: l10n.productions,
             value: '${dashboardData['production']?['total'] ?? 0}',
-            subtitle: '${dashboardData['production']?['sold'] ?? 0} فروخته شده',
+            subtitle: '${dashboardData['production']?['sold'] ?? 0} ${l10n.sold}',
             icon: Icons.factory,
             color: Colors.orange,
-            details: 'موجود: ${dashboardData['production']?['available'] ?? 0}',
+            details: '${l10n.available}: ${dashboardData['production']?['available'] ?? 0}',
             trend: '${dashboardData['production']?['available'] ?? 0}',
             trendUp: true,
           ),
@@ -438,9 +448,9 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'فروش برگشتی',
+            title: l10n.returnedSales,
             value: '${dashboardData['sales']?['returned'] ?? 0}',
-            subtitle: 'فاکتور برگشتی',
+            subtitle: l10n.returnedInvoices,
             icon: Icons.undo,
             color: Colors.red,
             details: '${((dashboardData['sales']?['returned'] ?? 0) / (dashboardData['sales']?['count'] ?? 1) * 100).toStringAsFixed(1)}%',
@@ -452,8 +462,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildStatsRow2() {
-    // LOANS - Show AFN and USD separately
+  Widget _buildStatsRow2(AppLocalizations l10n, LanguageProvider languageProvider) {
     double customerAFN = dashboardData['loans']?['customer']?['totalAFN'] ?? 0;
     double customerUSD = dashboardData['loans']?['customer']?['totalUSD'] ?? 0;
     double supplierAFN = dashboardData['loans']?['supplier']?['totalAFN'] ?? 0;
@@ -463,12 +472,12 @@ class _HomePageState extends State<HomePage> {
       children: [
         Expanded(
           child: _buildStatCard(
-            title: 'قرضه مشتریان',
+            title: l10n.customerLoans,
             value: _formatCurrency(customerAFN),
-            subtitle: customerUSD > 0 ? '${_formatNumber(customerUSD)} USD' : 'بدون قرضه دلاری',
+            subtitle: customerUSD > 0 ? '${_formatNumber(customerUSD)} USD' : l10n.noUsdLoans,
             icon: Icons.people,
             color: Colors.purple,
-            details: '${dashboardData['loans']?['customer']?['count'] ?? 0} قرضه | باقیمانده: ${_formatCurrency(dashboardData['loans']?['customer']?['remainingAFN'] ?? 0)} AFN',
+            details: '${dashboardData['loans']?['customer']?['count'] ?? 0} ${l10n.loans} | ${l10n.remaining}: ${_formatCurrency(dashboardData['loans']?['customer']?['remainingAFN'] ?? 0)} AFN',
             trend: '${dashboardData['loans']?['customer']?['count'] ?? 0}',
             trendUp: true,
           ),
@@ -476,12 +485,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'قرضه تأمین‌کنندگان',
+            title: l10n.supplierLoans,
             value: _formatCurrency(supplierAFN),
-            subtitle: supplierUSD > 0 ? '${_formatNumber(supplierUSD)} USD' : 'بدون قرضه دلاری',
+            subtitle: supplierUSD > 0 ? '${_formatNumber(supplierUSD)} USD' : l10n.noUsdLoans,
             icon: Icons.business,
             color: Colors.teal,
-            details: '${dashboardData['loans']?['supplier']?['count'] ?? 0} تأمین‌کننده',
+            details: '${dashboardData['loans']?['supplier']?['count'] ?? 0} ${l10n.suppliers}',
             trend: '${dashboardData['loans']?['supplier']?['count'] ?? 0}',
             trendUp: true,
           ),
@@ -489,12 +498,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'سرمایه کل',
+            title: l10n.totalCapital,
             value: _formatCurrency(dashboardData['capital']?['total'] ?? 0),
-            subtitle: '${dashboardData['capital']?['assets'] ?? 0} دارایی',
+            subtitle: '${dashboardData['capital']?['assets'] ?? 0} ${l10n.assets}',
             icon: Icons.account_balance,
             color: Colors.indigo,
-            details: 'مجموع سرمایه',
+            details: l10n.totalCapital,
             trend: '${dashboardData['capital']?['assets'] ?? 0}',
             trendUp: true,
           ),
@@ -502,12 +511,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'مشتریان',
+            title: l10n.customers,
             value: '${dashboardData['customers']?['count'] ?? 0}',
-            subtitle: 'مشتری فعال',
+            subtitle: l10n.activeCustomers,
             icon: Icons.person,
             color: Colors.blue,
-            details: '${dashboardData['customers']?['count'] ?? 0} مشتری',
+            details: '${dashboardData['customers']?['count'] ?? 0} ${l10n.customers}',
             trend: '${dashboardData['customers']?['count'] ?? 0}',
             trendUp: true,
           ),
@@ -516,8 +525,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildStatsRow3() {
-    // SARAFI - Show USD and AFN separately
+  Widget _buildStatsRow3(AppLocalizations l10n, LanguageProvider languageProvider) {
     double sarafiUSD = dashboardData['sarafi']?['totalUSD'] ?? 0;
     double sarafiAFN = dashboardData['sarafi']?['totalAFN'] ?? 0;
 
@@ -525,12 +533,12 @@ class _HomePageState extends State<HomePage> {
       children: [
         Expanded(
           child: _buildStatCard(
-            title: 'صرافی',
+            title: l10n.sarafi,
             value: '\$${_formatNumber(sarafiUSD)}',
             subtitle: 'AFN ${_formatNumber(sarafiAFN)}',
             icon: Icons.currency_exchange,
             color: Colors.amber,
-            details: '${dashboardData['sarafi']?['deposits'] ?? 0} واریز | ${dashboardData['sarafi']?['withdrawals'] ?? 0} برداشت',
+            details: '${dashboardData['sarafi']?['deposits'] ?? 0} ${l10n.deposits} | ${dashboardData['sarafi']?['withdrawals'] ?? 0} ${l10n.withdrawals}',
             trend: '${dashboardData['sarafi']?['transactions'] ?? 0}',
             trendUp: true,
           ),
@@ -538,12 +546,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'ضایعات',
+            title: l10n.wastes,
             value: _formatCurrency(dashboardData['waste']?['totalValue'] ?? 0),
-            subtitle: '${_formatNumber(dashboardData['waste']?['totalWeight'] ?? 0)} کیلوگرم',
+            subtitle: '${_formatNumber(dashboardData['waste']?['totalWeight'] ?? 0)} ${l10n.kg}',
             icon: Icons.delete,
             color: Colors.red,
-            details: '${dashboardData['waste']?['count'] ?? 0} مورد',
+            details: '${dashboardData['waste']?['count'] ?? 0} ${l10n.items}',
             trend: '${dashboardData['waste']?['count'] ?? 0}',
             trendUp: false,
           ),
@@ -551,12 +559,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'هزینه‌های روزانه',
+            title: l10n.dailyExpenses,
             value: _formatCurrency(dashboardData['expenses']?['total'] ?? 0),
-            subtitle: '${dashboardData['expenses']?['count'] ?? 0} هزینه',
+            subtitle: '${dashboardData['expenses']?['count'] ?? 0} ${l10n.expenses}',
             icon: Icons.receipt,
             color: Colors.grey,
-            details: 'هزینه‌های روزانه',
+            details: l10n.dailyExpenses,
             trend: '${dashboardData['expenses']?['count'] ?? 0}',
             trendUp: true,
           ),
@@ -564,12 +572,12 @@ class _HomePageState extends State<HomePage> {
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: 'تأمین‌کنندگان',
+            title: l10n.suppliers,
             value: '${dashboardData['suppliers']?['count'] ?? 0}',
-            subtitle: 'تأمین‌کننده فعال',
+            subtitle: l10n.activeSuppliers,
             icon: Icons.local_shipping,
             color: Colors.orange,
-            details: '${dashboardData['suppliers']?['count'] ?? 0} تأمین‌کننده',
+            details: '${dashboardData['suppliers']?['count'] ?? 0} ${l10n.suppliers}',
             trend: '${dashboardData['suppliers']?['count'] ?? 0}',
             trendUp: true,
           ),
@@ -682,22 +690,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildChartsRow() {
+  Widget _buildChartsRow(AppLocalizations l10n, LanguageProvider languageProvider) {
     return Row(
       children: [
         Expanded(
           flex: 2,
-          child: _buildSalesChart(),
+          child: _buildSalesChart(l10n, languageProvider),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _buildMaterialDistributionChart(),
+          child: _buildMaterialDistributionChart(l10n, languageProvider),
         ),
       ],
     );
   }
 
-  Widget _buildSalesChart() {
+  Widget _buildSalesChart(AppLocalizations l10n, LanguageProvider languageProvider) {
     var salesByDate = dashboardData['sales']?['byDate'] as Map<String, double>? ?? {};
     
     List<FlSpot> spots = [];
@@ -729,20 +737,20 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '📈 روند فروش (۷ روز اخیر)',
-                style: TextStyle(
+                '📈 ${l10n.salesTrend}',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1A1A2E),
                 ),
               ),
               Text(
-                'مشاهده همه',
-                style: TextStyle(
+                l10n.viewAll,
+                style: const TextStyle(
                   fontSize: 12,
                   color: Color(0xFFCB001D),
                   fontWeight: FontWeight.w600,
@@ -831,10 +839,10 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                   )
-                : const Center(
+                : Center(
                     child: Text(
-                      'داده‌ای برای نمایش وجود ندارد',
-                      style: TextStyle(color: Colors.grey),
+                      l10n.noDataToDisplay,
+                      style: const TextStyle(color: Colors.grey),
                     ),
                   ),
           ),
@@ -843,18 +851,16 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildMaterialDistributionChart() {
-    // Get KG and TON types separately
+  Widget _buildMaterialDistributionChart(AppLocalizations l10n, LanguageProvider languageProvider) {
     var typesKG = dashboardData['rawMaterials']?['typesKG'] as Map<String, double>? ?? {};
     var typesTON = dashboardData['rawMaterials']?['typesTON'] as Map<String, double>? ?? {};
     
-    // Combine for chart - convert TON to KG for comparison
     Map<String, double> allTypes = {};
     typesKG.forEach((key, value) {
       allTypes[key] = (allTypes[key] ?? 0) + value;
     });
     typesTON.forEach((key, value) {
-      allTypes['$key (تن)'] = (allTypes['$key (تن)'] ?? 0) + value;
+      allTypes['$key (${l10n.ton})'] = (allTypes['$key (${l10n.ton})'] ?? 0) + value;
     });
 
     List<PieChartSectionData> sections = [];
@@ -899,7 +905,7 @@ class _HomePageState extends State<HomePage> {
       sections.add(
         PieChartSectionData(
           value: 1,
-          title: 'بدون داده',
+          title: l10n.noData,
           color: Colors.grey,
           radius: 50,
         ),
@@ -926,9 +932,9 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '🎯 توزیع مواد اولیه',
-            style: TextStyle(
+          Text(
+            '🎯 ${l10n.materialDistribution}',
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1A1A2E),
@@ -981,8 +987,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildDetailedStats() {
-    // Get all data for detailed view
+  Widget _buildDetailedStats(AppLocalizations l10n, LanguageProvider languageProvider) {
     double kg = dashboardData['rawMaterials']?['weightKG'] ?? 0;
     double ton = dashboardData['rawMaterials']?['weightTON'] ?? 0;
     double sarafiUSD = dashboardData['sarafi']?['totalUSD'] ?? 0;
@@ -1010,11 +1015,13 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: languageProvider.isEnglish 
+            ? CrossAxisAlignment.start 
+            : CrossAxisAlignment.end,
         children: [
-          const Text(
-            '📋 آمار تفصیلی سیستم',
-            style: TextStyle(
+          Text(
+            '📋 ${l10n.detailedStats}',
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1A1A2E),
@@ -1029,18 +1036,18 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 16,
             childAspectRatio: 1.1,
             children: [
-              _buildDetailItem('مواد اولیه (کیلوگرم)', kg.toStringAsFixed(0), Icons.warehouse, const Color(0xFFCB001D)),
-              _buildDetailItem('مواد اولیه (تن)', ton.toStringAsFixed(2), Icons.warehouse, Colors.blue),
-              _buildDetailItem('فروش', dashboardData['sales']?['count'] ?? 0, Icons.attach_money, Colors.green),
-              _buildDetailItem('تولیدات', dashboardData['production']?['total'] ?? 0, Icons.factory, Colors.orange),
-              _buildDetailItem('مشتریان', dashboardData['customers']?['count'] ?? 0, Icons.people, Colors.blue),
-              _buildDetailItem('تأمین‌کنندگان', dashboardData['suppliers']?['count'] ?? 0, Icons.local_shipping, Colors.teal),
-              _buildDetailItem('قرضه مشتریان (AFN)', customerAFN.toStringAsFixed(0), Icons.person_add, Colors.purple),
-              _buildDetailItem('قرضه مشتریان (USD)', customerUSD.toStringAsFixed(0), Icons.person_add, Colors.indigo),
-              _buildDetailItem('قرضه تأمین‌کنندگان (AFN)', supplierAFN.toStringAsFixed(0), Icons.business, Colors.teal),
-              _buildDetailItem('قرضه تأمین‌کنندگان (USD)', supplierUSD.toStringAsFixed(0), Icons.business, Colors.cyan),
-              _buildDetailItem('صرافی (USD)', sarafiUSD.toStringAsFixed(0), Icons.currency_exchange, Colors.amber),
-              _buildDetailItem('صرافی (AFN)', sarafiAFN.toStringAsFixed(0), Icons.currency_exchange, Colors.orange),
+              _buildDetailItem('${l10n.rawMaterials} (${l10n.kg})', kg.toStringAsFixed(0), Icons.warehouse, const Color(0xFFCB001D)),
+              _buildDetailItem('${l10n.rawMaterials} (${l10n.ton})', ton.toStringAsFixed(2), Icons.warehouse, Colors.blue),
+              _buildDetailItem(l10n.sales, dashboardData['sales']?['count'] ?? 0, Icons.attach_money, Colors.green),
+              _buildDetailItem(l10n.productions, dashboardData['production']?['total'] ?? 0, Icons.factory, Colors.orange),
+              _buildDetailItem(l10n.customers, dashboardData['customers']?['count'] ?? 0, Icons.people, Colors.blue),
+              _buildDetailItem(l10n.suppliers, dashboardData['suppliers']?['count'] ?? 0, Icons.local_shipping, Colors.teal),
+              _buildDetailItem('${l10n.customerLoans} (AFN)', customerAFN.toStringAsFixed(0), Icons.person_add, Colors.purple),
+              _buildDetailItem('${l10n.customerLoans} (USD)', customerUSD.toStringAsFixed(0), Icons.person_add, Colors.indigo),
+              _buildDetailItem('${l10n.supplierLoans} (AFN)', supplierAFN.toStringAsFixed(0), Icons.business, Colors.teal),
+              _buildDetailItem('${l10n.supplierLoans} (USD)', supplierUSD.toStringAsFixed(0), Icons.business, Colors.cyan),
+              _buildDetailItem('${l10n.sarafi} (USD)', sarafiUSD.toStringAsFixed(0), Icons.currency_exchange, Colors.amber),
+              _buildDetailItem('${l10n.sarafi} (AFN)', sarafiAFN.toStringAsFixed(0), Icons.currency_exchange, Colors.orange),
             ],
           ),
           const SizedBox(height: 16),
@@ -1052,11 +1059,11 @@ class _HomePageState extends State<HomePage> {
             ),
             child: Column(
               children: [
-                _buildStatRow('مجموع فروش', _formatCurrency(dashboardData['sales']?['totalAmount'] ?? 0)),
-                _buildStatRow('باقیمانده فروش', _formatCurrency(dashboardData['sales']?['totalRemaining'] ?? 0)),
-                _buildStatRow('مجموع ضایعات', _formatCurrency(dashboardData['waste']?['totalValue'] ?? 0)),
-                _buildStatRow('مجموع هزینه‌ها', _formatCurrency(dashboardData['expenses']?['total'] ?? 0)),
-                _buildStatRow('سرمایه کل', _formatCurrency(dashboardData['capital']?['total'] ?? 0)),
+                _buildStatRow(l10n.totalSales, _formatCurrency(dashboardData['sales']?['totalAmount'] ?? 0)),
+                _buildStatRow(l10n.remainingSales, _formatCurrency(dashboardData['sales']?['totalRemaining'] ?? 0)),
+                _buildStatRow(l10n.totalWaste, _formatCurrency(dashboardData['waste']?['totalValue'] ?? 0)),
+                _buildStatRow(l10n.totalExpenses, _formatCurrency(dashboardData['expenses']?['total'] ?? 0)),
+                _buildStatRow(l10n.totalCapital, _formatCurrency(dashboardData['capital']?['total'] ?? 0)),
               ],
             ),
           ),
@@ -1130,7 +1137,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildQuickActions() {
+  Widget _buildQuickActions(AppLocalizations l10n, LanguageProvider languageProvider) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1150,9 +1157,9 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Row(
         children: [
-          const Text(
-            '⚡ دسترسی سریع:',
-            style: TextStyle(
+          Text(
+            '⚡ ${l10n.quickAccess}:',
+            style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1A1A2E),
@@ -1164,14 +1171,14 @@ class _HomePageState extends State<HomePage> {
               spacing: 12,
               runSpacing: 8,
               children: [
-                _buildQuickActionButton(icon: Icons.warehouse, label: 'مواد اولیه', color: const Color(0xFFCB001D)),
-                _buildQuickActionButton(icon: Icons.attach_money, label: 'فروش', color: Colors.green),
-                _buildQuickActionButton(icon: Icons.factory, label: 'تولید', color: Colors.orange),
-                _buildQuickActionButton(icon: Icons.people, label: 'مشتریان', color: Colors.blue),
-                _buildQuickActionButton(icon: Icons.local_shipping, label: 'تأمین‌کنندگان', color: Colors.teal),
-                _buildQuickActionButton(icon: Icons.account_balance, label: 'سرمایه', color: Colors.indigo),
-                _buildQuickActionButton(icon: Icons.currency_exchange, label: 'صرافی', color: Colors.amber),
-                _buildQuickActionButton(icon: Icons.receipt, label: 'هزینه‌ها', color: Colors.grey),
+                _buildQuickActionButton(icon: Icons.warehouse, label: l10n.rawMaterials, color: const Color(0xFFCB001D), l10n: l10n),
+                _buildQuickActionButton(icon: Icons.attach_money, label: l10n.sales, color: Colors.green, l10n: l10n),
+                _buildQuickActionButton(icon: Icons.factory, label: l10n.productions, color: Colors.orange, l10n: l10n),
+                _buildQuickActionButton(icon: Icons.people, label: l10n.customers, color: Colors.blue, l10n: l10n),
+                _buildQuickActionButton(icon: Icons.local_shipping, label: l10n.suppliers, color: Colors.teal, l10n: l10n),
+                _buildQuickActionButton(icon: Icons.account_balance, label: l10n.capital, color: Colors.indigo, l10n: l10n),
+                _buildQuickActionButton(icon: Icons.currency_exchange, label: l10n.sarafi, color: Colors.amber, l10n: l10n),
+                _buildQuickActionButton(icon: Icons.receipt, label: l10n.expenses, color: Colors.grey, l10n: l10n),
               ],
             ),
           ),
@@ -1184,12 +1191,13 @@ class _HomePageState extends State<HomePage> {
     required IconData icon,
     required String label,
     required Color color,
+    required AppLocalizations l10n,
   }) {
     return GestureDetector(
       onTap: () {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('رفتن به صفحه $label'),
+            content: Text('${l10n.goingTo} $label'),
             duration: const Duration(seconds: 1),
           ),
         );

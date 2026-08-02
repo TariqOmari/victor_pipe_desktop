@@ -950,7 +950,36 @@ String get loansCurrency => _get('loansCurrency');
 String get loansLoadingError => _get('loansLoadingError');
 String get loansPrintReceipt => _get('loansPrintReceipt');
 
+// ============ EXCEL IMPORT/EXPORT ============
+String get exportToExcel => _get('exportToExcel');
+String get importFromExcel => _get('importFromExcel');
+String get exportSuccess => _get('exportSuccess');
+String get exportFailed => _get('exportFailed');
+String get importFailed => _get('importFailed');
+String get noValidDataToImport => _get('noValidDataToImport');
+String get fileValid => _get('fileValid');
+String get fileValidationFailed => _get('fileValidationFailed');
+String get rowsFound => _get('rowsFound');
+String get missingRequiredColumns => _get('missingRequiredColumns');
+String get importPreview => _get('importPreview');
+String get itemsToImport => _get('itemsToImport');
+String get scrollToSeeMore => _get('scrollToSeeMore');
+String get importConfirmation => _get('importConfirmation');
+String get importResult => _get('importResult');
+String get successfullyImported => _get('successfullyImported');
+String get skipped => _get('skipped');
+String get andMore => _get('andMore');
+String get errors => _get('errors');
+String get ok => _get('ok');
 
+String get import => _get('import');
+String get fileSaved => _get('fileSaved');
+String get open => _get('open');
+String get rowNumber => _get('rowNumber');
+String get continueImport => _get('continueImport');
+String get validColumns => _get('validColumns');
+String get invalidColumns => _get('invalidColumns');
+String get ignoredColumns => _get('ignoredColumns');
 
 
   String _get(String key) {

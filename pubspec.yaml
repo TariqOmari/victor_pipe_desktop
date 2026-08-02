@@ -22,6 +22,7 @@ dependencies:
   # State Management
   provider: ^6.0.5
   shared_preferences: ^2.1.1
+  
   # Date & Time
   intl: ^0.20.2
   
@@ -32,12 +33,17 @@ dependencies:
   # Image Picker
   image_picker: ^1.0.4
   
-  # Charts - ADD THIS
+  # Charts
   fl_chart: ^0.63.0
   
   # UI & Icons
   cupertino_icons: ^1.0.8
   persian: ^1.0.0
+  
+  # Excel Import/Export
+  excel: ^4.0.4
+  file_picker: ^6.1.1
+  file_selector: ^1.0.3
 
 dev_dependencies:
   flutter_test:

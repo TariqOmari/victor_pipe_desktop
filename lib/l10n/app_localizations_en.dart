@@ -876,5 +876,38 @@
 'loansPrintReceipt': 'Print Receipt',
 
 
+
+// ============ EXCEL IMPORT/EXPORT ============
+'exportToExcel': 'Export to Excel',
+'importFromExcel': 'Import from Excel',
+'exportSuccess': 'Export successful',
+'exportFailed': 'Export failed',
+'importFailed': 'Import failed',
+'noValidDataToImport': 'No valid data to import',
+'fileValid': 'File is valid',
+'fileValidationFailed': 'File validation failed',
+'rowsFound': 'Rows found',
+'missingRequiredColumns': 'Missing required columns',
+'importPreview': 'Import Preview',
+'itemsToImport': 'Items to import',
+'scrollToSeeMore': 'Scroll to see more',
+'importConfirmation': 'Are you sure you want to import these items?',
+'importResult': 'Import Result',
+'successfullyImported': 'Successfully imported',
+'skipped': 'Skipped',
+'andMore': 'and more',
+'errors': 'Errors',
+'ok': 'OK',
+'close': 'Close',
+'import': 'Import',
+'fileSaved': 'File saved',
+'open': 'Open',
+'rowNumber': 'Row #',
+'continueImport': 'Continue Import',
+'validColumns': 'Valid columns',
+'invalidColumns': 'Invalid columns',
+'ignoredColumns': 'Ignored columns',
+
+
 };
 

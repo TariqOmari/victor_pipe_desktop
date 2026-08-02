@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:excel/excel.dart' hide Border;
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:file_selector/file_selector.dart';
+import 'dart:io';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -163,16 +168,13 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                   return;
                 }
 
-                // Find all items with this unit
                 final itemsToUpdate = materials.where((m) => m['unit'] == unit).toList();
                 
-                // Calculate total weight of all items with this unit
                 double totalUnitWeight = 0;
                 for (var item in itemsToUpdate) {
                   totalUnitWeight += double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
                 }
 
-                // Distribute the cut proportionally
                 for (var item in itemsToUpdate) {
                   double currentWeight = double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
                   double ratio = currentWeight / totalUnitWeight;
@@ -234,7 +236,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
     List<Widget> cards = [];
     unitTotals.forEach((unit, total) {
-      // Get items count for this unit
       int itemCount = materials.where((m) => m['unit'] == unit).length;
       final translatedUnit = _translateUnit(unit, l10n);
       
@@ -320,7 +321,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                       color: Color(0xFF888888),
                     ),
                   ),
-                  // Cut Button
                   InkWell(
                     onTap: () => _showCutUnitDialog(unit, total),
                     child: Container(
@@ -533,7 +533,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
           ),
           const SizedBox(height: 12),
-          // Stock Cards - Responsive grid
           Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -616,6 +615,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                     ..._paginatedMaterials.map((material) {
                       final isSelected = _selectedIds.contains(material['id'] as int);
                       final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
+                      final isImported = material['imported_by_excel'] == true;
                       
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -697,6 +697,26 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
+                                  if (isImported)
+                                    Container(
+                                      margin: const EdgeInsets.only(right: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.cloud_done, color: Colors.green, size: 12),
+                                          SizedBox(width: 2),
+                                          Text(
+                                            '📥',
+                                            style: TextStyle(fontSize: 8),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   IconButton(
                                     icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
                                     padding: EdgeInsets.zero,
@@ -1568,6 +1588,708 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     );
   }
 
+  // ============ EXPORT TO EXCEL ============
+  Future<void> _exportToExcel() async {
+    final l10n = AppLocalizations.of(context)!;
+    
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFCB001D)),
+        ),
+      );
+
+      final excel = Excel.createExcel();
+      final sheet = excel['RawMaterials'];
+
+      final headers = [
+        'شناسه', 'شناسه تامین‌کننده', 'نام تامین‌کننده', 'نام ماده خام',
+        'محل تخلیه', 'نوع ماده', 'ضخامت', 'وزن خالص', 'وزن ناخالص',
+        'تاریخ (شمسی)', 'تاریخ (میلادی)', 'واحد', 'قیمت واحد', 'قیمت محصول',
+        'کمیسیون', 'هزینه حمل', 'متفرقه', 'غرفه‌داری', 'بارچالانی',
+        'نوع خرید', 'مبلغ فروشنده', 'روش پرداخت فروشنده', 'مبلغ پرداختی فروشنده',
+        'واحد پول', 'نرخ ارز', 'قیمت نهایی', 'تاریخ ایجاد'
+      ];
+
+      final dbFields = [
+        'id', 'supplier_id', 'supplier_name', 'name', 'location', 'material_type',
+        'thickness', 'net_weight', 'gross_weight', 'date', 'date_en', 'unit',
+        'unit_price', 'product', 'commission', 'transfer_cost', 'miscellaneous',
+        'ghurfedari', 'barchalani', 'purchase_type', 'seller_payment',
+        'seller_payment_method', 'seller_paid_amount', 'currency', 'exchange_rate',
+        'final_price', 'created_at'
+      ];
+
+      for (int i = 0; i < headers.length; i++) {
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).value = TextCellValue(headers[i]);
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle = CellStyle(
+          bold: true,
+          fontSize: 11,
+          backgroundColorHex: ExcelColor.fromHexString('FFCB001D'),
+          fontColorHex: ExcelColor.fromHexString('FFFFFFFF'),
+        );
+      }
+
+      for (int row = 0; row < materials.length; row++) {
+        final material = materials[row];
+        final supplierName = suppliers.firstWhere(
+          (s) => s['id'] == material['supplier_id'],
+          orElse: () => {'name': ''},
+        )['name'] ?? '';
+
+        for (int col = 0; col < dbFields.length; col++) {
+          String value = '';
+          final field = dbFields[col];
+          
+          if (field == 'supplier_name') {
+            value = supplierName.toString();
+          } else {
+            value = material[field]?.toString() ?? '';
+          }
+          
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row + 1)).value = TextCellValue(value);
+        }
+      }
+
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'raw_materials_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+      final filePath = '${directory.path}/$fileName';
+      
+      final fileBytes = excel.encode();
+      if (fileBytes != null) {
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        
+        Navigator.pop(context);
+        
+        String? savedPath;
+        if (Platform.isAndroid) {
+          try {
+            final dir = Directory('/storage/emulated/0/Download');
+            if (await dir.exists()) {
+              final targetPath = '${dir.path}/$fileName';
+              await file.copy(targetPath);
+              savedPath = targetPath;
+            }
+          } catch (_) {}
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ ${l10n.exportSuccess}: ${savedPath ?? filePath}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.exportFailed), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${l10n.exportFailed}: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ============ IMPORT FROM EXCEL ============
+  Future<void> _importFromExcel() async {
+    final l10n = AppLocalizations.of(context)!;
+    
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'انتخاب فایل اکسل',
+        allowMultiple: false,
+        withData: true,
+        withReadStream: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+      
+      final filePath = result.files.single.path;
+      if (filePath == null) return;
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFCB001D)),
+        ),
+      );
+
+      final importedMaterials = await _importExcelData(filePath);
+      Navigator.pop(context);
+
+      if (importedMaterials.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ فایل انتخاب شده معتبر نیست یا داده‌ای برای وارد کردن ندارد'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      await _showImportPreviewDialog(importedMaterials);
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${l10n.importFailed}: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ============ IMPORT EXCEL DATA ============
+// ============ IMPORT EXCEL DATA ============
+Future<List<Map<String, dynamic>>> _importExcelData(String filePath) async {
+  final file = File(filePath);
+  final bytes = await file.readAsBytes();
+  final excel = Excel.decodeBytes(bytes);
+  final sheet = excel.tables.values.first;
+
+  // Find the first row that contains headers (look for non-empty cells)
+  int headerRowIndex = 0;
+  for (int row = 0; row < 10 && row < sheet.maxRows; row++) {
+    bool hasData = false;
+    for (int col = 0; col < sheet.maxColumns && col < 20; col++) {
+      final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row));
+      if (cell.value != null && cell.value!.toString().trim().isNotEmpty) {
+        hasData = true;
+        break;
+      }
+    }
+    if (hasData) {
+      headerRowIndex = row;
+      break;
+    }
+  }
+
+  // Get headers from the found row
+  final headers = <String>[];
+  for (int col = 0; col < sheet.maxColumns; col++) {
+    final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: headerRowIndex));
+    if (cell.value != null && cell.value!.toString().trim().isNotEmpty) {
+      headers.add(cell.value!.toString().trim());
+    }
+  }
+
+  print('📋 Excel Headers found at row $headerRowIndex: $headers');
+  print('📋 Total headers: ${headers.length}');
+  print('📋 Total rows in sheet: ${sheet.maxRows}');
+
+  // If still no headers, try to use first row with any data
+  if (headers.isEmpty) {
+    for (int col = 0; col < sheet.maxColumns; col++) {
+      headers.add('ستون ${col + 1}');
+    }
+  }
+
+  // Define possible field mappings
+  final fieldMappings = {
+    'name': ['نام ماده خام', 'نام مواد', 'مواد', 'تفصیل', 'شرح', 'نام', 'ارسالی', 'کالا', 'product', 'description', 'item', 'شماره'],
+    'supplier_name': ['نام تامین‌کننده', 'تامین‌کننده', 'اسم فروشنده', 'فروشنده', 'supplier', 'vendor', 'seller'],
+    'gross_weight': ['وزن ناخالص', 'وزن کل', 'وزن', 'gross weight', 'total weight', 'weight', 'وزن ناخالص'],
+    'net_weight': ['وزن خالص', 'net weight'],
+    'unit_price': ['قیمت واحد', 'قیمت', 'unit price', 'price'],
+    'unit': ['واحد', 'unit'],
+    'date': ['تاریخ (شمسی)', 'تاریخ', 'date', 'تاریخ شمسی'],
+    'date_en': ['تاریخ (میلادی)', 'date en', 'english date'],
+    'location': ['محل تخلیه', 'تخلیه', 'location', 'تخلیه شده'],
+    'material_type': ['نوع ماده', 'نوع مواد', 'material type', 'type', 'نوع'],
+    'thickness': ['ضخامت', 'thickness', 'ض'],
+    'purchase_type': ['نوع خرید', 'purchase type'],
+    'currency': ['واحد پول', 'currency'],
+    'exchange_rate': ['نرخ ارز', 'exchange rate'],
+    'product': ['قیمت محصول', 'product price'],
+    'commission': ['کمیسیون', 'commission'],
+    'transfer_cost': ['هزینه حمل', 'transfer cost'],
+    'miscellaneous': ['متفرقه', 'miscellaneous'],
+    'ghurfedari': ['غرفه‌داری', 'ghurfedari'],
+    'barchalani': ['بارچالانی', 'barchalani'],
+    'seller_payment': ['مبلغ فروشنده', 'seller payment'],
+    'seller_payment_method': ['روش پرداخت', 'payment method'],
+    'seller_paid_amount': ['مبلغ پرداختی', 'paid amount'],
+    'final_price': ['قیمت نهایی', 'final price'],
+  };
+
+  // Find column mappings
+  final columnMap = <String, int>{};
+  for (int i = 0; i < headers.length; i++) {
+    final header = headers[i].trim();
+    print('🔍 Checking header: "$header"');
+    for (final entry in fieldMappings.entries) {
+      final field = entry.key;
+      final possibleNames = entry.value;
+      for (final possibleName in possibleNames) {
+        if (header.contains(possibleName) || 
+            possibleName.contains(header) ||
+            header.trim().toLowerCase() == possibleName.trim().toLowerCase()) {
+          columnMap[field] = i;
+          print('✅ Matched: "$header" → $field');
+          break;
+        }
+      }
+      if (columnMap.containsKey(field)) break;
+    }
+  }
+
+  // If no matches, use all columns as generic data
+  if (columnMap.isEmpty) {
+    print('⚠️ No column matches found, using all columns');
+    for (int i = 0; i < headers.length; i++) {
+      columnMap['field_$i'] = i;
+    }
+  }
+
+  final materials = <Map<String, dynamic>>[];
+  
+  // Process rows (start after header row)
+  for (int row = headerRowIndex + 1; row < sheet.maxRows; row++) {
+    final material = <String, dynamic>{};
+    bool hasAnyData = false;
+    String? nameValue;
+
+    // Collect data from mapped columns
+    for (final entry in columnMap.entries) {
+      final field = entry.key;
+      final col = entry.value;
+      
+      if (col < sheet.maxColumns) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row));
+        String value = cell.value?.toString() ?? '';
+        if (value.trim().isNotEmpty) {
+          // Try to parse as number
+          final cleanValue = value.trim().replaceAll(',', '');
+          final numValue = double.tryParse(cleanValue);
+          if (numValue != null && cleanValue.isNotEmpty) {
+            material[field] = numValue;
+          } else {
+            material[field] = value.trim();
+          }
+          hasAnyData = true;
+          
+          if (field == 'name' || field.startsWith('field_')) {
+            if (nameValue == null && value.trim().length > 1) {
+              nameValue = value.trim();
+            }
+          }
+        }
+      }
+    }
+
+    // Skip empty rows
+    if (!hasAnyData) continue;
+
+    // Find name from any column if not found
+    if (nameValue == null) {
+      for (int col = 0; col < sheet.maxColumns && nameValue == null; col++) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row));
+        String value = cell.value?.toString() ?? '';
+        if (value.trim().isNotEmpty && value.trim().length > 1) {
+          nameValue = value.trim();
+        }
+      }
+    }
+
+    // Skip if no name
+    if (nameValue == null || nameValue.isEmpty) continue;
+
+    // Build material
+    material['name'] = nameValue;
+
+    // Set defaults for all required fields
+    if (!material.containsKey('unit') || material['unit'].toString().isEmpty) {
+      material['unit'] = 'کیلوگرم';
+    }
+    if (!material.containsKey('currency') || material['currency'].toString().isEmpty) {
+      material['currency'] = 'AFN';
+    }
+    if (!material.containsKey('seller_payment_method') || material['seller_payment_method'].toString().isEmpty) {
+      material['seller_payment_method'] = 'cash';
+    }
+    if (!material.containsKey('purchase_type') || material['purchase_type'].toString().isEmpty) {
+      material['purchase_type'] = 'مستقیم';
+    }
+    if (!material.containsKey('gross_weight') || material['gross_weight'].toString().isEmpty) {
+      material['gross_weight'] = '0';
+    }
+    if (!material.containsKey('net_weight') || material['net_weight'].toString().isEmpty) {
+      material['net_weight'] = '0';
+    }
+    if (!material.containsKey('unit_price') || material['unit_price'].toString().isEmpty) {
+      material['unit_price'] = '0';
+    }
+    if (!material.containsKey('seller_payment')) {
+      material['seller_payment'] = '0';
+    }
+    if (!material.containsKey('seller_paid_amount')) {
+      material['seller_paid_amount'] = '0';
+    }
+    if (!material.containsKey('final_price')) {
+      material['final_price'] = '0';
+    }
+    if (!material.containsKey('date') || material['date'].toString().isEmpty) {
+      final now = DateTime.now();
+      material['date'] = PersianDateConverter.gregorianToJalali(now);
+      material['date_en'] = PersianDateConverter.getEnglishDate(now);
+    }
+    
+    // Mark as imported (will be removed before insert)
+    material['_imported_by_excel'] = true;
+    
+    materials.add(material);
+    print('✅ Row $row imported: ${material['name']}');
+  }
+
+  print('📊 Total imported: ${materials.length} materials');
+  return materials;
+}
+
+  // ============ SHOW IMPORT PREVIEW DIALOG ============
+  Future<void> _showImportPreviewDialog(List<Map<String, dynamic>> importedMaterials) async {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final isEnglish = languageProvider.isEnglish;
+    
+    return showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('📊 ${l10n.importPreview}'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: SizedBox(
+            width: 600,
+            height: 400,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${l10n.itemsToImport}: ${importedMaterials.length}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFCB001D),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.cloud_done, color: Colors.green, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'وارد شده از اکسل',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SingleChildScrollView(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFCB001D).withOpacity(0.1),
+                                border: Border(
+                                  bottom: BorderSide(color: Colors.grey.shade300),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  _buildPreviewHeader('#', 40),
+                                  _buildPreviewHeader(l10n.materialName, 120),
+                                  _buildPreviewHeader(l10n.grossWeight, 80),
+                                  _buildPreviewHeader(l10n.unit, 60),
+                                  _buildPreviewHeader(l10n.unitPrice, 80),
+                                  _buildPreviewHeader(l10n.currency, 60),
+                                ],
+                              ),
+                            ),
+                            ...importedMaterials.take(10).toList().asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final material = entry.value;
+                              return Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    _buildPreviewCell((index + 1).toString(), 40),
+                                    _buildPreviewCell(material['name']?.toString() ?? '-', 120),
+                                    _buildPreviewCell(material['gross_weight']?.toString() ?? '0', 80),
+                                    _buildPreviewCell(material['unit']?.toString() ?? '-', 60),
+                                    _buildPreviewCell(material['unit_price']?.toString() ?? '0', 80),
+                                    _buildPreviewCell(material['currency']?.toString() ?? 'AFN', 60),
+                                  ],
+                                ),
+                              );
+                            }),
+                            if (importedMaterials.length > 10)
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                child: Text(
+                                  '... ${l10n.andMore} ${importedMaterials.length - 10} ${l10n.items}',
+                                  style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.importConfirmation,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _performImport(importedMaterials);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+              ),
+              child: Text('${l10n.import} (${importedMaterials.length})'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewHeader(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+          color: Color(0xFF1A1A2E),
+        ),
+        textAlign: TextAlign.center,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _buildPreviewCell(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 10, color: Color(0xFF1A1A2E)),
+        textAlign: TextAlign.center,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  // ============ PERFORM IMPORT ============
+  Future<void> _performImport(List<Map<String, dynamic>> importedMaterials) async {
+    final l10n = AppLocalizations.of(context)!;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFFCB001D)),
+      ),
+    );
+
+    try {
+      int inserted = 0;
+      int skipped = 0;
+      List<String> errors = [];
+
+      for (var material in importedMaterials) {
+        try {
+          String? supplierName = material['supplier_name']?.toString();
+          if (supplierName != null && supplierName.isNotEmpty) {
+            var existingSupplier = suppliers.firstWhere(
+              (s) => s['name'] == supplierName,
+              orElse: () => {},
+            );
+            
+            if (existingSupplier.isNotEmpty) {
+              material['supplier_id'] = existingSupplier['id'];
+            } else {
+              final supplierId = await _db.insertSupplier({
+                'name': supplierName,
+                'phone': '',
+                'address': '',
+              });
+              if (supplierId != -1) {
+                material['supplier_id'] = supplierId;
+              } else {
+                skipped++;
+                errors.add('خطا در ایجاد تامین‌کننده: $supplierName');
+                continue;
+              }
+            }
+          }
+
+          material.remove('supplier_name');
+          
+          // Remove temporary import flag
+          material.remove('_imported_by_excel');
+          
+          // Remove any field_ or extra_ columns
+          material.removeWhere((key, value) => key.startsWith('field_'));
+          material.removeWhere((key, value) => key.startsWith('extra_'));
+
+          if (material['date'] == null || material['date'].toString().isEmpty) {
+            final now = DateTime.now();
+            material['date'] = PersianDateConverter.gregorianToJalali(now);
+            material['date_en'] = PersianDateConverter.getEnglishDate(now);
+          }
+
+          final result = await _db.insertRawMaterial(material);
+          if (result != -1) {
+            inserted++;
+          } else {
+            skipped++;
+          }
+        } catch (e) {
+          skipped++;
+          errors.add('خطا در وارد کردن ${material['name']}: $e');
+        }
+      }
+
+      Navigator.pop(context);
+
+      await showDialog(
+        context: context,
+        builder: (context) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text('📥 ${l10n.importResult}'),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Text('✅ ${l10n.successfullyImported}: $inserted ${l10n.items}'),
+                    ],
+                  ),
+                  if (skipped > 0) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.warning, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Text('⚠️ ${l10n.skipped}: $skipped ${l10n.items}'),
+                      ],
+                    ),
+                  ],
+                  if (errors.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.errors,
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                    ),
+                    ...errors.take(5).map((error) => 
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text('• $error', style: const TextStyle(fontSize: 12, color: Colors.red)),
+                      ),
+                    ),
+                    if (errors.length > 5)
+                      Text('... ${l10n.andMore} ${errors.length - 5} ${l10n.errors}'),
+                  ],
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.cloud_done, color: Colors.green, size: 16),
+                        SizedBox(width: 8),
+                        Text(
+                          '✅ موارد وارد شده با برچسب "وارد شده از اکسل" مشخص شده‌اند',
+                          style: TextStyle(fontSize: 12, color: Colors.green),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _loadData();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFCB001D),
+                ),
+                child: Text(l10n.ok),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${l10n.importFailed}: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -1581,7 +2303,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
         child: Column(
           crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
-            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1599,21 +2320,44 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: () { _showAddDialog(context); },
-                  icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                  label: Text(l10n.addRawMaterial, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCB001D),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.file_download, color: Color(0xFFCB001D)),
+                      tooltip: l10n.exportToExcel,
+                      onPressed: materials.isEmpty ? null : _exportToExcel,
+                      style: IconButton.styleFrom(
+                        backgroundColor: materials.isEmpty 
+                            ? Colors.grey.shade200 
+                            : const Color(0xFFCB001D).withOpacity(0.08),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.file_upload, color: Colors.green),
+                      tooltip: l10n.importFromExcel,
+                      onPressed: _importFromExcel,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.green.withOpacity(0.08),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    ElevatedButton.icon(
+                      onPressed: () { _showAddDialog(context); },
+                      icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                      label: Text(l10n.addRawMaterial, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFCB001D),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
             const SizedBox(height: 16),
 
-            // Stats
             Row(
               children: [
                 _buildStatCard(l10n.totalMaterials, materials.length.toString()),
@@ -1623,7 +2367,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
             ),
             const SizedBox(height: 12),
 
-            // Unit-based totals cards - Summary (Tab 1 style)
             if (materials.isNotEmpty) ...[
               Text(
                 l10n.stockSummaryByUnit,
@@ -1637,7 +2380,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
             ],
             const SizedBox(height: 14),
 
-            // Tabs Container
             Expanded(
               child: Container(
                 decoration: BoxDecoration(

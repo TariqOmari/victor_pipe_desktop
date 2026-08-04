@@ -907,7 +907,7 @@
 'validColumns': 'Valid columns',
 'invalidColumns': 'Invalid columns',
 'ignoredColumns': 'Ignored columns',
-
+'loansSupplierName': 'Supplier Name',
 
 };
 

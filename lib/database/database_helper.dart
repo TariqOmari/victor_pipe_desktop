@@ -24,13 +24,57 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> _ensureSupplierLoanTables(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS supplier_loans(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          supplier_id INTEGER NOT NULL,
+          raw_material_id INTEGER,
+          invoice_number TEXT,
+          supplier_name TEXT,
+          supplier_company TEXT,
+          total_amount REAL NOT NULL,
+          paid_amount REAL NOT NULL DEFAULT 0,
+          remaining_amount REAL NOT NULL DEFAULT 0,
+          loan_type TEXT,
+          currency TEXT,
+          due_date TEXT,
+          date TEXT,
+          date_en TEXT,
+          description TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+          FOREIGN KEY (raw_material_id) REFERENCES raw_materials (id)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS supplier_loan_payments(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          loan_id INTEGER NOT NULL,
+          amount REAL NOT NULL,
+          note TEXT,
+          date TEXT,
+          date_en TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (loan_id) REFERENCES supplier_loans (id)
+        )
+      ''');
+
+      print('✅ Supplier loans tables created successfully!');
+    } catch (e) {
+      print('❌ Error ensuring supplier loan tables: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _ensureSellLoanTables(Database db) async {
     try {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS sell_loans(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           sale_invoice_id INTEGER,
-          supplier_id INTEGER,
           invoice_number TEXT,
           customer_name TEXT,
           customer_company TEXT,
@@ -38,13 +82,11 @@ class DatabaseHelper {
           paid_amount REAL NOT NULL DEFAULT 0,
           remaining_amount REAL NOT NULL DEFAULT 0,
           loan_type TEXT,
-          loan_source TEXT,
           currency TEXT,
           due_date TEXT,
           date TEXT,
           date_en TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
       ''');
 
@@ -61,27 +103,7 @@ class DatabaseHelper {
         )
       ''');
 
-      final sellLoanCols = await db.rawQuery("PRAGMA table_info('sell_loans')");
-      final sellLoanColumnNames = sellLoanCols
-          .map((c) => c['name']?.toString())
-          .whereType<String>()
-          .toSet();
-      if (!sellLoanColumnNames.contains('supplier_id')) {
-        try {
-          await db.execute('ALTER TABLE sell_loans ADD COLUMN supplier_id INTEGER');
-          print('✅ Added missing sell_loans column supplier_id');
-        } catch (e) {
-          print('⚠️ Error adding supplier_id to sell_loans: $e');
-        }
-      }
-      if (!sellLoanColumnNames.contains('loan_source')) {
-        try {
-          await db.execute('ALTER TABLE sell_loans ADD COLUMN loan_source TEXT');
-          print('✅ Added missing sell_loans column loan_source');
-        } catch (e) {
-          print('⚠️ Error adding loan_source to sell_loans: $e');
-        }
-      }
+      print('✅ Sell loans tables created successfully!');
     } catch (e) {
       print('❌ Error ensuring sell loan tables: $e');
       rethrow;
@@ -171,7 +193,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 26,
+        version: 27,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -182,6 +204,7 @@ class DatabaseHelper {
           await _ensureCustomerCompanyTables(db);
           await _ensureSalesInvoiceTable(db);
           await _ensureServiceInvoicesTable(db);
+          await _ensureSupplierLoanTables(db);
           await _ensureSellLoanTables(db);
           await _ensureRawMaterialColumns(db);
           await _ensureDailyExpensesTable(db);
@@ -210,7 +233,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 26,
+        version: 27,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -221,6 +244,7 @@ class DatabaseHelper {
           await _ensureCustomerCompanyTables(db);
           await _ensureSalesInvoiceTable(db);
           await _ensureServiceInvoicesTable(db);
+          await _ensureSupplierLoanTables(db);
           await _ensureSellLoanTables(db);
           await _ensureRawMaterialColumns(db);
           await _ensureDailyExpensesTable(db);
@@ -391,16 +415,6 @@ class DatabaseHelper {
         print('✅ Database upgraded to version 11!');
       }
 
-      if (oldVersion < 23) {
-        try {
-          await db.execute('ALTER TABLE sell_loans ADD COLUMN loan_source TEXT');
-          print('✅ Added loan_source column to sell_loans table');
-        } catch (e) {
-          print('⚠️ Error adding loan_source: $e');
-        }
-        print('✅ Database upgraded to version 23!');
-      }
-
       if (oldVersion < 24) {
         try {
           await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment TEXT');
@@ -424,11 +438,6 @@ class DatabaseHelper {
         } catch (e) {
           print('⚠️ Error adding exchange_rate column to raw_materials: $e');
         }
-        try {
-          await db.execute('ALTER TABLE sell_loans ADD COLUMN supplier_id INTEGER');
-        } catch (e) {
-          print('⚠️ Error adding supplier_id column to sell_loans: $e');
-        }
         print('✅ Database upgraded to version 25!');
       }
 
@@ -440,6 +449,16 @@ class DatabaseHelper {
           print('⚠️ Error adding produced_product_id: $e');
         }
         print('✅ Database upgraded to version 26!');
+      }
+
+      if (oldVersion < 27) {
+        try {
+          await _ensureSupplierLoanTables(db);
+          print('✅ Added supplier_loans table');
+        } catch (e) {
+          print('⚠️ Error adding supplier_loans table: $e');
+        }
+        print('✅ Database upgraded to version 27!');
       }
 
       if (oldVersion < 13) {
@@ -1204,9 +1223,10 @@ class DatabaseHelper {
       )
     ''');
 
+    await _ensureSupplierLoanTables(db);
+    await _ensureSellLoanTables(db);
     await _ensureSalesInvoiceTable(db);
     await _ensureServiceInvoicesTable(db);
-    await _ensureSellLoanTables(db);
     await _ensureDailyExpensesTable(db);
     await _ensureSalesInvoiceProductRelation(db);
   }
@@ -1724,7 +1744,107 @@ class DatabaseHelper {
     }
   }
 
-  // ============ SELL LOANS ============
+  // ============ SUPPLIER LOANS ============
+  Future<int> insertSupplierLoan(Map<String, dynamic> loan) async {
+    try {
+      final db = await database;
+      final filtered = await _filterMapForTableColumns(db, 'supplier_loans', loan);
+      if (filtered.isEmpty) {
+        print('⚠️ insertSupplierLoan filtered empty - supplier_loans table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.insert('supplier_loans', filtered);
+    } catch (e) {
+      print('❌ Error inserting supplier loan: $e');
+      return -1;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getSupplierLoans({int? supplierId}) async {
+    try {
+      final db = await database;
+      String? whereClause;
+      final List<dynamic> whereArgs = [];
+
+      if (supplierId != null) {
+        whereClause = 'supplier_id = ?';
+        whereArgs.add(supplierId);
+      }
+
+      if (whereClause != null && whereClause.isNotEmpty) {
+        return await db.query('supplier_loans', where: whereClause, whereArgs: whereArgs, orderBy: 'created_at DESC');
+      }
+
+      return await db.query('supplier_loans', orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting supplier loans: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSupplierLoanById(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query('supplier_loans', where: 'id = ?', whereArgs: [id]);
+      return result.isNotEmpty ? result.first : null;
+    } catch (e) {
+      print('❌ Error getting supplier loan by id: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSupplierLoanByInvoiceNumber(String invoiceNumber) async {
+    try {
+      final db = await database;
+      final result = await db.query('supplier_loans', where: 'invoice_number = ?', whereArgs: [invoiceNumber], limit: 1);
+      if (result.isNotEmpty) return result.first;
+      return null;
+    } catch (e) {
+      print('❌ Error getting supplier loan by invoice number: $e');
+      return null;
+    }
+  }
+
+  Future<int> updateSupplierLoanPaid(int loanId, double paidAmount, double remainingAmount) async {
+    try {
+      final db = await database;
+      return await db.update('supplier_loans', {'paid_amount': paidAmount, 'remaining_amount': remainingAmount}, where: 'id = ?', whereArgs: [loanId]);
+    } catch (e) {
+      print('❌ Error updating supplier loan paid/remaining: $e');
+      return -1;
+    }
+  }
+
+  Future<int> insertSupplierLoanPayment(Map<String, dynamic> payment) async {
+    try {
+      final db = await database;
+      if (payment.isEmpty) {
+        print('⚠️ insertSupplierLoanPayment called with empty payment');
+        return -1;
+      }
+      final filtered = await _filterMapForTableColumns(db, 'supplier_loan_payments', payment);
+      if (filtered.isEmpty) {
+        print('⚠️ insertSupplierLoanPayment filtered empty - supplier_loan_payments table may not exist or payload had no valid columns');
+        return -1;
+      }
+      return await db.insert('supplier_loan_payments', filtered);
+    } catch (e) {
+      print('❌ Error inserting supplier loan payment: $e');
+      return -1;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getSupplierLoanPayments(int loanId) async {
+    try {
+      final db = await database;
+      return await db.query('supplier_loan_payments', where: 'loan_id = ?', whereArgs: [loanId], orderBy: 'created_at DESC');
+    } catch (e) {
+      print('❌ Error getting supplier loan payments: $e');
+      return [];
+    }
+  }
+
+  // ============ SELL LOANS (Customer Loans) ============
   Future<int> insertSellLoan(Map<String, dynamic> loan) async {
     try {
       final db = await database;
@@ -1740,29 +1860,9 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getSellLoans({String? source, int? supplierId}) async {
+  Future<List<Map<String, dynamic>>> getSellLoans() async {
     try {
       final db = await database;
-      String? whereClause;
-      final List<dynamic> whereArgs = [];
-
-      if (source != null) {
-        whereClause = 'loan_source = ?';
-        whereArgs.add(source);
-      }
-      if (supplierId != null) {
-        if (whereClause != null && whereClause.isNotEmpty) {
-          whereClause = '$whereClause AND supplier_id = ?';
-        } else {
-          whereClause = 'supplier_id = ?';
-        }
-        whereArgs.add(supplierId);
-      }
-
-      if (whereClause != null && whereClause.isNotEmpty) {
-        return await db.query('sell_loans', where: whereClause, whereArgs: whereArgs, orderBy: 'created_at DESC');
-      }
-
       return await db.query('sell_loans', orderBy: 'created_at DESC');
     } catch (e) {
       print('❌ Error getting sell loans: $e');
@@ -1770,13 +1870,14 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getRawMaterialsBySupplier(int supplierId) async {
+  Future<Map<String, dynamic>?> getSellLoanById(int id) async {
     try {
       final db = await database;
-      return await db.query('raw_materials', where: 'supplier_id = ?', whereArgs: [supplierId], orderBy: 'date_en DESC');
+      final result = await db.query('sell_loans', where: 'id = ?', whereArgs: [id]);
+      return result.isNotEmpty ? result.first : null;
     } catch (e) {
-      print('❌ Error getting raw materials by supplier: $e');
-      return [];
+      print('❌ Error getting sell loan by id: $e');
+      return null;
     }
   }
 
@@ -1789,6 +1890,16 @@ class DatabaseHelper {
     } catch (e) {
       print('❌ Error getting sell loan by invoice number: $e');
       return null;
+    }
+  }
+
+  Future<int> updateSellLoanPaid(int loanId, double paidAmount, double remainingAmount) async {
+    try {
+      final db = await database;
+      return await db.update('sell_loans', {'paid_amount': paidAmount, 'remaining_amount': remainingAmount}, where: 'id = ?', whereArgs: [loanId]);
+    } catch (e) {
+      print('❌ Error updating sell loan paid/remaining: $e');
+      return -1;
     }
   }
 
@@ -1821,13 +1932,13 @@ class DatabaseHelper {
     }
   }
 
-  Future<int> updateSellLoanPaid(int loanId, double paidAmount, double remainingAmount) async {
+  Future<List<Map<String, dynamic>>> getRawMaterialsBySupplier(int supplierId) async {
     try {
       final db = await database;
-      return await db.update('sell_loans', {'paid_amount': paidAmount, 'remaining_amount': remainingAmount}, where: 'id = ?', whereArgs: [loanId]);
+      return await db.query('raw_materials', where: 'supplier_id = ?', whereArgs: [supplierId], orderBy: 'date_en DESC');
     } catch (e) {
-      print('❌ Error updating sell loan paid/remaining: $e');
-      return -1;
+      print('❌ Error getting raw materials by supplier: $e');
+      return [];
     }
   }
 

@@ -886,90 +886,92 @@ class _SuppliersPageState extends State<SuppliersPage> {
     );
   }
 
-  void _showSupplierDetailsDialog(Map<String, dynamic> supplier, AppLocalizations l10n) async {
-    final rawMaterials = await _db.getRawMaterialsBySupplier(supplier['id']);
-    final loans = await _db.getSellLoans(source: 'supplier', supplierId: supplier['id']);
+void _showSupplierDetailsDialog(Map<String, dynamic> supplier, AppLocalizations l10n) async {
+  final rawMaterials = await _db.getRawMaterialsBySupplier(supplier['id']);
+  // FIX: Change this line
+  // OLD: final loans = await _db.getSellLoans(source: 'supplier', supplierId: supplier['id']);
+  // NEW:
+  final loans = await _db.getSupplierLoans(supplierId: supplier['id']);
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${l10n.supplierDetails}: ${supplier['name'] ?? '-'}'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: SizedBox(
-          width: 600,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${l10n.phone}: ${supplier['phone'] ?? '-'}'),
-                const SizedBox(height: 6),
-                Text('${l10n.email}: ${supplier['email'] ?? '-'}'),
-                const SizedBox(height: 6),
-                Text('${l10n.address}: ${supplier['address'] ?? '-'}'),
-                const SizedBox(height: 12),
-                Text(l10n.relatedRawMaterials, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                if (rawMaterials.isEmpty)
-                  Text(l10n.noRawMaterialsFound)
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: rawMaterials.map((material) {
-                      final currency = material['currency'] ?? 'AFN';
-                      return Column(
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('${l10n.supplierDetails}: ${supplier['name'] ?? '-'}'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      content: SizedBox(
+        width: 600,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${l10n.phone}: ${supplier['phone'] ?? '-'}'),
+              const SizedBox(height: 6),
+              Text('${l10n.email}: ${supplier['email'] ?? '-'}'),
+              const SizedBox(height: 6),
+              Text('${l10n.address}: ${supplier['address'] ?? '-'}'),
+              const SizedBox(height: 12),
+              Text(l10n.relatedRawMaterials, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (rawMaterials.isEmpty)
+                Text(l10n.noRawMaterialsFound)
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: rawMaterials.map((material) {
+                    final currency = material['currency'] ?? 'AFN';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• ${material['name'] ?? '-'} - ${material['seller_payment'] ?? '-'} $currency / ${l10n.initialPayment}: ${material['seller_paid_amount'] ?? '-'} $currency - ${l10n.method}: ${material['seller_payment_method'] == 'cash' ? l10n.cash : material['seller_payment_method'] == 'loan_full' ? l10n.fullLoan : material['seller_payment_method'] == 'loan_partial' ? l10n.partialLoan : '-'}'),
+                        const SizedBox(height: 4),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 12),
+              Text(l10n.supplierLoans, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (loans.isEmpty)
+                Text(l10n.noLoansFound)
+              else
+                Column(
+                  children: loans.map((loan) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('• ${material['name'] ?? '-'} - ${material['seller_payment'] ?? '-'} $currency / ${l10n.initialPayment}: ${material['seller_paid_amount'] ?? '-'} $currency - ${l10n.method}: ${material['seller_payment_method'] == 'cash' ? l10n.cash : material['seller_payment_method'] == 'loan_full' ? l10n.fullLoan : material['seller_payment_method'] == 'loan_partial' ? l10n.partialLoan : '-'}'),
+                          Text('${l10n.invoiceNumber}: ${loan['invoice_number'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
+                          Text('${l10n.loanType}: ${loan['loan_type'] == 'full' ? l10n.fullLoan : loan['loan_type'] == 'partial' ? l10n.partialLoan : '-'}'),
+                          Text('${l10n.totalAmount}: ${loan['total_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                          Text('${l10n.paidAmount}: ${loan['paid_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                          Text('${l10n.remainingAmount}: ${loan['remaining_amount'] ?? 0} ${loan['currency'] ?? ''}'),
+                          Text('${l10n.date}: ${loan['date'] ?? '-'}'),
+                          if (loan['created_at'] != null) Text('${l10n.createdAt}: ${loan['created_at']}'),
                         ],
-                      );
-                    }).toList(),
-                  ),
-                const SizedBox(height: 12),
-                Text(l10n.supplierLoans, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                if (loans.isEmpty)
-                  Text(l10n.noLoansFound)
-                else
-                  Column(
-                    children: loans.map((loan) {
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${l10n.invoiceNumber}: ${loan['invoice_number'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 4),
-                            Text('${l10n.loanType}: ${loan['loan_type'] == 'full' ? l10n.fullLoan : loan['loan_type'] == 'partial' ? l10n.partialLoan : '-'}'),
-                            Text('${l10n.totalAmount}: ${loan['total_amount'] ?? 0} ${loan['currency'] ?? ''}'),
-                            Text('${l10n.paidAmount}: ${loan['paid_amount'] ?? 0} ${loan['currency'] ?? ''}'),
-                            Text('${l10n.remainingAmount}: ${loan['remaining_amount'] ?? 0} ${loan['currency'] ?? ''}'),
-                            Text('${l10n.date}: ${loan['date'] ?? '-'}'),
-                            if (loan['created_at'] != null) Text('${l10n.createdAt}: ${loan['created_at']}'),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-              ],
-            ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(l10n.close, style: const TextStyle(color: Color(0xFF888888))),
-          ),
-        ],
       ),
-    );
-  }
-
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.close, style: const TextStyle(color: Color(0xFF888888))),
+        ),
+      ],
+    ),
+  );
+}
   void _showDeleteDialog(Map<String, dynamic> supplier, AppLocalizations l10n) {
     showDialog(
       context: context,

@@ -5,7 +5,7 @@ Map<String, String> faTranslations = {
   'activeUsers': 'کاربر فعال',
   'ton': 'تن',
   'kg': 'کیلوگرم',
-  'items': 'قلم',
+  'items': 'مورد',
   'value': 'ارزش',
   'totalSales': 'فروش کل',
   'invoices': 'بل',

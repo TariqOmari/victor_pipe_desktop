@@ -24,6 +24,7 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> salesInvoices = [];
   List<Map<String, dynamic>> producedProducts = [];
   List<Map<String, dynamic>> sellLoans = [];
+  List<Map<String, dynamic>> supplierLoans = [];
   List<Map<String, dynamic>> capitalAssets = [];
   List<Map<String, dynamic>> sarafiTransactions = [];
   List<Map<String, dynamic>> wasteRecords = [];
@@ -45,7 +46,8 @@ class _HomePageState extends State<HomePage> {
         _db.getRawMaterials(),
         _db.getSalesInvoices(),
         _db.getProducedProducts(),
-        _db.getSellLoans(),
+        _db.getSellLoans(),       // Customer loans
+        _db.getSupplierLoans(),   // Supplier loans
         _db.getSuppliers(),
         _db.getCustomers(),
         _db.getCapitalAssets(),
@@ -58,14 +60,15 @@ class _HomePageState extends State<HomePage> {
       rawMaterials = results[0] as List<Map<String, dynamic>>;
       salesInvoices = results[1] as List<Map<String, dynamic>>;
       producedProducts = results[2] as List<Map<String, dynamic>>;
-      sellLoans = results[3] as List<Map<String, dynamic>>;
-      suppliers = results[4] as List<Map<String, dynamic>>;
-      customers = results[5] as List<Map<String, dynamic>>;
-      capitalAssets = results[6] as List<Map<String, dynamic>>;
-      sarafiTransactions = results[7] as List<Map<String, dynamic>>;
-      wasteRecords = results[8] as List<Map<String, dynamic>>;
-      dailyExpenses = results[9] as List<Map<String, dynamic>>;
-      users = results[10] as List<Map<String, dynamic>>;
+      sellLoans = results[3] as List<Map<String, dynamic>>;       // Customer loans
+      supplierLoans = results[4] as List<Map<String, dynamic>>;   // Supplier loans
+      suppliers = results[5] as List<Map<String, dynamic>>;
+      customers = results[6] as List<Map<String, dynamic>>;
+      capitalAssets = results[7] as List<Map<String, dynamic>>;
+      sarafiTransactions = results[8] as List<Map<String, dynamic>>;
+      wasteRecords = results[9] as List<Map<String, dynamic>>;
+      dailyExpenses = results[10] as List<Map<String, dynamic>>;
+      users = results[11] as List<Map<String, dynamic>>;
 
       _calculateStatistics();
     } catch (e) {
@@ -90,7 +93,8 @@ class _HomePageState extends State<HomePage> {
     // ============ RAW MATERIALS STATS - SEPARATE KG AND TON ============
     double totalWeightKG = 0;
     double totalWeightTON = 0;
-    double totalRawMaterialCost = 0;
+    double totalRawMaterialCostAFN = 0;
+    double totalRawMaterialCostUSD = 0;
     Map<String, double> materialTypesKG = {};
     Map<String, double> materialTypesTON = {};
     
@@ -99,7 +103,13 @@ class _HomePageState extends State<HomePage> {
       String unit = material['unit']?.toString()?.toLowerCase() ?? 'kg';
       String type = material['material_type']?.toString() ?? 'سایر';
       double cost = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
-      totalRawMaterialCost += cost;
+      String currency = material['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      
+      if (currency == 'USD') {
+        totalRawMaterialCostUSD += cost;
+      } else {
+        totalRawMaterialCostAFN += cost;
+      }
       
       if (unit == 'ton' || unit == 't' || unit == 'تن') {
         totalWeightTON += weight;
@@ -147,7 +157,7 @@ class _HomePageState extends State<HomePage> {
     int totalProduced = producedProducts.length;
     int producedSold = producedProducts.where((p) => p['is_sold'] == 1).length;
 
-    // ============ LOAN STATS ============
+    // ============ CUSTOMER LOANS STATS (from sell_loans) ============
     double totalCustomerLoansUSD = 0;
     double totalCustomerLoansAFN = 0;
     double totalCustomerLoansPaidUSD = 0;
@@ -156,33 +166,44 @@ class _HomePageState extends State<HomePage> {
     double totalCustomerLoansRemainingAFN = 0;
     int customerLoanCount = 0;
 
-    double totalSupplierLoansUSD = 0;
-    double totalSupplierLoansAFN = 0;
-    int supplierLoanCount = 0;
-
     for (var loan in sellLoans) {
-      String source = loan['loan_source']?.toString() ?? 'customer';
       double totalAmount = double.tryParse(loan['total_amount']?.toString() ?? '0') ?? 0;
       String currency = loan['currency']?.toString()?.toUpperCase() ?? 'AFN';
       
-      if (source == 'supplier') {
-        supplierLoanCount++;
-        if (currency == 'USD') {
-          totalSupplierLoansUSD += totalAmount;
-        } else {
-          totalSupplierLoansAFN += totalAmount;
-        }
+      customerLoanCount++;
+      if (currency == 'USD') {
+        totalCustomerLoansUSD += totalAmount;
+        totalCustomerLoansPaidUSD += double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0;
+        totalCustomerLoansRemainingUSD += double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0;
       } else {
-        customerLoanCount++;
-        if (currency == 'USD') {
-          totalCustomerLoansUSD += totalAmount;
-          totalCustomerLoansPaidUSD += double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0;
-          totalCustomerLoansRemainingUSD += double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0;
-        } else {
-          totalCustomerLoansAFN += totalAmount;
-          totalCustomerLoansPaidAFN += double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0;
-          totalCustomerLoansRemainingAFN += double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0;
-        }
+        totalCustomerLoansAFN += totalAmount;
+        totalCustomerLoansPaidAFN += double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0;
+        totalCustomerLoansRemainingAFN += double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    // ============ SUPPLIER LOANS STATS (from supplier_loans) ============
+    double totalSupplierLoansUSD = 0;
+    double totalSupplierLoansAFN = 0;
+    double totalSupplierLoansPaidUSD = 0;
+    double totalSupplierLoansPaidAFN = 0;
+    double totalSupplierLoansRemainingUSD = 0;
+    double totalSupplierLoansRemainingAFN = 0;
+    int supplierLoanCount = 0;
+
+    for (var loan in supplierLoans) {
+      double totalAmount = double.tryParse(loan['total_amount']?.toString() ?? '0') ?? 0;
+      String currency = loan['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      
+      supplierLoanCount++;
+      if (currency == 'USD') {
+        totalSupplierLoansUSD += totalAmount;
+        totalSupplierLoansPaidUSD += double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0;
+        totalSupplierLoansRemainingUSD += double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0;
+      } else {
+        totalSupplierLoansAFN += totalAmount;
+        totalSupplierLoansPaidAFN += double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0;
+        totalSupplierLoansRemainingAFN += double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0;
       }
     }
 
@@ -232,7 +253,8 @@ class _HomePageState extends State<HomePage> {
       'rawMaterials': {
         'weightKG': totalWeightKG,
         'weightTON': totalWeightTON,
-        'totalCost': totalRawMaterialCost,
+        'totalCostAFN': totalRawMaterialCostAFN,
+        'totalCostUSD': totalRawMaterialCostUSD,
         'count': rawMaterials.length,
         'typesKG': materialTypesKG,
         'typesTON': materialTypesTON,
@@ -264,6 +286,10 @@ class _HomePageState extends State<HomePage> {
           'count': supplierLoanCount,
           'totalUSD': totalSupplierLoansUSD,
           'totalAFN': totalSupplierLoansAFN,
+          'paidUSD': totalSupplierLoansPaidUSD,
+          'paidAFN': totalSupplierLoansPaidAFN,
+          'remainingUSD': totalSupplierLoansRemainingUSD,
+          'remainingAFN': totalSupplierLoansRemainingAFN,
         },
       },
       'capital': {
@@ -298,45 +324,41 @@ class _HomePageState extends State<HomePage> {
     };
   }
 
-@override
-Widget build(BuildContext context) {
-  final l10n = AppLocalizations.of(context)!;
-  final languageProvider = Provider.of<LanguageProvider>(context);
-  
-  final bool isEnglish = languageProvider.isEnglish;
-  
-  return Scaffold(
-    body: SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFCB001D),
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    
+    final bool isEnglish = languageProvider.isEnglish;
+    
+    return Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFFCB001D),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: isEnglish 
+                    ? CrossAxisAlignment.start 
+                    : CrossAxisAlignment.end,
+                children: [
+                  _buildHeader(l10n, languageProvider),
+                  const SizedBox(height: 24),
+                  _buildStatsRow1(l10n, languageProvider),
+                  const SizedBox(height: 16),
+                  _buildStatsRow2(l10n, languageProvider),
+                  const SizedBox(height: 16),
+                  _buildStatsRow3(l10n, languageProvider),
+                  const SizedBox(height: 24),
+                  _buildChartsRow(l10n, languageProvider),
+                ],
               ),
-            )
-          : Column(
-              crossAxisAlignment: isEnglish 
-                  ? CrossAxisAlignment.start 
-                  : CrossAxisAlignment.end,
-              children: [
-                _buildHeader(l10n, languageProvider),
-                const SizedBox(height: 24),
-                _buildStatsRow1(l10n, languageProvider),
-                const SizedBox(height: 16),
-                _buildStatsRow2(l10n, languageProvider),
-                const SizedBox(height: 16),
-                _buildStatsRow3(l10n, languageProvider),
-                const SizedBox(height: 24),
-                _buildChartsRow(l10n, languageProvider),
-                const SizedBox(height: 24),
-                _buildDetailedStats(l10n, languageProvider),
-                const SizedBox(height: 24),
-                _buildQuickActions(l10n, languageProvider),
-              ],
-            ),
-    ),
-  );
-}
+      ),
+    );
+  }
 
   Widget _buildHeader(AppLocalizations l10n, LanguageProvider languageProvider) {
     return Row(
@@ -395,26 +417,38 @@ Widget build(BuildContext context) {
     double kg = dashboardData['rawMaterials']?['weightKG'] ?? 0;
     double ton = dashboardData['rawMaterials']?['weightTON'] ?? 0;
     
-    String mainValue;
-    String subtitleValue;
-    if (ton > 0) {
-      mainValue = '${_formatNumber(ton)} ${l10n.ton}';
-      subtitleValue = '${_formatNumber(kg)} ${l10n.kg}';
-    } else {
-      mainValue = '${_formatNumber(kg)} ${l10n.kg}';
-      subtitleValue = '${_formatNumber(ton)} ${l10n.ton}';
+    double totalCostAFN = dashboardData['rawMaterials']?['totalCostAFN'] ?? 0;
+    double totalCostUSD = dashboardData['rawMaterials']?['totalCostUSD'] ?? 0;
+    
+    // Calculate Sales totals in AFN and USD
+    double totalSalesAFN = 0;
+    double totalSalesUSD = 0;
+    
+    for (var sale in salesInvoices) {
+      double amount = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+      String currency = sale['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      
+      if (currency == 'USD') {
+        totalSalesUSD += amount;
+      } else {
+        totalSalesAFN += amount;
+      }
     }
+    
+    // Show both KG and TON clearly
+    String kgDisplay = '${_formatNumber(kg)} ${l10n.kg}';
+    String tonDisplay = '${_formatNumber(ton)} ${l10n.ton}';
 
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
             title: l10n.rawMaterials,
-            value: mainValue,
-            subtitle: subtitleValue,
+            value: kgDisplay,
+            subtitle: tonDisplay,
             icon: Icons.warehouse,
             color: const Color(0xFFCB001D),
-            details: '${dashboardData['rawMaterials']?['count'] ?? 0} ${l10n.items} - ${l10n.value}: ${_formatCurrency(dashboardData['rawMaterials']?['totalCost'] ?? 0)}',
+            details: '${dashboardData['rawMaterials']?['count'] ?? 0} ${l10n.items} | ارزش: ${_formatCurrencyFull(totalCostAFN)} AFN / ${_formatCurrencyFull(totalCostUSD)} USD',
             trend: '+12%',
             trendUp: true,
           ),
@@ -423,11 +457,11 @@ Widget build(BuildContext context) {
         Expanded(
           child: _buildStatCard(
             title: l10n.totalSales,
-            value: _formatCurrency(dashboardData['sales']?['totalAmount'] ?? 0),
-            subtitle: '${dashboardData['sales']?['count'] ?? 0} ${l10n.invoices}',
+            value: '${_formatCurrencyFull(totalSalesAFN)} AFN',
+            subtitle: '${_formatCurrencyFull(totalSalesUSD)} USD',
             icon: Icons.attach_money,
             color: Colors.green,
-            details: '${l10n.paid}: ${_formatCurrency(dashboardData['sales']?['totalPaid'] ?? 0)} | ${l10n.remaining}: ${_formatCurrency(dashboardData['sales']?['totalRemaining'] ?? 0)}',
+            details: '${dashboardData['sales']?['count'] ?? 0} ${l10n.invoices} | ${l10n.paid}: ${_formatCurrencyFull(dashboardData['sales']?['totalPaid'] ?? 0)} | ${l10n.remaining}: ${_formatCurrencyFull(dashboardData['sales']?['totalRemaining'] ?? 0)}',
             trend: '+8%',
             trendUp: true,
           ),
@@ -463,61 +497,74 @@ Widget build(BuildContext context) {
   }
 
   Widget _buildStatsRow2(AppLocalizations l10n, LanguageProvider languageProvider) {
-    double customerAFN = dashboardData['loans']?['customer']?['totalAFN'] ?? 0;
-    double customerUSD = dashboardData['loans']?['customer']?['totalUSD'] ?? 0;
-    double supplierAFN = dashboardData['loans']?['supplier']?['totalAFN'] ?? 0;
-    double supplierUSD = dashboardData['loans']?['supplier']?['totalUSD'] ?? 0;
+    // Customer loans data
+    double customerTotalUSD = dashboardData['loans']?['customer']?['totalUSD'] ?? 0;
+    double customerTotalAFN = dashboardData['loans']?['customer']?['totalAFN'] ?? 0;
+    double customerRemainingUSD = dashboardData['loans']?['customer']?['remainingUSD'] ?? 0;
+    double customerRemainingAFN = dashboardData['loans']?['customer']?['remainingAFN'] ?? 0;
+    int customerCount = dashboardData['loans']?['customer']?['count'] ?? 0;
+    
+    // Supplier loans data
+    double supplierTotalUSD = dashboardData['loans']?['supplier']?['totalUSD'] ?? 0;
+    double supplierTotalAFN = dashboardData['loans']?['supplier']?['totalAFN'] ?? 0;
+    double supplierRemainingUSD = dashboardData['loans']?['supplier']?['remainingUSD'] ?? 0;
+    double supplierRemainingAFN = dashboardData['loans']?['supplier']?['remainingAFN'] ?? 0;
+    int supplierCount = dashboardData['loans']?['supplier']?['count'] ?? 0;
 
     return Row(
       children: [
+        // Customer Loans - Total
         Expanded(
           child: _buildStatCard(
-            title: l10n.customerLoans,
-            value: _formatCurrency(customerAFN),
-            subtitle: customerUSD > 0 ? '${_formatNumber(customerUSD)} USD' : l10n.noUsdLoans,
+            title: '${l10n.customerLoans} (کل)',
+            value: '${_formatCurrencyFull(customerTotalAFN)} AFN',
+            subtitle: '${_formatCurrencyFull(customerTotalUSD)} USD',
             icon: Icons.people,
             color: Colors.purple,
-            details: '${dashboardData['loans']?['customer']?['count'] ?? 0} ${l10n.loans} | ${l10n.remaining}: ${_formatCurrency(dashboardData['loans']?['customer']?['remainingAFN'] ?? 0)} AFN',
-            trend: '${dashboardData['loans']?['customer']?['count'] ?? 0}',
+            details: '${customerCount} ${l10n.loans}',
+            trend: '${customerCount}',
             trendUp: true,
           ),
         ),
         const SizedBox(width: 12),
+        // Customer Loans - Remaining
         Expanded(
           child: _buildStatCard(
-            title: l10n.supplierLoans,
-            value: _formatCurrency(supplierAFN),
-            subtitle: supplierUSD > 0 ? '${_formatNumber(supplierUSD)} USD' : l10n.noUsdLoans,
+            title: '${l10n.customerLoans} (باقی)',
+            value: '${_formatCurrencyFull(customerRemainingAFN)} AFN',
+            subtitle: '${_formatCurrencyFull(customerRemainingUSD)} USD',
+            icon: Icons.pending,
+            color: Colors.purple,
+            details: '${customerCount} ${l10n.loans}',
+            trend: '${customerCount}',
+            trendUp: true,
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Supplier Loans - Total
+        Expanded(
+          child: _buildStatCard(
+            title: '${l10n.supplierLoans} (کل)',
+            value: '${_formatCurrencyFull(supplierTotalAFN)} AFN',
+            subtitle: '${_formatCurrencyFull(supplierTotalUSD)} USD',
             icon: Icons.business,
             color: Colors.teal,
-            details: '${dashboardData['loans']?['supplier']?['count'] ?? 0} ${l10n.suppliers}',
-            trend: '${dashboardData['loans']?['supplier']?['count'] ?? 0}',
+            details: '${supplierCount} ${l10n.loans}',
+            trend: '${supplierCount}',
             trendUp: true,
           ),
         ),
         const SizedBox(width: 12),
+        // Supplier Loans - Remaining
         Expanded(
           child: _buildStatCard(
-            title: l10n.totalCapital,
-            value: _formatCurrency(dashboardData['capital']?['total'] ?? 0),
-            subtitle: '${dashboardData['capital']?['assets'] ?? 0} ${l10n.assets}',
-            icon: Icons.account_balance,
-            color: Colors.indigo,
-            details: l10n.totalCapital,
-            trend: '${dashboardData['capital']?['assets'] ?? 0}',
-            trendUp: true,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildStatCard(
-            title: l10n.customers,
-            value: '${dashboardData['customers']?['count'] ?? 0}',
-            subtitle: l10n.activeCustomers,
-            icon: Icons.person,
-            color: Colors.blue,
-            details: '${dashboardData['customers']?['count'] ?? 0} ${l10n.customers}',
-            trend: '${dashboardData['customers']?['count'] ?? 0}',
+            title: '${l10n.supplierLoans} (باقی)',
+            value: '${_formatCurrencyFull(supplierRemainingAFN)} AFN',
+            subtitle: '${_formatCurrencyFull(supplierRemainingUSD)} USD',
+            icon: Icons.pending,
+            color: Colors.teal,
+            details: '${supplierCount} ${l10n.loans}',
+            trend: '${supplierCount}',
             trendUp: true,
           ),
         ),
@@ -547,7 +594,7 @@ Widget build(BuildContext context) {
         Expanded(
           child: _buildStatCard(
             title: l10n.wastes,
-            value: _formatCurrency(dashboardData['waste']?['totalValue'] ?? 0),
+            value: _formatCurrencyFull(dashboardData['waste']?['totalValue'] ?? 0),
             subtitle: '${_formatNumber(dashboardData['waste']?['totalWeight'] ?? 0)} ${l10n.kg}',
             icon: Icons.delete,
             color: Colors.red,
@@ -560,7 +607,7 @@ Widget build(BuildContext context) {
         Expanded(
           child: _buildStatCard(
             title: l10n.dailyExpenses,
-            value: _formatCurrency(dashboardData['expenses']?['total'] ?? 0),
+            value: _formatCurrencyFull(dashboardData['expenses']?['total'] ?? 0),
             subtitle: '${dashboardData['expenses']?['count'] ?? 0} ${l10n.expenses}',
             icon: Icons.receipt,
             color: Colors.grey,
@@ -619,13 +666,31 @@ Widget build(BuildContext context) {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(icon, color: color, size: 16),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, color: color, size: 22),
               ),
               if (trend != null)
                 Container(
@@ -656,7 +721,7 @@ Widget build(BuildContext context) {
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             value,
             style: const TextStyle(
@@ -671,7 +736,7 @@ Widget build(BuildContext context) {
             subtitle,
             style: TextStyle(
               color: Colors.grey.shade600,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -680,9 +745,10 @@ Widget build(BuildContext context) {
             Text(
               details,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 color: Colors.grey.shade500,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],
@@ -783,7 +849,7 @@ Widget build(BuildContext context) {
                             interval: 1000,
                             getTitlesWidget: (value, meta) {
                               return Text(
-                                _formatCurrency(value),
+                                _formatCurrencyFull(value),
                                 style: const TextStyle(fontSize: 8),
                               );
                             },
@@ -987,269 +1053,16 @@ Widget build(BuildContext context) {
     );
   }
 
-  Widget _buildDetailedStats(AppLocalizations l10n, LanguageProvider languageProvider) {
-    double kg = dashboardData['rawMaterials']?['weightKG'] ?? 0;
-    double ton = dashboardData['rawMaterials']?['weightTON'] ?? 0;
-    double sarafiUSD = dashboardData['sarafi']?['totalUSD'] ?? 0;
-    double sarafiAFN = dashboardData['sarafi']?['totalAFN'] ?? 0;
-    double customerAFN = dashboardData['loans']?['customer']?['totalAFN'] ?? 0;
-    double customerUSD = dashboardData['loans']?['customer']?['totalUSD'] ?? 0;
-    double supplierAFN = dashboardData['loans']?['supplier']?['totalAFN'] ?? 0;
-    double supplierUSD = dashboardData['loans']?['supplier']?['totalUSD'] ?? 0;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(
-          color: const Color(0xFFCB001D).withOpacity(0.06),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: languageProvider.isEnglish 
-            ? CrossAxisAlignment.start 
-            : CrossAxisAlignment.end,
-        children: [
-          Text(
-            '📋 ${l10n.detailedStats}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1A1A2E),
-            ),
-          ),
-          const SizedBox(height: 16),
-          GridView.count(
-            crossAxisCount: 4,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.1,
-            children: [
-              _buildDetailItem('${l10n.rawMaterials} (${l10n.kg})', kg.toStringAsFixed(0), Icons.warehouse, const Color(0xFFCB001D)),
-              _buildDetailItem('${l10n.rawMaterials} (${l10n.ton})', ton.toStringAsFixed(2), Icons.warehouse, Colors.blue),
-              _buildDetailItem(l10n.sales, dashboardData['sales']?['count'] ?? 0, Icons.attach_money, Colors.green),
-              _buildDetailItem(l10n.productions, dashboardData['production']?['total'] ?? 0, Icons.factory, Colors.orange),
-              _buildDetailItem(l10n.customers, dashboardData['customers']?['count'] ?? 0, Icons.people, Colors.blue),
-              _buildDetailItem(l10n.suppliers, dashboardData['suppliers']?['count'] ?? 0, Icons.local_shipping, Colors.teal),
-              _buildDetailItem('${l10n.customerLoans} (AFN)', customerAFN.toStringAsFixed(0), Icons.person_add, Colors.purple),
-              _buildDetailItem('${l10n.customerLoans} (USD)', customerUSD.toStringAsFixed(0), Icons.person_add, Colors.indigo),
-              _buildDetailItem('${l10n.supplierLoans} (AFN)', supplierAFN.toStringAsFixed(0), Icons.business, Colors.teal),
-              _buildDetailItem('${l10n.supplierLoans} (USD)', supplierUSD.toStringAsFixed(0), Icons.business, Colors.cyan),
-              _buildDetailItem('${l10n.sarafi} (USD)', sarafiUSD.toStringAsFixed(0), Icons.currency_exchange, Colors.amber),
-              _buildDetailItem('${l10n.sarafi} (AFN)', sarafiAFN.toStringAsFixed(0), Icons.currency_exchange, Colors.orange),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                _buildStatRow(l10n.totalSales, _formatCurrency(dashboardData['sales']?['totalAmount'] ?? 0)),
-                _buildStatRow(l10n.remainingSales, _formatCurrency(dashboardData['sales']?['totalRemaining'] ?? 0)),
-                _buildStatRow(l10n.totalWaste, _formatCurrency(dashboardData['waste']?['totalValue'] ?? 0)),
-                _buildStatRow(l10n.totalExpenses, _formatCurrency(dashboardData['expenses']?['total'] ?? 0)),
-                _buildStatRow(l10n.totalCapital, _formatCurrency(dashboardData['capital']?['total'] ?? 0)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade700,
-            ),
-          ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1A1A2E),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailItem(String title, dynamic value, IconData icon, Color color) {
-    String displayValue = value is int ? value.toString() : value.toString();
-    return Container(
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.15),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 6),
-          Text(
-            displayValue,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey.shade600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActions(AppLocalizations l10n, LanguageProvider languageProvider) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(
-          color: const Color(0xFFCB001D).withOpacity(0.06),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Text(
-            '⚡ ${l10n.quickAccess}:',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1A1A2E),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                _buildQuickActionButton(icon: Icons.warehouse, label: l10n.rawMaterials, color: const Color(0xFFCB001D), l10n: l10n),
-                _buildQuickActionButton(icon: Icons.attach_money, label: l10n.sales, color: Colors.green, l10n: l10n),
-                _buildQuickActionButton(icon: Icons.factory, label: l10n.productions, color: Colors.orange, l10n: l10n),
-                _buildQuickActionButton(icon: Icons.people, label: l10n.customers, color: Colors.blue, l10n: l10n),
-                _buildQuickActionButton(icon: Icons.local_shipping, label: l10n.suppliers, color: Colors.teal, l10n: l10n),
-                _buildQuickActionButton(icon: Icons.account_balance, label: l10n.capital, color: Colors.indigo, l10n: l10n),
-                _buildQuickActionButton(icon: Icons.currency_exchange, label: l10n.sarafi, color: Colors.amber, l10n: l10n),
-                _buildQuickActionButton(icon: Icons.receipt, label: l10n.expenses, color: Colors.grey, l10n: l10n),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required AppLocalizations l10n,
-  }) {
-    return GestureDetector(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${l10n.goingTo} $label'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: color.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatCurrency(dynamic value) {
-    if (value == null) return '0';
+  String _formatCurrencyFull(dynamic value) {
+    if (value == null) return '۰';
     double number = double.tryParse(value.toString()) ?? 0;
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    }
-    return number.toStringAsFixed(0);
+    return NumberFormat('#,##0').format(number);
   }
 
   String _formatNumber(dynamic value) {
-    if (value == null) return '0';
+    if (value == null) return '۰';
     double number = double.tryParse(value.toString()) ?? 0;
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    }
-    return number.toStringAsFixed(1);
+    if (number == 0) return '۰';
+    return NumberFormat('#,##0.0').format(number);
   }
 }

@@ -980,7 +980,7 @@ String get continueImport => _get('continueImport');
 String get validColumns => _get('validColumns');
 String get invalidColumns => _get('invalidColumns');
 String get ignoredColumns => _get('ignoredColumns');
-
+String get loansSupplierName => _get('loansSupplierName');
 
   String _get(String key) {
     if (locale.languageCode == 'en') {

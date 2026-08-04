@@ -15,8 +15,8 @@ import 'pages/wastes_page.dart';
 import 'pages/customers_companies_page.dart';
 import 'pages/production_management_page.dart';
 import 'pages/Reports_Page.dart';
-import 'pages/loans_page.dart';
 import 'pages/supplier_loans_page.dart';
+import 'pages/customer_company_loans_page.dart';
 import 'pages/capital_Page.dart';
 import 'pages/sarafi_page.dart';
 import '../providers/language_provider.dart';
@@ -32,26 +32,32 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
+  late List<Widget> pages;
 
-  late final List<Widget> pages = [
-    const HomePage(),
-    const CustomersPage(),
-    const SuppliersPage(),
-    const RawMaterialsPage(),
-    const SalesPage(),
-    const BackReturnedSalesPage(),
-    const ServicesPage(),
-    const DailyExpensesPage(),
-    const WastesPage(),
-    const CustomersCompaniesPage(),
-    const ProductionManagementPage(),
-    const ReportsPage(),
-    const CapitalPage(),
-    const SarafiPage(),
-    AdminsPage(currentUser: widget.user),
-    const LoansPage(),
-    const SupplierLoansPage(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // Initialize pages here where widget is available
+    pages = [
+      const HomePage(),
+      const CustomersPage(),
+      const SuppliersPage(),
+      const RawMaterialsPage(),
+      const SalesPage(),
+      const BackReturnedSalesPage(),
+      const ServicesPage(),
+      const DailyExpensesPage(),
+      const WastesPage(),
+      const CustomersCompaniesPage(),
+      const ProductionManagementPage(),
+      const ReportsPage(),
+      const CapitalPage(),
+      const SarafiPage(),
+      AdminsPage(currentUser: widget.user),
+      const SupplierLoansPage(),
+      const CustomerCompanyLoansPage(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +72,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context, constraints) {
             return Row(
               children: [
-                // Sidebar - always on left in LTR, right in RTL
                 Sidebar(
                   selectedIndex: selectedIndex,
                   onItemSelected: (index) {

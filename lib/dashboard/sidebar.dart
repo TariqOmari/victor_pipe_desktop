@@ -171,18 +171,20 @@ class Sidebar extends StatelessWidget {
                   title: l10n.admins,
                   isSelected: selectedIndex == 14,
                 ),
+                // ============ FIXED: Supplier Loans (Index 15) ============
                 _buildMenuItem(
                   context: context,
                   index: 15,
-                  icon: Icons.account_balance_wallet,
-                  title: l10n.loans,
+                  icon: Icons.storefront,  // Store icon for suppliers
+                  title: l10n.supplierLoans,  // Supplier Loans title
                   isSelected: selectedIndex == 15,
                 ),
+                // ============ FIXED: Customer/Company Loans (Index 16) ============
                 _buildMenuItem(
                   context: context,
                   index: 16,
-                  icon: Icons.storefront,
-                  title: l10n.supplierLoans,
+                  icon: Icons.account_balance_wallet,  // Wallet icon for customers
+                  title: l10n.loans,  // Customer Loans title
                   isSelected: selectedIndex == 16,
                 ),
                 

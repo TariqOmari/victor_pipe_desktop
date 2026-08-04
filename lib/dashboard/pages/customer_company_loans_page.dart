@@ -9,15 +9,14 @@ import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
 import '../../l10n/app_localizations.dart';
 
-class LoansPage extends StatefulWidget {
-  final String? loanSource;
-  const LoansPage({super.key, this.loanSource});
+class CustomerCompanyLoansPage extends StatefulWidget {
+  const CustomerCompanyLoansPage({super.key});
 
   @override
-  State<LoansPage> createState() => _LoansPageState();
+  State<CustomerCompanyLoansPage> createState() => _CustomerCompanyLoansPageState();
 }
 
-class _LoansPageState extends State<LoansPage> {
+class _CustomerCompanyLoansPageState extends State<CustomerCompanyLoansPage> {
   final DatabaseHelper _db = DatabaseHelper();
   bool _isLoading = true;
   List<Map<String, dynamic>> _loans = [];
@@ -31,7 +30,7 @@ class _LoansPageState extends State<LoansPage> {
   Future<void> _loadLoans() async {
     setState(() => _isLoading = true);
     try {
-      final loans = await _db.getSellLoans(source: widget.loanSource);
+      final loans = await _db.getSellLoans();
       if (!mounted) return;
       setState(() {
         _loans = loans;
@@ -117,6 +116,7 @@ class _LoansPageState extends State<LoansPage> {
                     final paid = (loan['paid_amount'] ?? 0) + amount;
                     final remaining = (loan['total_amount'] ?? 0) - paid;
                     final updatedRemaining = remaining < 0 ? 0 : remaining;
+
                     final paymentId = await _db.insertSellLoanPayment({
                       'loan_id': loanId,
                       'amount': amount,
@@ -125,8 +125,10 @@ class _LoansPageState extends State<LoansPage> {
                       'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
                     });
                     await _db.updateSellLoanPaid(loanId, paid, updatedRemaining);
+
                     Navigator.pop(context);
                     await _loadLoans();
+
                     if (paymentId != -1) {
                       final payment = {
                         'id': paymentId,
@@ -484,17 +486,13 @@ class _LoansPageState extends State<LoansPage> {
     final totalPaidAmount = _loans.fold<double>(0, (sum, loan) => sum + (double.tryParse(loan['paid_amount']?.toString() ?? '0') ?? 0));
     final totalRemainingAmount = _loans.fold<double>(0, (sum, loan) => sum + (double.tryParse(loan['remaining_amount']?.toString() ?? '0') ?? 0));
 
-    final pageTitle = widget.loanSource == 'supplier' 
-        ? l10n.loansPageTitleSupplier 
-        : l10n.loansPageTitleCustomer;
-        
     final currency = _loans.isNotEmpty ? _loans.first['currency'] ?? '' : '';
 
     return Directionality(
       textDirection: isEnglish ? TextDirection.ltr : TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(pageTitle),
+          title: Text(l10n.loansPageTitleCustomer),
           backgroundColor: const Color(0xFFCB001D),
           foregroundColor: Colors.white,
         ),

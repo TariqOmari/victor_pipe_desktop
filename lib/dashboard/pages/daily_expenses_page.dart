@@ -26,6 +26,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   DateTime? _selectedDate;
   String _selectedCurrency = 'همه';
 
+  final TextEditingController _registrationNumberController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -53,6 +54,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   @override
   void dispose() {
+    _registrationNumberController.dispose();
     _dateController.dispose();
     _categoryController.dispose();
     _descriptionController.dispose();
@@ -79,7 +81,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         for (final r in list) {
           _expensesData.add({
             'id': r['id'],
-            'invoiceNumber': r['invoice_number'],
+            'registrationNumber': r['registration_number'] ?? '-',
             'date': r['date'],
             'date_en': r['date_en'],
             'category': r['category'],
@@ -102,6 +104,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   Future<void> _addExpense() async {
     final l10n = AppLocalizations.of(context)!;
+    _registrationNumberController.clear();
     _dateController.clear();
     _categoryController.clear();
     _descriptionController.clear();
@@ -109,8 +112,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _currencyController.clear();
     _exchangeRateController.clear();
     _usdEquivalentController.clear();
-    final nextInvoice = await _db.getNextSalesInvoiceNumber();
-    final invoiceShown = nextInvoice.toString().padLeft(5, '0');
+    
     String? selectedEnglishDate;
     showDialog(
       context: context,
@@ -127,14 +129,17 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             content: SizedBox(
               width: 650,
-              height: 520,
+              height: 560,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('${l10n.invoiceNumberLabel}: $invoiceShown', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    _buildTextField(
+                      controller: _registrationNumberController,
+                      label: 'شماره ثبت',
+                      icon: Icons.numbers_outlined,
+                      hint: 'شماره ثبت را وارد کنید',
+                      l10n: l10n,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -239,6 +244,10 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               ),
               ElevatedButton(
                 onPressed: () async {
+                  if (_registrationNumberController.text.isEmpty) {
+                    _showSnackBar('لطفاً شماره ثبت را وارد کنید', Colors.red);
+                    return;
+                  }
                   if (_dateController.text.isEmpty) {
                     _showSnackBar(l10n.pleaseEnterDate, Colors.red);
                     return;
@@ -250,7 +259,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
                   Navigator.of(context).pop();
                   final insertPayload = {
-                    'invoice_number': invoiceShown,
+                    'registration_number': _registrationNumberController.text.trim(),
                     'date': _dateController.text,
                     'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                     'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
@@ -268,7 +277,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     await _loadExpenses();
                     _showSnackBar(l10n.expenseAddedSuccess, Colors.green);
                   } else {
-                    _showSnackBar(l10n.errorAddingExpense, Colors.red);
+                    _showSnackBar('شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -289,6 +298,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   void _editExpense(Map<String, dynamic> expense) {
     final l10n = AppLocalizations.of(context)!;
+    _registrationNumberController.text = expense['registrationNumber'] ?? '';
     _dateController.text = expense['date'];
     _categoryController.text = expense['category'] ?? '';
     _descriptionController.text = expense['description'] ?? '';
@@ -312,11 +322,19 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         ),
         content: SizedBox(
           width: 650,
-          height: 480,
+          height: 520,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _buildTextField(
+                  controller: _registrationNumberController,
+                  label: 'شماره ثبت',
+                  icon: Icons.numbers_outlined,
+                  hint: 'شماره ثبت را وارد کنید',
+                  l10n: l10n,
+                ),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _dateController,
                   decoration: InputDecoration(
@@ -415,12 +433,17 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           ),
           ElevatedButton(
             onPressed: () async {
+              if (_registrationNumberController.text.isEmpty) {
+                _showSnackBar('لطفاً شماره ثبت را وارد کنید', Colors.red);
+                return;
+              }
               if (_dateController.text.isEmpty) {
                 _showSnackBar(l10n.pleaseEnterDate, Colors.red);
                 return;
               }
 
               final payload = {
+                'registration_number': _registrationNumberController.text.trim(),
                 'date': _dateController.text,
                 'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                 'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
@@ -439,7 +462,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                 Navigator.pop(context);
                 _showSnackBar(l10n.expenseUpdatedSuccess, Colors.blue);
               } else {
-                _showSnackBar(l10n.errorUpdatingExpense, Colors.red);
+                _showSnackBar('شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -470,7 +493,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           ),
         ),
         content: Text(
-          '${l10n.deleteConfirmation} "${expense['invoiceNumber']}"؟',
+          '${l10n.deleteConfirmation} "${expense['registrationNumber']}"؟',
           style: const TextStyle(fontSize: 14),
         ),
         shape: RoundedRectangleBorder(
@@ -508,11 +531,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         ],
       ),
     );
-  }
-
-  void _printPage() {
-    final l10n = AppLocalizations.of(context)!;
-    _showSnackBar(l10n.preparingPrint, Colors.blue);
   }
 
   void _showSnackBar(String message, Color color) {
@@ -614,7 +632,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     final isEnglish = languageProvider.isEnglish;
 
     final filteredData = _expensesData.where((expense) {
-      final matchesSearch = (expense['invoiceNumber'] ?? '').toString().contains(_searchQuery) ||
+      final matchesSearch = (expense['registrationNumber'] ?? '').toString().contains(_searchQuery) ||
         (expense['description'] ?? '').toString().contains(_searchQuery) ||
         (expense['category'] ?? '').toString().contains(_searchQuery);
       final matchesCategory = _selectedCategory == 'همه' ||
@@ -721,44 +739,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
           ],
         ),
+        // Only Add New Expense button - removed Print and Today Invoice buttons
         Row(
           children: [
-            ElevatedButton.icon(
-              onPressed: _printPage,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFFCB001D),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                side: const BorderSide(color: Color(0xFFCB001D)),
-                elevation: 0,
-              ),
-              icon: const Icon(Icons.print_outlined, size: 20),
-              label: Text(
-                l10n.print,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton.icon(
-              onPressed: () => _showTodayInvoice(l10n),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF1A1A1A),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                side: BorderSide(color: Colors.grey.shade300),
-                elevation: 0,
-              ),
-              icon: const Icon(Icons.receipt_long_outlined, size: 18),
-              label: Text(l10n.todayInvoice),
-            ),
-            const SizedBox(width: 12),
             ElevatedButton.icon(
               onPressed: _addExpense,
               style: ElevatedButton.styleFrom(
@@ -1043,8 +1026,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             child: Row(
               children: [
+                Expanded(flex: 1, child: Text('شماره ثبت', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.persianDate, style: const TextStyle(fontWeight: FontWeight.w600))),
-                Expanded(flex: 1, child: Text(l10n.invoiceNumberLabel, style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.englishDate, style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.category, style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 2, child: Text(l10n.description, style: const TextStyle(fontWeight: FontWeight.w600))),
@@ -1090,19 +1073,19 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           Expanded(
             flex: 1,
             child: Text(
+              expense['registrationNumber'] ?? '-',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w700),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Text(
               expense['date'],
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
                 color: Color(0xFF1A1A1A),
               ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Text(
-              expense['invoiceNumber'] ?? '-',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w700),
             ),
           ),
           Expanded(
@@ -1219,13 +1202,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  onPressed: () => _showSingleExpenseInvoice(expense),
-                  icon: const Icon(Icons.receipt_outlined, color: Colors.blue),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
                   onPressed: () => _deleteExpense(expense),
                   icon: Icon(
                     Icons.delete_outline_rounded,
@@ -1260,119 +1236,5 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       default:
         return Colors.grey.shade700;
     }
-  }
-
-  Future<pw.Document> _buildExpenseInvoicePdf(List<Map<String, dynamic>> items, String title, AppLocalizations l10n) async {
-    final doc = pw.Document();
-    final now = DateTime.now();
-    final dateStr = PersianDateConverter.getCurrentPersianDate();
-    final totalPrice = items.fold<double>(0, (s, e) => s + (double.tryParse(e['price']?.toString() ?? '0') ?? 0));
-    final totalUsd = items.fold<double>(0, (s, e) => s + (double.tryParse(e['usdEquivalent']?.toString() ?? '0') ?? 0));
-
-    final ttf = await _loadVazirFont();
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context ctx) => [
-          pw.Directionality(
-            textDirection: pw.TextDirection.rtl,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(title, style: pw.TextStyle(font: ttf, fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 6),
-                pw.Text('${l10n.date}: $dateStr', style: pw.TextStyle(font: ttf)),
-                pw.SizedBox(height: 8),
-                pw.Table.fromTextArray(
-                  headers: [l10n.invoiceNumberLabel, l10n.englishDate, l10n.category, l10n.description, l10n.price, l10n.currency, l10n.exchangeRate, l10n.usdEquivalent],
-                  data: items.map((e) {
-                    return [
-                      e['invoiceNumber'] ?? '-',
-                      e['date_en'] ?? '-',
-                      e['category'] ?? '-',
-                      e['description'] ?? '-',
-                      (e['price'] ?? '').toString(),
-                      e['currency'] ?? '-',
-                      (e['exchangeRate'] ?? '').toString(),
-                      (e['usdEquivalent'] ?? '').toString(),
-                    ];
-                  }).toList(),
-                  headerStyle: pw.TextStyle(font: ttf, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                  headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
-                  cellStyle: pw.TextStyle(font: ttf, fontSize: 9),
-                  cellAlignment: pw.Alignment.centerRight,
-                  border: pw.TableBorder.symmetric(outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5), inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
-                ),
-                pw.SizedBox(height: 12),
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-                  pw.Column(children: [
-                    pw.Text('${l10n.totalAmount}: ${totalPrice.toStringAsFixed(0)}', style: pw.TextStyle(font: ttf, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('${l10n.usdEquivalent}: ${totalUsd.toStringAsFixed(0)}', style: pw.TextStyle(font: ttf, fontWeight: pw.FontWeight.bold)),
-                  ])
-                ])
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-
-    return doc;
-  }
-
-  Future<pw.Font> _loadVazirFont() async {
-    try {
-      final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
-      return pw.Font.ttf(fontData);
-    } catch (e) {
-      return pw.Font.helvetica();
-    }
-  }
-
-  Future<void> _showInvoiceDialogWithPdf(pw.Document doc, String filename, AppLocalizations l10n) async {
-    final bytes = await doc.save();
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.invoicePreview),
-        content: Text(l10n.invoicePreviewMessage),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.close)),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await Printing.layoutPdf(onLayout: (format) async => bytes);
-            },
-            child: Text(l10n.print),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await Printing.sharePdf(bytes: bytes, filename: filename);
-            },
-            child: Text(l10n.savePdf),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showTodayInvoice(AppLocalizations l10n) async {
-    final today = PersianDateConverter.getCurrentPersianDate();
-    final items = _expensesData.where((e) => e['date'] == today).toList();
-    if (items.isEmpty) {
-      _showSnackBar(l10n.noExpensesToday, Colors.grey);
-      return;
-    }
-    final doc = await _buildExpenseInvoicePdf(items, l10n.todayExpensesList, l10n);
-    await _showInvoiceDialogWithPdf(doc, 'daily_invoice_$today.pdf', l10n);
-  }
-
-  Future<void> _showSingleExpenseInvoice(Map<String, dynamic> expense) async {
-    final l10n = AppLocalizations.of(context)!;
-    final doc = await _buildExpenseInvoicePdf([expense], l10n.expenseInvoice, l10n);
-    final inv = (expense['invoiceNumber'] ?? DateTime.now().millisecondsSinceEpoch.toString());
-    await _showInvoiceDialogWithPdf(doc, 'expense_$inv.pdf', l10n);
   }
 }

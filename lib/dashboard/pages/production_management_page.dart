@@ -16,11 +16,77 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
   final DatabaseHelper _db = DatabaseHelper();
   List<Map<String, dynamic>> productions = [];
   bool isLoading = true;
+  Map<String, dynamic> stockData = {};
 
   int _currentPage = 1;
   int _itemsPerPage = 10;
   final List<int> _pageSizeOptions = [5, 10, 20, 30, 50, 100];
   final Set<int> _selectedIds = {};
+
+  // Helper to check if unit is weight-based
+  bool _isWeightUnit(String unit) {
+    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
+           unit == 'تن' || unit == 'ton' || unit == 'Ton';
+  }
+
+  // Format weight with conversion - ALWAYS shows kg as tons
+  String _formatWeightWithConversion(String unit, double weight) {
+    if (_isWeightUnit(unit)) {
+      double tons = weight / 1000;
+      return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
+  }
+
+  // Get total tons of all productions
+  double _getTotalTons() {
+    double totalTons = 0;
+    for (var product in productions) {
+      String unit = product['unit']?.toString() ?? '';
+      // Use available_stock if available, otherwise use weight
+      double weight = double.tryParse(product['available_stock']?.toString() ?? '0') ?? 0;
+      if (weight == 0) {
+        weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+      }
+      
+      if (_isWeightUnit(unit)) {
+        if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+          totalTons += weight / 1000;
+        } else {
+          totalTons += weight;
+        }
+      }
+    }
+    return totalTons;
+  }
+
+  // Get total weight display (static field)
+  String _getTotalWeightDisplay() {
+    double totalTons = _getTotalTons();
+    return '${totalTons.toStringAsFixed(totalTons % 1 == 0 ? 0 : 2)} تن';
+  }
+
+  // Get total weight in kg for display
+  double _getTotalWeightInKg() {
+    double totalKg = 0;
+    for (var product in productions) {
+      String unit = product['unit']?.toString() ?? '';
+      // Use available_stock if available, otherwise use weight
+      double weight = double.tryParse(product['available_stock']?.toString() ?? '0') ?? 0;
+      if (weight == 0) {
+        weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+      }
+      
+      if (_isWeightUnit(unit)) {
+        if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+          totalKg += weight;
+        } else if (unit == 'تن' || unit == 'ton' || unit == 'Ton') {
+          totalKg += weight * 1000;
+        }
+      }
+    }
+    return totalKg;
+  }
 
   @override
   void initState() {
@@ -29,16 +95,21 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
   }
 
   Future<void> _loadData() async {
-    setState(() => isLoading = true);
-    try {
-      final data = await _db.getProducedProductsWithSaleStatus();
-      if (!mounted) return;
-      setState(() {
-        productions = data;
-        isLoading = false;
-        _selectedIds.clear();
-        _currentPage = 1;
-      });
+  setState(() => isLoading = true);
+  try {
+    // Initialize stock for existing products
+    await _db.initializeProductStock();
+    
+    final data = await _db.getProducedProductsWithSaleStatus();
+    final stock = await _db.getTotalProductStock();
+    if (!mounted) return;
+    setState(() {
+      productions = data;
+      stockData = stock;
+      isLoading = false;
+      _selectedIds.clear();
+      _currentPage = 1;
+    });
     } catch (e) {
       if (!mounted) return;
       setState(() => isLoading = false);
@@ -110,8 +181,19 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     for (final product in productions) {
       final unit = product['unit']?.toString() ?? 'نامشخص';
       final quantity = double.tryParse(product['quantity']?.toString() ?? '0') ?? 0;
-      final weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
-      totals[unit] = (totals[unit] ?? 0) + quantity + weight;
+      // Use available_stock if available, otherwise use weight
+      double weight = double.tryParse(product['available_stock']?.toString() ?? '0') ?? 0;
+      if (weight == 0) {
+        weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+      }
+      
+      // For weight units, convert to tons for display
+      if (_isWeightUnit(unit)) {
+        double weightInTons = weight / 1000;
+        totals[unit] = (totals[unit] ?? 0) + quantity + weightInTons;
+      } else {
+        totals[unit] = (totals[unit] ?? 0) + quantity + weight;
+      }
     }
     return totals;
   }
@@ -154,6 +236,189 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
       ),
     );
   }
+
+  // NEW: Stock Card Widget
+  Widget _buildStockCard(AppLocalizations l10n) {
+  final totalTons = stockData['total_tons'] ?? 0.0;
+  final totalKg = stockData['total_kg'] ?? 0.0;
+  final productCount = stockData['product_count'] ?? 0;
+  final unitBreakdown = stockData['unit_breakdown'] ?? {};
+  
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFCB001D), Color(0xFF8B0015)],
+      ),
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFFCB001D).withOpacity(0.3),
+          blurRadius: 20,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.warehouse, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '📦 ${l10n.stock}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$productCount ${l10n.totalItems}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'وزن کل',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${totalTons.toStringAsFixed(totalTons % 1 == 0 ? 0 : 2)} تن',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    '${totalKg.toStringAsFixed(totalKg % 1 == 0 ? 0 : 0)} کیلوگرم',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 1,
+              height: 50,
+              color: Colors.white.withOpacity(0.2),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'تعداد محصولات',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$productCount',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    '${productions.where((p) => p['status'] == 'تکمیل شده').length} ${l10n.completedStatus}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (unitBreakdown.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: unitBreakdown.entries.map((entry) {
+                final unit = entry.key;
+                final weight = entry.value;
+                String displayValue;
+                if (_isWeightUnit(unit)) {
+                  double tons = weight / 1000;
+                  displayValue = '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+                } else {
+                  displayValue = '$weight $unit';
+                }
+                return Column(
+                  children: [
+                    Text(
+                      displayValue,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      unit,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
+                );
+              }).toList().cast<Widget>(),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
 
   Widget _buildHeader(AppLocalizations l10n) {
     return Row(
@@ -198,88 +463,74 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  Widget _buildStatsCards(AppLocalizations l10n) {
-    final total = productions.length;
-    final completed = productions.where((p) => p['status'] == 'تکمیل شده').length;
-    final inProgress = productions.where((p) => p['status'] == 'در حال تولید').length;
-    final pending = productions.where((p) => p['status'] == 'در انتظار').length;
+Widget _buildStatsCards(AppLocalizations l10n) {
+  final total = productions.length;
+  final totalWeight = _getTotalWeightDisplay();
+  final totalKg = _getTotalWeightInKg();
 
-    return Row(
-      children: [
-        _buildStatCard(l10n.totalProductionsCount, total.toString(), Icons.factory_rounded, const Color(0xFFCB001D)),
-        const SizedBox(width: 12),
-        _buildStatCard(l10n.completedStatus, completed.toString(), Icons.check_circle_rounded, Colors.green.shade700),
-        const SizedBox(width: 12),
-        _buildStatCard(l10n.inProgressStatus, inProgress.toString(), Icons.pending_rounded, Colors.blue.shade700),
-        const SizedBox(width: 12),
-        _buildStatCard(l10n.pendingStatus, pending.toString(), Icons.hourglass_empty_rounded, Colors.orange.shade700),
-      ],
-    );
-  }
-
-  List<Widget> _buildUnitCards(AppLocalizations l10n) {
-    final unitTotals = _getUnitTotals();
-    if (unitTotals.isEmpty) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(16),
+  return Row(
+    children: [
+      // Total Productions Card
+      _buildStatCard(l10n.totalProductionsCount, total.toString(), Icons.factory_rounded, const Color(0xFFCB001D)),
+      const SizedBox(width: 12),
+      // Total Weight Card
+      Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+            ],
+            border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.15), width: 1.5),
           ),
-          child: Text(l10n.noProductsFound, style: const TextStyle(color: Color(0xFF888888), fontSize: 13)),
-        ),
-      ];
-    }
-
-    return unitTotals.entries.map((entry) {
-      final itemCount = productions.where((item) => (item['unit'] ?? 'نامشخص').toString() == entry.key).length;
-      return Container(
-        width: 190,
-        margin: const EdgeInsets.only(left: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
-          border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.08), borderRadius: BorderRadius.circular(6)),
-                  child: const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D), size: 14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCB001D).withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 6),
-                Text(entry.key, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFCB001D))),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(l10n.totalLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF888888))),
-                Text(entry.value.toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1A1A2E))),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(l10n.itemsCountLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF888888))),
-                Text(itemCount.toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1A1A2E))),
-              ],
-            ),
-          ],
+                child: const Icon(Icons.scale, color: Color(0xFFCB001D), size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'مجموع وزن',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 10, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      totalWeight,
+                      style: const TextStyle(
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold, 
+                        color: Color(0xFFCB001D)
+                      ),
+                    ),
+                    if (totalKg > 0)
+                      Text(
+                        '(${totalKg.toStringAsFixed(totalKg % 1 == 0 ? 0 : 0)} کیلوگرم)',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      );
-    }).toList();
-  }
+      ),
+    ],
+  );
+}
 
   Widget _buildHeaderCell(String text, double width) {
     return SizedBox(
@@ -335,58 +586,67 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
-  Widget _buildSoldStatusChip(bool isSold, int saleCount, AppLocalizations l10n) {
-    if (isSold) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.red.withOpacity(0.3), width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.sell, color: Colors.red, size: 10),
-            const SizedBox(width: 2),
-            Text(
-              '${l10n.soldLabel} ($saleCount)',
-              style: const TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.w600,
-                color: Colors.red,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+Widget _buildSoldStatusChip(Map<String, dynamic> product, AppLocalizations l10n) {
+  final isSold = (product['is_sold'] == 1 || product['is_sold']?.toString() == '1');
+  final saleCount = (product['sale_count'] as int? ?? 0);
+  final availableStock = double.tryParse(product['available_stock']?.toString() ?? '0') ?? 0;
+  final stockType = product['stock_type']?.toString() ?? 'total';
+  
+  // Format stock for display
+  String unit = product['unit']?.toString() ?? '';
+  String stockDisplay = _formatWeightWithConversion(unit, availableStock);
+  
+  if (isSold && availableStock <= 0) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.12),
+        color: Colors.grey.withOpacity(0.12),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.green.withOpacity(0.3), width: 1),
+        border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.check_circle, color: Colors.green, size: 10),
-          const SizedBox(width: 2),
-          Text(
-            l10n.availableLabel,
-            style: const TextStyle(
-              fontSize: 8,
-              fontWeight: FontWeight.w600,
-              color: Colors.green,
-            ),
-          ),
-        ],
+      child: Text(
+        'فروخته شده',
+        style: const TextStyle(
+          fontSize: 8,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey,
+        ),
       ),
     );
   }
+  
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+    decoration: BoxDecoration(
+      color: availableStock > 0 ? Colors.green.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(
+        color: availableStock > 0 ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3), 
+        width: 1
+      ),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          availableStock > 0 ? Icons.check_circle : Icons.warning_amber_rounded, 
+          color: availableStock > 0 ? Colors.green : Colors.orange, 
+          size: 10
+        ),
+        const SizedBox(width: 2),
+        Text(
+          availableStock > 0 ? '$stockDisplay موجود' : 'موجودی: $stockDisplay',
+          style: TextStyle(
+            fontSize: 8,
+            fontWeight: FontWeight.w600,
+            color: availableStock > 0 ? Colors.green : Colors.orange,
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String, dynamic>? product}) {
     final isEditing = product != null;
@@ -399,17 +659,29 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     final weightController = TextEditingController(text: product?['weight']?.toString() ?? '');
     final unitController = TextEditingController(text: product?['unit']?.toString() ?? '');
     final dateController = TextEditingController(text: product?['production_date']?.toString() ?? '');
-    final batchController = TextEditingController(text: product?['batch']?.toString() ?? '');
     final descriptionController = TextEditingController(text: product?['description']?.toString() ?? '');
 
     String? selectedEnglishDate = product?['production_date_en']?.toString();
     String? selectedUnit = product?['unit']?.toString() ?? 'متر';
     String? selectedStatus = product?['status']?.toString() ?? 'در حال تولید';
 
+    // Helper to convert kg to ton (ONLY USED IN DIALOG)
+    String _convertToTon(double weight) {
+      if (weight <= 0) return '0';
+      double tons = weight / 1000;
+      return tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
+    }
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          double weight = double.tryParse(weightController.text) ?? 0;
+          bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
+          bool isTon = selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton';
+          String weightInTons = _convertToTon(weight);
+          String unitDisplay = _isWeightUnit(selectedUnit ?? '') ? 'تن' : selectedUnit ?? '';
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -465,10 +737,165 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: TextField(
-                              controller: weightController,
-                              decoration: InputDecoration(labelText: l10n.weightLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-                              keyboardType: TextInputType.number,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                TextField(
+                                  controller: weightController,
+                                  decoration: InputDecoration(
+                                    labelText: l10n.weightLabelProd, 
+                                    border: const OutlineInputBorder(), 
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (_) => setDialogState(() {}),
+                                ),
+                                if (weight > 0 && isKg)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$weight kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$weightInTons تن',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                if (weight > 0 && isTon)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$weight تن',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${weight * 1000} kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                if (weight > 0 && !isKg && !isTon && _isWeightUnit(selectedUnit ?? ''))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$weight $unitDisplay',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF1A1A2E),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -522,8 +949,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                         onChanged: (value) => setDialogState(() => selectedStatus = value),
                       ),
                       const SizedBox(height: 8),
-                      TextField(controller: batchController, decoration: InputDecoration(labelText: l10n.batchLabelProd, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
-                      const SizedBox(height: 8),
                       TextField(controller: descriptionController, maxLines: 2, decoration: InputDecoration(labelText: l10n.description, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
                     ],
                   ),
@@ -550,7 +975,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       'production_date': dateController.text,
                       'production_date_en': selectedEnglishDate ?? '',
                       'status': selectedStatus ?? 'در حال تولید',
-                      'batch': batchController.text,
                       'description': descriptionController.text,
                     };
 
@@ -621,11 +1045,12 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
           children: [
             _buildHeader(l10n),
             const SizedBox(height: 16),
-            _buildStatsCards(l10n),
+            
+            // NEW: Stock Card (replacing the old stats card)
+            _buildStockCard(l10n),
             const SizedBox(height: 12),
-            Text(l10n.productionSummaryByUnit, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-            const SizedBox(height: 6),
-            SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: _buildUnitCards(l10n))),
+            
+            _buildStatsCards(l10n),
             const SizedBox(height: 14),
             Expanded(
               child: isLoading
@@ -656,19 +1081,18 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                     final totalWidth = constraints.maxWidth - 60;
                                     final columnWidths = {
                                       'checkbox': 40.0,
-                                      'id': totalWidth * 0.05,
-                                      'product': totalWidth * 0.12,
-                                      'type': totalWidth * 0.07,
-                                      'thickness': totalWidth * 0.06,
-                                      'length': totalWidth * 0.06,
-                                      'quantity': totalWidth * 0.07,
-                                      'weight': totalWidth * 0.07,
-                                      'unit': totalWidth * 0.06,
-                                      'date': totalWidth * 0.08,
-                                      'status': totalWidth * 0.08,
-                                      'batch': totalWidth * 0.07,
-                                      'saleStatus': totalWidth * 0.09,
-                                      'actions': totalWidth * 0.08,
+                                      'id': totalWidth * 0.055,
+                                      'product': totalWidth * 0.13,
+                                      'type': totalWidth * 0.08,
+                                      'thickness': totalWidth * 0.065,
+                                      'length': totalWidth * 0.065,
+                                      'quantity': totalWidth * 0.075,
+                                      'weight': totalWidth * 0.075,
+                                      'unit': totalWidth * 0.065,
+                                      'date': totalWidth * 0.09,
+                                      'status': totalWidth * 0.09,
+                                      'saleStatus': totalWidth * 0.10,
+                                      'actions': totalWidth * 0.09,
                                     };
 
                                     return SingleChildScrollView(
@@ -705,7 +1129,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                     _buildHeaderCell(l10n.unitLabelProd, columnWidths['unit']!),
                                                     _buildHeaderCell(l10n.productionDateLabel, columnWidths['date']!),
                                                     _buildHeaderCell(l10n.statusLabelProd, columnWidths['status']!),
-                                                    _buildHeaderCell(l10n.batchLabelProd, columnWidths['batch']!),
                                                     _buildHeaderCell(l10n.saleStatusLabel, columnWidths['saleStatus']!),
                                                     _buildHeaderCell(l10n.actionsLabelProd, columnWidths['actions']!),
                                                   ],
@@ -715,8 +1138,16 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
 
                                             final product = _paginatedProductions[index - 1];
                                             final isSelected = _selectedIds.contains(product['id'] as int);
-                                            final isSold = (product['is_sold'] == 1 || product['is_sold']?.toString() == '1');
-                                            final saleCount = (product['sale_count'] as int? ?? 0);
+                                            
+                                            // Format weight for display - USE AVAILABLE STOCK
+                                            String unit = product['unit']?.toString() ?? '';
+                                            // Use available_stock if it exists, otherwise fall back to weight
+                                            double weight = double.tryParse(product['available_stock']?.toString() ?? '0') ?? 0;
+                                            if (weight == 0) {
+                                              weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+                                            }
+                                            String displayWeight = _formatWeightWithConversion(unit, weight);
+                                            String displayUnit = _isWeightUnit(unit) ? 'تن' : unit;
 
                                             return Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -742,14 +1173,13 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                   _buildDataCell(product['thickness']?.toString() ?? '-', columnWidths['thickness']!),
                                                   _buildDataCell(product['length']?.toString() ?? '-', columnWidths['length']!),
                                                   _buildDataCell(product['quantity'].toString(), columnWidths['quantity']!, isBold: true),
-                                                  _buildDataCell(product['weight']?.toString() ?? '-', columnWidths['weight']!),
-                                                  _buildDataCell(product['unit']?.toString() ?? '-', columnWidths['unit']!),
+                                                  _buildDataCell(displayWeight, columnWidths['weight']!),
+                                                  _buildDataCell(displayUnit, columnWidths['unit']!),
                                                   _buildDataCell('${product['production_date']?.toString() ?? '-'}\n${product['production_date_en']?.toString() ?? '-'}', columnWidths['date']!),
                                                   SizedBox(width: columnWidths['status']!, child: _buildStatusChip(product['status']?.toString(), l10n)),
-                                                  _buildDataCell(product['batch']?.toString() ?? '-', columnWidths['batch']!),
                                                   SizedBox(
                                                     width: columnWidths['saleStatus']!,
-                                                    child: _buildSoldStatusChip(isSold, saleCount, l10n),
+                                                    child: _buildSoldStatusChip(product, l10n),
                                                   ),
                                                   SizedBox(
                                                     width: columnWidths['actions']!,
@@ -845,6 +1275,4 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
       ),
     );
   }
-
-
 }

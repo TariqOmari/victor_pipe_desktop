@@ -27,6 +27,33 @@ class _WastesPageState extends State<WastesPage> {
   String _selectedFilter = 'همه';
   final TextEditingController _searchController = TextEditingController();
 
+  // Helper to convert kg to tons - with proper decimal places
+  String _formatWeightWithConversion(double weight) {
+    if (weight <= 0) return '0';
+    double tons = weight / 1000;
+    
+    // For numbers less than 1 ton, show 3 decimal places
+    if (tons < 1) {
+      return '${tons.toStringAsFixed(3)} تن';
+    }
+    // For numbers 1 ton or more, show 2 decimal places
+    return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+  }
+
+  // Format weight for table - always in tons
+  String _getDisplayWeight(dynamic weight) {
+    final value = double.tryParse(weight?.toString() ?? '0') ?? 0;
+    return _formatWeightWithConversion(value);
+  }
+
+  // Calculate total weight (weight × quantity) and convert to tons
+  String _getTotalWeightDisplay(dynamic weight, dynamic quantity) {
+    final w = double.tryParse(weight?.toString() ?? '0') ?? 0;
+    final q = double.tryParse(quantity?.toString() ?? '0') ?? 0;
+    final total = w * q;
+    return _formatWeightWithConversion(total);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +108,7 @@ class _WastesPageState extends State<WastesPage> {
     final valueController = TextEditingController(text: waste?['value']?.toString() ?? '');
     final priceRateController = TextEditingController(text: waste?['exchange_rate']?.toString() ?? '0.011');
     final afnEquivalentController = TextEditingController(text: waste?['afn_equivalent']?.toString() ?? '');
+    final totalWeightController = TextEditingController(text: '');
     String selectedCurrency = waste?['currency']?.toString() ?? 'USD';
     String selectedEnglishDate = waste?['date_en']?.toString() ?? PersianDateConverter.getEnglishDate(DateTime.now());
 
@@ -94,10 +122,27 @@ class _WastesPageState extends State<WastesPage> {
       }
     }
 
+    void updateTotalWeight() {
+      final weight = double.tryParse(weightController.text) ?? 0;
+      final quantity = double.tryParse(quantityController.text) ?? 0;
+      final total = weight * quantity;
+      if (total > 0) {
+        totalWeightController.text = _formatWeightWithConversion(total);
+      } else {
+        totalWeightController.text = '';
+      }
+    }
+
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          double weight = double.tryParse(weightController.text) ?? 0;
+          double quantity = double.tryParse(quantityController.text) ?? 0;
+          double totalWeight = weight * quantity;
+          String weightInTons = _formatWeightWithConversion(weight);
+          String totalWeightInTons = _formatWeightWithConversion(totalWeight);
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -139,10 +184,176 @@ class _WastesPageState extends State<WastesPage> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: weightController, label: l10n.weightKgLabel, icon: Icons.scale_outlined, keyboardType: TextInputType.number, l10n: l10n)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTextField(
+                                  controller: weightController,
+                                  label: l10n.weightKgLabel,
+                                  icon: Icons.scale_outlined,
+                                  keyboardType: TextInputType.number,
+                                  l10n: l10n,
+                                  onChanged: (_) {
+                                    setDialogState(() {
+                                      updateTotalWeight();
+                                    });
+                                  },
+                                ),
+                                if (weight > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$weight kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              weightInTons,
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: quantityController, label: l10n.quantityAmountLabel, icon: Icons.numbers_outlined, keyboardType: TextInputType.number, l10n: l10n)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTextField(
+                                  controller: quantityController,
+                                  label: l10n.quantityAmountLabel,
+                                  icon: Icons.numbers_outlined,
+                                  keyboardType: TextInputType.number,
+                                  l10n: l10n,
+                                  onChanged: (_) {
+                                    setDialogState(() {
+                                      updateTotalWeight();
+                                    });
+                                  },
+                                ),
+                                if (quantity > 0 && weight > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              totalWeightInTons,
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: totalWeightController,
+                        label: 'مجموع وزن (تن)',
+                        icon: Icons.monitor_weight_outlined,
+                        readOnly: true,
+                        l10n: l10n,
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -282,6 +493,12 @@ class _WastesPageState extends State<WastesPage> {
       ttf = pw.Font.helvetica();
     }
 
+    double weight = double.tryParse(waste['weight']?.toString() ?? '0') ?? 0;
+    double quantity = double.tryParse(waste['quantity']?.toString() ?? '0') ?? 0;
+    double totalWeight = weight * quantity;
+    String displayWeight = _formatWeightWithConversion(weight);
+    String displayTotalWeight = _formatWeightWithConversion(totalWeight);
+
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -339,8 +556,9 @@ class _WastesPageState extends State<WastesPage> {
                 pw.Table.fromTextArray(
                   headers: [l10n.description, 'مبلغ'],
                   data: [
-                    [l10n.weightKgLabel, '${_formatNumber(waste['weight'])} ${l10n.kgUnit}'],
+                    [l10n.weightKgLabel, displayWeight],
                     [l10n.quantityAmountLabel, _formatNumber(waste['quantity'])],
+                    ['مجموع وزن', displayTotalWeight],
                     [l10n.wasteValueLabel, '${_formatNumber(waste['value'])} ${waste['currency'] ?? 'USD'}'],
                     [l10n.exchangeRate, _formatNumber(waste['exchange_rate'])],
                     [l10n.afnEquivalentLabel, '${_formatNumber(waste['afn_equivalent'])} AFN'],
@@ -427,6 +645,8 @@ class _WastesPageState extends State<WastesPage> {
     final totalWastes = _wastes.length;
     final totalValue = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['value']?.toString() ?? '0') ?? 0));
     final totalAfn = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0));
+    final totalWeight = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['weight']?.toString() ?? '0') ?? 0));
+    final totalWeightInTons = totalWeight / 1000;
     
     return Row(
       children: [
@@ -435,6 +655,8 @@ class _WastesPageState extends State<WastesPage> {
         _buildStatCard(l10n.totalWasteValue, _formatNumber(totalValue), Icons.attach_money_outlined, Colors.blue.shade700),
         const SizedBox(width: 12),
         _buildStatCard(l10n.totalAfnEquivalentWaste, _formatNumber(totalAfn), Icons.currency_exchange, Colors.green.shade700),
+        const SizedBox(width: 12),
+        _buildStatCard('مجموع وزن', '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 3)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
     );
   }
@@ -549,8 +771,9 @@ class _WastesPageState extends State<WastesPage> {
                   _buildHeaderCell(l10n.date, 100),
                   _buildHeaderCell(l10n.partyDetailsLabel, 130),
                   _buildHeaderCell(l10n.wasteTypeLabel, 120),
-                  _buildHeaderCell(l10n.weightKgLabel, 80),
+                  _buildHeaderCell('وزن (تن)', 80),
                   _buildHeaderCell(l10n.quantityAmountLabel, 80),
+                  _buildHeaderCell('مجموع وزن', 100),
                   _buildHeaderCell(l10n.wasteValueLabel, 90),
                   _buildHeaderCell(l10n.currency, 60),
                   _buildHeaderCell(l10n.exchangeRate, 80),
@@ -572,6 +795,9 @@ class _WastesPageState extends State<WastesPage> {
                         children: paged.map((waste) {
                           final id = (waste['id'] ?? '').toString();
                           final checked = _selectedWastes.contains(id);
+                          String displayWeight = _getDisplayWeight(waste['weight']);
+                          String totalWeightDisplay = _getTotalWeightDisplay(waste['weight'], waste['quantity']);
+                          
                           return InkWell(
                             onTap: () => _printWasteInvoice(waste),
                             child: Container(
@@ -602,8 +828,9 @@ class _WastesPageState extends State<WastesPage> {
                                   _buildDataCell(waste['date']?.toString() ?? '-', 100),
                                   _buildDataCell(waste['party_details']?.toString() ?? '-', 130),
                                   _buildDataCell(waste['waste_type']?.toString() ?? '-', 120),
-                                  _buildDataCell(_formatNumber(waste['weight']), 80),
+                                  _buildDataCell(displayWeight, 80),
                                   _buildDataCell(_formatNumber(waste['quantity']), 80),
+                                  _buildDataCell(totalWeightDisplay, 100, isBold: true, color: const Color(0xFFCB001D)),
                                   _buildDataCell(_formatNumber(waste['value']), 90, isBold: true, color: const Color(0xFFCB001D)),
                                   _buildDataCell(waste['currency']?.toString() ?? '-', 60),
                                   _buildDataCell(_formatNumber(waste['exchange_rate']), 80),

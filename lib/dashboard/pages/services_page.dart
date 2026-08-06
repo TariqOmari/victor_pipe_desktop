@@ -27,6 +27,27 @@ class _ServicesPageState extends State<ServicesPage> {
   String _selectedFilter = 'همه';
   final TextEditingController _searchController = TextEditingController();
 
+  // Helper to convert kg to tons
+  String _formatWeightWithConversion(double weight) {
+    if (weight <= 0) return '0';
+    double tons = weight / 1000;
+    
+    // For numbers less than 1 ton, show 3 decimal places
+    if (tons < 1) {
+      return '${tons.toStringAsFixed(3)} تن';
+    }
+    // For numbers 1 ton or more, show 2 decimal places
+    return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+  }
+
+  // Format weight for display based on unit
+  String _formatWeightForDisplay(double weight, String unit) {
+    if (unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم') {
+      return _formatWeightWithConversion(weight);
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 2)} $unit';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,33 +79,90 @@ class _ServicesPageState extends State<ServicesPage> {
 
   Future<void> _showServiceDialog({Map<String, dynamic>? service}) async {
     final l10n = AppLocalizations.of(context)!;
-    final customerNameController = TextEditingController(text: service?['customer_name']?.toString() ?? '');
-    final serviceTypeController = TextEditingController(text: service?['service_type']?.toString() ?? '');
-    final basePriceController = TextEditingController(text: service?['price']?.toString() ?? '');
-    final exchangeRateController = TextEditingController(text: service?['exchange_rate']?.toString() ?? '85');
-    final loadingController = TextEditingController(text: service?['loading_cost']?.toString() ?? '');
-    final transferController = TextEditingController(text: service?['transfer_cost']?.toString() ?? '');
-    final clearanceController = TextEditingController(text: service?['clearance_cost']?.toString() ?? '');
-    final discountController = TextEditingController(text: service?['discount']?.toString() ?? '');
-    final finalPriceController = TextEditingController(text: service?['final_price']?.toString() ?? '');
-    final afnEquivalentController = TextEditingController(text: service?['afn_equivalent']?.toString() ?? '');
-    final dateController = TextEditingController(text: service?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate());
-    String selectedEnglishDate = service?['date_en']?.toString() ?? PersianDateConverter.getEnglishDate(DateTime.now());
+    
+    // Initialize controllers
+    final invoiceNumberController = TextEditingController(
+      text: service?['invoice_number']?.toString() ?? ''
+    );
+    final customerNameController = TextEditingController(
+      text: service?['customer_name']?.toString() ?? ''
+    );
+    final customerPhoneController = TextEditingController(
+      text: service?['customer_phone']?.toString() ?? ''
+    );
+    final customerAddressController = TextEditingController(
+      text: service?['customer_address']?.toString() ?? ''
+    );
+    final serviceTypeController = TextEditingController(
+      text: service?['service_type']?.toString() ?? ''
+    );
+    final sizeController = TextEditingController(
+      text: service?['size']?.toString() ?? ''
+    );
+    final thicknessController = TextEditingController(
+      text: service?['thickness']?.toString() ?? ''
+    );
+    final totalWeightController = TextEditingController(
+      text: service?['total_weight']?.toString() ?? ''
+    );
+    String selectedUnit = service?['unit']?.toString() ?? 'TON';
+    final unitPriceController = TextEditingController(
+      text: service?['unit_price']?.toString() ?? ''
+    );
+    final totalPriceController = TextEditingController(
+      text: service?['total_price']?.toString() ?? ''
+    );
+    final exchangeRateController = TextEditingController(
+      text: service?['exchange_rate']?.toString() ?? '85'
+    );
+    final loadingController = TextEditingController(
+      text: service?['loading_cost']?.toString() ?? ''
+    );
+    final transferController = TextEditingController(
+      text: service?['transfer_cost']?.toString() ?? ''
+    );
+    final clearanceController = TextEditingController(
+      text: service?['clearance_cost']?.toString() ?? ''
+    );
+    final discountController = TextEditingController(
+      text: service?['discount']?.toString() ?? ''
+    );
+    final finalPriceController = TextEditingController(
+      text: service?['final_price']?.toString() ?? ''
+    );
+    final afnEquivalentController = TextEditingController(
+      text: service?['afn_equivalent']?.toString() ?? ''
+    );
+    final dateController = TextEditingController(
+      text: service?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate()
+    );
+    String selectedEnglishDate = service?['date_en']?.toString() ?? 
+        PersianDateConverter.getEnglishDate(DateTime.now());
     String selectedCurrency = service?['currency']?.toString() ?? 'USD';
 
     void updateTotals() {
-      final basePrice = double.tryParse(basePriceController.text) ?? 0;
+      final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+      final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
       final exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
       final loadingCost = double.tryParse(loadingController.text) ?? 0;
       final transferCost = double.tryParse(transferController.text) ?? 0;
       final clearanceCost = double.tryParse(clearanceController.text) ?? 0;
       final discount = double.tryParse(discountController.text) ?? 0;
-      final finalPrice = basePrice + loadingCost + transferCost + clearanceCost - discount;
+      
+      // Calculate total price
+      final totalPrice = totalWeight * unitPrice;
+      totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
+      
+      // Calculate final price
+      final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
       finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
+      
       if (selectedCurrency == 'AFN') {
-        afnEquivalentController.text = basePrice > 0 ? basePrice.toStringAsFixed(0) : '';
+        afnEquivalentController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
       } else {
-        afnEquivalentController.text = basePrice > 0 ? (basePrice * (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(0) : '';
+        afnEquivalentController.text = finalPrice > 0 
+            ? (finalPrice * (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(0) 
+            : '';
       }
     }
 
@@ -92,6 +170,12 @@ class _ServicesPageState extends State<ServicesPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+          bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
+          String displayWeight = isKg 
+              ? _formatWeightWithConversion(totalWeight) 
+              : '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} $selectedUnit';
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -105,18 +189,245 @@ class _ServicesPageState extends State<ServicesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTextField(controller: customerNameController, label: l10n.customerName, icon: Icons.person_outline, l10n: l10n),
+                      // Invoice Number - NEW
+                      _buildTextField(
+                        controller: invoiceNumberController,
+                        label: l10n.invoiceNumberLabel,
+                        icon: Icons.numbers,
+                        l10n: l10n,
+                      ),
                       const SizedBox(height: 12),
-                      _buildTextField(controller: serviceTypeController, label: l10n.serviceTypeLabel2, icon: Icons.design_services_outlined, l10n: l10n),
+                      
+                      // Customer Name
+                      _buildTextField(
+                        controller: customerNameController, 
+                        label: l10n.customerName, 
+                        icon: Icons.person_outline, 
+                        l10n: l10n
+                      ),
                       const SizedBox(height: 12),
+                      
+                      // Customer Phone
+                      _buildTextField(
+                        controller: customerPhoneController, 
+                        label: l10n.customerPhone, 
+                        icon: Icons.phone_outlined, 
+                        keyboardType: TextInputType.phone, 
+                        l10n: l10n
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Customer Address
+                      _buildTextField(
+                        controller: customerAddressController, 
+                        label: l10n.customerAddress, 
+                        icon: Icons.location_on_outlined, 
+                        l10n: l10n
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Service Type
+                      _buildTextField(
+                        controller: serviceTypeController, 
+                        label: l10n.serviceTypeLabel2, 
+                        icon: Icons.design_services_outlined, 
+                        l10n: l10n
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Size and Thickness
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: basePriceController, label: l10n.basePriceRate, icon: Icons.attach_money_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: sizeController, 
+                              label: l10n.size, 
+                              icon: Icons.aspect_ratio_outlined, 
+                              l10n: l10n
+                            )
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: thicknessController, 
+                              label: l10n.thickness, 
+                              icon: Icons.straighten_outlined, 
+                              l10n: l10n
+                            )
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Total Weight and Unit
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTextField(
+                                  controller: totalWeightController,
+                                  label: l10n.totalWeight,
+                                  icon: Icons.monitor_weight_outlined,
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (_) => setDialogState(() {
+                                    updateTotals();
+                                    setDialogState(() {});
+                                  }),
+                                  l10n: l10n,
+                                ),
+                                if (totalWeight > 0 && isKg)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$totalWeight kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              displayWeight,
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                if (totalWeight > 0 && !isKg && selectedUnit != 'TON')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$totalWeight $selectedUnit',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF1A1A2E),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: DropdownButtonFormField<String>(
+                              value: selectedUnit,
+                              decoration: InputDecoration(
+                                labelText: l10n.unit,
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.scale, color: Color(0xFFCB001D)),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'TON', child: Text('TON')),
+                                DropdownMenuItem(value: 'KG', child: Text('KG')),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setDialogState(() {
+                                  selectedUnit = value;
+                                  updateTotals();
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Unit Price and Total Price
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: unitPriceController, 
+                              label: l10n.unitPrice, 
+                              icon: Icons.price_check_outlined, 
+                              keyboardType: TextInputType.number, 
+                              onChanged: (_) => setDialogState(updateTotals), 
+                              l10n: l10n
+                            )
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: totalPriceController, 
+                              label: l10n.totalPrice, 
+                              icon: Icons.attach_money_outlined, 
+                              readOnly: true, 
+                              l10n: l10n
+                            )
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Currency and Exchange Rate
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
                               value: selectedCurrency,
-                              decoration: InputDecoration(labelText: l10n.currency, border: const OutlineInputBorder()),
+                              decoration: InputDecoration(
+                                labelText: l10n.currency,
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.currency_exchange, color: Color(0xFFCB001D)),
+                              ),
                               items: const [
                                 DropdownMenuItem(value: 'USD', child: Text('USD')),
                                 DropdownMenuItem(value: 'AFN', child: Text('AFN')),
@@ -130,36 +441,97 @@ class _ServicesPageState extends State<ServicesPage> {
                               },
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(child: _buildTextField(controller: exchangeRateController, label: l10n.exchangeRate, icon: Icons.currency_exchange, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: afnEquivalentController, label: l10n.afnEquivalent, icon: Icons.currency_exchange, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: exchangeRateController, 
+                              label: l10n.exchangeRate, 
+                              icon: Icons.currency_exchange, 
+                              keyboardType: TextInputType.number, 
+                              onChanged: (_) => setDialogState(updateTotals), 
+                              l10n: l10n
+                            )
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
+                      
+                      // AFN Equivalent
+                      _buildTextField(
+                        controller: afnEquivalentController, 
+                        label: l10n.afnEquivalent, 
+                        icon: Icons.currency_exchange, 
+                        readOnly: true, 
+                        l10n: l10n
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Loading, Transfer, Clearance
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: loadingController, label: l10n.loadingCost, icon: Icons.local_shipping_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: loadingController, 
+                              label: l10n.loadingCost, 
+                              icon: Icons.local_shipping_outlined, 
+                              keyboardType: TextInputType.number, 
+                              onChanged: (_) => setDialogState(updateTotals), 
+                              l10n: l10n
+                            )
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: transferController, label: l10n.transferCost, icon: Icons.drive_eta_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: transferController, 
+                              label: l10n.transferCost, 
+                              icon: Icons.drive_eta_outlined, 
+                              keyboardType: TextInputType.number, 
+                              onChanged: (_) => setDialogState(updateTotals), 
+                              l10n: l10n
+                            )
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: clearanceController, label: l10n.clearanceCost, icon: Icons.inventory_2_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: clearanceController, 
+                              label: l10n.clearanceCost, 
+                              icon: Icons.inventory_2_outlined, 
+                              keyboardType: TextInputType.number, 
+                              onChanged: (_) => setDialogState(updateTotals), 
+                              l10n: l10n
+                            )
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: discountController, label: l10n.discount, icon: Icons.discount_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: discountController, 
+                              label: l10n.discount, 
+                              icon: Icons.discount_outlined, 
+                              keyboardType: TextInputType.number, 
+                              onChanged: (_) => setDialogState(updateTotals), 
+                              l10n: l10n
+                            )
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
+                      
+                      // Final Price and Date
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: finalPriceController, label: l10n.finalPrice, icon: Icons.receipt_long_outlined, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: finalPriceController, 
+                              label: l10n.finalPrice, 
+                              icon: Icons.receipt_long_outlined, 
+                              readOnly: true, 
+                              l10n: l10n
+                            )
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: GestureDetector(
@@ -178,7 +550,13 @@ class _ServicesPageState extends State<ServicesPage> {
                                 }
                               },
                               child: AbsorbPointer(
-                                child: _buildTextField(controller: dateController, label: l10n.date, icon: Icons.calendar_today_outlined, readOnly: true, l10n: l10n),
+                                child: _buildTextField(
+                                  controller: dateController, 
+                                  label: l10n.date, 
+                                  icon: Icons.calendar_today_outlined, 
+                                  readOnly: true, 
+                                  l10n: l10n
+                                ),
                               ),
                             ),
                           ),
@@ -189,13 +567,41 @@ class _ServicesPageState extends State<ServicesPage> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))
+                ),
                 ElevatedButton.icon(
                   onPressed: () async {
+                    final invoiceNumber = invoiceNumberController.text.trim();
+                    
+                    // Validate invoice number
+                    if (invoiceNumber.isEmpty) {
+                      _showSnackbar('شماره فاکتور الزامی است', Colors.red);
+                      return;
+                    }
+                    
+                    // Check if invoice number already exists
+                    if (service == null) {
+                      final existing = await _db.getServiceInvoiceByNumber(invoiceNumber);
+                      if (existing != null) {
+                        _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
+                        return;
+                      }
+                    }
+                    
                     final payload = {
+                      'invoice_number': invoiceNumber,
                       'customer_name': customerNameController.text.trim(),
+                      'customer_phone': customerPhoneController.text.trim(),
+                      'customer_address': customerAddressController.text.trim(),
                       'service_type': serviceTypeController.text.trim(),
-                      'price': double.tryParse(basePriceController.text) ?? 0,
+                      'size': sizeController.text.trim(),
+                      'thickness': thicknessController.text.trim(),
+                      'total_weight': double.tryParse(totalWeightController.text) ?? 0,
+                      'unit': selectedUnit,
+                      'unit_price': double.tryParse(unitPriceController.text) ?? 0,
+                      'total_price': double.tryParse(totalPriceController.text) ?? 0,
                       'currency': selectedCurrency,
                       'exchange_rate': double.tryParse(exchangeRateController.text) ?? 1,
                       'loading_cost': double.tryParse(loadingController.text) ?? 0,
@@ -217,7 +623,10 @@ class _ServicesPageState extends State<ServicesPage> {
                       if (!mounted) return;
                       Navigator.pop(context);
                       await _loadServices();
-                      _showSnackbar(service == null ? l10n.serviceAddedSuccess : l10n.serviceUpdatedSuccess, Colors.green);
+                      _showSnackbar(
+                        service == null ? l10n.serviceAddedSuccess : l10n.serviceUpdatedSuccess, 
+                        Colors.green
+                      );
                     } catch (e) {
                       if (!mounted) return;
                       _showSnackbar(l10n.errorSavingService, Colors.red);
@@ -246,8 +655,15 @@ class _ServicesPageState extends State<ServicesPage> {
         title: Text(l10n.deleteServiceLabel),
         content: Text('${l10n.deleteConfirmation} "${service['customer_name'] ?? '-'}"؟'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700), child: Text(l10n.delete)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700), 
+            child: Text(l10n.delete)
+          ),
         ],
       ),
     );
@@ -271,7 +687,7 @@ class _ServicesPageState extends State<ServicesPage> {
       final pdf = await _generateServicePDF(service, l10n);
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf,
-        name: '${l10n.serviceInvoice}_${service['id']}',
+        name: '${l10n.serviceInvoice}_${service['invoice_number'] ?? service['id']}',
       );
     } catch (e) {
       _showSnackbar('${l10n.errorPrintingInvoice}: $e', Colors.red);
@@ -287,6 +703,13 @@ class _ServicesPageState extends State<ServicesPage> {
       ttf = pw.Font.helvetica();
     }
 
+    // Format weight for PDF
+    String unit = service['unit']?.toString() ?? 'TON';
+    double totalWeight = double.tryParse(service['total_weight']?.toString() ?? '0') ?? 0;
+    String displayWeight = unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' 
+        ? _formatWeightWithConversion(totalWeight) 
+        : '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} $unit';
+
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -299,7 +722,7 @@ class _ServicesPageState extends State<ServicesPage> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Header
+                // Header - Matching Sales Invoice Style
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                   decoration: pw.BoxDecoration(
@@ -311,45 +734,114 @@ class _ServicesPageState extends State<ServicesPage> {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                        pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+                        pw.Text(
+                          l10n.companyName, 
+                          style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.black)
+                        ),
                         pw.SizedBox(height: 4),
-                        pw.Text(l10n.integratedSystem, style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
+                        pw.Text(
+                          l10n.integratedSystem, 
+                          style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)
+                        ),
                       ]),
                       pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                         pw.Container(
                           padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           decoration: pw.BoxDecoration(color: PdfColors.red, borderRadius: pw.BorderRadius.circular(6)),
-                          child: pw.Text('Service Invoice', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                          child: pw.Text(
+                            'Service Invoice', 
+                            style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)
+                          ),
                         ),
                         pw.SizedBox(height: 6),
-                        pw.Text('${l10n.invoiceNumber}: ${service['id'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)),
-                        pw.Text('${l10n.persianDate}: ${service['date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        pw.Text('Date (EN): ${service['date_en'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                        pw.Text(
+                          '${l10n.invoiceNumberLabel}: ${service['invoice_number'] ?? service['id'] ?? '-'}', 
+                          style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)
+                        ),
+                        pw.Text(
+                          '${l10n.persianDate}: ${service['date'] ?? '-'}', 
+                          style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)
+                        ),
+                        pw.Text(
+                          'Date (EN): ${service['date_en'] ?? '-'}', 
+                          style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)
+                        ),
                       ]),
                     ],
                   ),
                 ),
                 pw.SizedBox(height: 12),
 
-                // Customer Info
+                // Customer Info - Matching Sales Invoice Style
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
                     border: pw.Border.all(color: PdfColors.grey300),
                     borderRadius: pw.BorderRadius.circular(8),
                   ),
-                  child: pw.Row(children: [
-                    pw.Expanded(child: pw.Text('${l10n.customerName}: ${service['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('${l10n.serviceTypeLabel2}: ${service['service_type'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                  ]),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Row(children: [
+                        pw.Expanded(
+                          child: pw.Text(
+                            '${l10n.customerName}: ${service['customer_name'] ?? '-'}', 
+                            style: pw.TextStyle(font: ttf, fontSize: 10)
+                          )
+                        ),
+                        pw.Expanded(
+                          child: pw.Text(
+                            '${l10n.customerPhone}: ${service['customer_phone'] ?? '-'}', 
+                            style: pw.TextStyle(font: ttf, fontSize: 10)
+                          )
+                        ),
+                      ]),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        '${l10n.customerAddress}: ${service['customer_address'] ?? '-'}', 
+                        style: pw.TextStyle(font: ttf, fontSize: 10)
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Row(children: [
+                        pw.Expanded(
+                          child: pw.Text(
+                            '${l10n.serviceTypeLabel2}: ${service['service_type'] ?? '-'}', 
+                            style: pw.TextStyle(font: ttf, fontSize: 10)
+                          )
+                        ),
+                        pw.Expanded(
+                          child: pw.Text(
+                            '${l10n.size}: ${service['size'] ?? '-'}', 
+                            style: pw.TextStyle(font: ttf, fontSize: 10)
+                          )
+                        ),
+                      ]),
+                      pw.Row(children: [
+                        pw.Expanded(
+                          child: pw.Text(
+                            '${l10n.thickness}: ${service['thickness'] ?? '-'}', 
+                            style: pw.TextStyle(font: ttf, fontSize: 10)
+                          )
+                        ),
+                        pw.Expanded(
+                          child: pw.Text(
+                            '${l10n.unit}: ${service['unit'] ?? '-'}', 
+                            style: pw.TextStyle(font: ttf, fontSize: 10)
+                          )
+                        ),
+                      ]),
+                    ],
+                  ),
                 ),
                 pw.SizedBox(height: 16),
 
-                // Service Details Table
+                // Service Details Table - Matching Sales Invoice Style
                 pw.Table.fromTextArray(
                   headers: [l10n.descriptionLabel, l10n.amountLabel],
                   data: [
-                    [l10n.basePriceLabelService, '${_formatNumber(service['price'])} ${service['currency'] ?? 'USD'}'],
+                    ['${l10n.totalWeight} (${service['unit'] ?? 'TON'})', displayWeight],
+                    [l10n.unitPrice, '${_formatNumber(service['unit_price'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.totalPrice, '${_formatNumber(service['total_price'])} ${service['currency'] ?? 'USD'}'],
                     [l10n.loadingCost, '${_formatNumber(service['loading_cost'])} ${service['currency'] ?? 'USD'}'],
                     [l10n.transferCost, '${_formatNumber(service['transfer_cost'])} ${service['currency'] ?? 'USD'}'],
                     [l10n.clearanceCost, '${_formatNumber(service['clearance_cost'])} ${service['currency'] ?? 'USD'}'],
@@ -367,7 +859,7 @@ class _ServicesPageState extends State<ServicesPage> {
                 ),
                 pw.SizedBox(height: 16),
 
-                // Currency Info
+                // Currency Info - Matching Sales Invoice Style
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
@@ -378,22 +870,40 @@ class _ServicesPageState extends State<ServicesPage> {
                   child: pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      pw.Text('${l10n.currency}: ${service['currency'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                      pw.Text('${l10n.exchangeRate}: ${service['exchange_rate'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                      pw.Text('${l10n.afnEquivalent}: ${_formatNumber(service['afn_equivalent'])} AFN', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                      pw.Text(
+                        '${l10n.currency}: ${service['currency'] ?? '-'}', 
+                        style: pw.TextStyle(font: ttf, fontSize: 10)
+                      ),
+                      pw.Text(
+                        '${l10n.exchangeRate}: ${service['exchange_rate'] ?? '-'}', 
+                        style: pw.TextStyle(font: ttf, fontSize: 10)
+                      ),
+                      pw.Text(
+                        '${l10n.afnEquivalent}: ${_formatNumber(service['afn_equivalent'])} AFN', 
+                        style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)
+                      ),
                     ],
                   ),
                 ),
                 pw.Spacer(),
 
-                // Footer
+                // Footer - Matching Sales Invoice Style
                 pw.Divider(color: PdfColors.grey300, thickness: 0.5),
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                  pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  pw.Text(
+                    l10n.signature, 
+                    style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)
+                  ),
+                  pw.Text(
+                    '${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', 
+                    style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)
+                  ),
                 ]),
                 pw.Center(
-                  child: pw.Text(l10n.footerText, style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500)),
+                  child: pw.Text(
+                    l10n.footerText, 
+                    style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500)
+                  ),
                 ),
               ],
             ),
@@ -426,8 +936,14 @@ class _ServicesPageState extends State<ServicesPage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l10n.servicesManagement, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-                Text(l10n.servicesManagementSubtitle, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                Text(
+                  l10n.servicesManagement, 
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))
+                ),
+                Text(
+                  l10n.servicesManagementSubtitle, 
+                  style: const TextStyle(fontSize: 13, color: Colors.grey)
+                ),
               ],
             ),
           ],
@@ -450,6 +966,18 @@ class _ServicesPageState extends State<ServicesPage> {
     final totalServices = _services.length;
     final totalRevenue = _services.fold<double>(0, (sum, item) => sum + (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0));
     
+    // Calculate total weight in tons from all services
+    double totalWeightInTons = 0;
+    for (var service in _services) {
+      String unit = service['unit']?.toString() ?? 'TON';
+      double weight = double.tryParse(service['total_weight']?.toString() ?? '0') ?? 0;
+      if (unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم') {
+        totalWeightInTons += weight / 1000;
+      } else {
+        totalWeightInTons += weight;
+      }
+    }
+    
     return Row(
       children: [
         _buildStatCard(l10n.totalRevenue, _formatNumber(totalRevenue), Icons.attach_money_outlined, const Color(0xFFCB001D)),
@@ -457,6 +985,8 @@ class _ServicesPageState extends State<ServicesPage> {
         _buildStatCard(l10n.totalServicesCount, totalServices.toString(), Icons.design_services_outlined, Colors.blue.shade700),
         const SizedBox(width: 12),
         _buildStatCard(l10n.usdTotalServices, _formatNumber(_services.fold<double>(0, (sum, item) => sum + ((item['currency'] == 'USD' ? (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0) : 0)))), Icons.currency_exchange, Colors.green.shade700),
+        const SizedBox(width: 12),
+        _buildStatCard('مجموع وزن', '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
     );
   }
@@ -471,13 +1001,19 @@ class _ServicesPageState extends State<ServicesPage> {
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
         ),
         child: Row(children: [
-          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
+          Container(
+            padding: const EdgeInsets.all(8), 
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), 
+            child: Icon(icon, color: color, size: 18)
+          ),
           const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-            const SizedBox(height: 4),
-            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-          ])),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              const SizedBox(height: 4),
+              Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+            ]),
+          ),
         ]),
       ),
     );
@@ -526,7 +1062,7 @@ class _ServicesPageState extends State<ServicesPage> {
     final totalPages = (data.length / _rowsPerPage).ceil();
     final start = (_currentPage * _rowsPerPage).clamp(0, data.length);
     final paged = data.skip(start).take(_rowsPerPage).toList();
-    final allSelectedOnPage = paged.isNotEmpty && paged.every((s) => _selectedServices.contains((s['id'] ?? '').toString()));
+    final allSelectedOnPage = paged.isNotEmpty && paged.every((s) => _selectedServices.contains((s['invoice_number'] ?? s['id'] ?? '').toString()));
 
     return Container(
       decoration: BoxDecoration(
@@ -536,7 +1072,7 @@ class _ServicesPageState extends State<ServicesPage> {
       ),
       child: Column(
         children: [
-          // Header Row - با اسکرول افقی
+          // Header Row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -547,7 +1083,6 @@ class _ServicesPageState extends State<ServicesPage> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  // چک‌باکس
                   SizedBox(
                     width: 50,
                     child: Checkbox(
@@ -556,12 +1091,12 @@ class _ServicesPageState extends State<ServicesPage> {
                         setState(() {
                           if (v == true) {
                             for (final s in paged) {
-                              final id = (s['id'] ?? '').toString();
+                              final id = (s['invoice_number'] ?? s['id'] ?? '').toString();
                               if (id.isNotEmpty) _selectedServices.add(id);
                             }
                           } else {
                             for (final s in paged) {
-                              final id = (s['id'] ?? '').toString();
+                              final id = (s['invoice_number'] ?? s['id'] ?? '').toString();
                               _selectedServices.remove(id);
                             }
                           }
@@ -569,26 +1104,25 @@ class _ServicesPageState extends State<ServicesPage> {
                       },
                     ),
                   ),
-                  // ستون‌های جدول
-                  _buildHeaderCell(l10n.idLabel, 70),
-                  _buildHeaderCell(l10n.customer, 130),
-                  _buildHeaderCell(l10n.serviceTypeLabel2, 130),
-                  _buildHeaderCell(l10n.basePriceLabelService, 90),
-                  _buildHeaderCell(l10n.loadingCost, 80),
-                  _buildHeaderCell(l10n.transferCost, 80),
-                  _buildHeaderCell(l10n.clearanceCost, 80),
-                  _buildHeaderCell(l10n.discount, 80),
-                  _buildHeaderCell(l10n.finalPrice, 100),
+                  _buildHeaderCell(l10n.invoiceNumberLabel, 90),
+                  _buildHeaderCell(l10n.customer, 120),
+                  _buildHeaderCell(l10n.customerPhone, 100),
+                  _buildHeaderCell(l10n.serviceTypeLabel2, 100),
+                  _buildHeaderCell(l10n.size, 70),
+                  _buildHeaderCell(l10n.thickness, 70),
+                  _buildHeaderCell(l10n.totalWeight, 80),
+                  _buildHeaderCell(l10n.unit, 50),
+                  _buildHeaderCell(l10n.unitPrice, 80),
+                  _buildHeaderCell(l10n.totalPrice, 90),
+                  _buildHeaderCell(l10n.finalPrice, 90),
                   _buildHeaderCell(l10n.currency, 60),
-                  _buildHeaderCell(l10n.exchangeRate, 80),
-                  _buildHeaderCell(l10n.afnEquivalent, 100),
-                  _buildHeaderCell(l10n.date, 100),
+                  _buildHeaderCell(l10n.date, 90),
                   _buildHeaderCell(l10n.actions, 140),
                 ],
               ),
             ),
           ),
-          // Data Rows - با اسکرول عمودی و افقی
+          // Data Rows
           Expanded(
             child: paged.isEmpty
                 ? Center(child: Text(l10n.noServicesFound, style: const TextStyle(color: Colors.grey)))
@@ -598,8 +1132,17 @@ class _ServicesPageState extends State<ServicesPage> {
                       scrollDirection: Axis.horizontal,
                       child: Column(
                         children: paged.map((service) {
-                          final id = (service['id'] ?? '').toString();
+                          final id = (service['invoice_number'] ?? service['id'] ?? '').toString();
                           final checked = _selectedServices.contains(id);
+                          
+                          // Format weight based on unit
+                          String unit = service['unit']?.toString() ?? 'TON';
+                          double totalWeight = double.tryParse(service['total_weight']?.toString() ?? '0') ?? 0;
+                          String displayWeight = unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' 
+                              ? _formatWeightWithConversion(totalWeight) 
+                              : totalWeight.toString();
+                          String displayUnit = unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' ? 'تن' : unit;
+                          
                           return InkWell(
                             onTap: () => _printServiceInvoice(service),
                             child: Container(
@@ -611,7 +1154,6 @@ class _ServicesPageState extends State<ServicesPage> {
                               ),
                               child: Row(
                                 children: [
-                                  // چک‌باکس
                                   SizedBox(
                                     width: 50,
                                     child: Checkbox(
@@ -627,21 +1169,19 @@ class _ServicesPageState extends State<ServicesPage> {
                                       },
                                     ),
                                   ),
-                                  // داده‌های هر ستون
-                                  _buildDataCell(service['id']?.toString() ?? '-', 70, isBold: true),
-                                  _buildDataCell(service['customer_name'] ?? '-', 130, isBold: true),
-                                  _buildDataCell(service['service_type'] ?? '-', 130),
-                                  _buildDataCell(_formatNumber(service['price']), 90),
-                                  _buildDataCell(_formatNumber(service['loading_cost']), 80),
-                                  _buildDataCell(_formatNumber(service['transfer_cost']), 80),
-                                  _buildDataCell(_formatNumber(service['clearance_cost']), 80),
-                                  _buildDataCell(_formatNumber(service['discount']), 80, color: Colors.red),
-                                  _buildDataCell(_formatNumber(service['final_price']), 100, isBold: true, color: const Color(0xFFCB001D)),
+                                  _buildDataCell(service['invoice_number']?.toString() ?? '-', 90, isBold: true),
+                                  _buildDataCell(service['customer_name'] ?? '-', 120, isBold: true),
+                                  _buildDataCell(service['customer_phone'] ?? '-', 100),
+                                  _buildDataCell(service['service_type'] ?? '-', 100),
+                                  _buildDataCell(service['size'] ?? '-', 70),
+                                  _buildDataCell(service['thickness'] ?? '-', 70),
+                                  _buildDataCell(displayWeight, 80),
+                                  _buildDataCell(displayUnit, 50),
+                                  _buildDataCell(_formatNumber(service['unit_price']), 80),
+                                  _buildDataCell(_formatNumber(service['total_price']), 90),
+                                  _buildDataCell(_formatNumber(service['final_price']), 90, isBold: true, color: const Color(0xFFCB001D)),
                                   _buildDataCell(service['currency'] ?? '-', 60),
-                                  _buildDataCell(_formatNumber(service['exchange_rate']), 80),
-                                  _buildDataCell(_formatNumber(service['afn_equivalent']), 100),
-                                  _buildDataCell(service['date'] ?? '-', 100),
-                                  // عملیات
+                                  _buildDataCell(service['date'] ?? '-', 90),
                                   SizedBox(
                                     width: 140,
                                     child: Row(
@@ -783,13 +1323,17 @@ class _ServicesPageState extends State<ServicesPage> {
     bool readOnly = false,
     int maxLines = 1,
     Function(String)? onChanged,
+    VoidCallback? onTap,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       readOnly: readOnly,
       maxLines: maxLines,
-      inputFormatters: keyboardType == TextInputType.number ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))] : null,
+      onTap: onTap,
+      inputFormatters: keyboardType == TextInputType.number 
+          ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))] 
+          : null,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade600),
@@ -828,10 +1372,17 @@ class _ServicesPageState extends State<ServicesPage> {
 
     final filteredData = _services.where((service) {
       final search = _searchQuery.toLowerCase();
-      final matchesSearch = (service['customer_name'] ?? '').toString().toLowerCase().contains(search) ||
+      final matchesSearch = 
+          (service['invoice_number'] ?? '').toString().toLowerCase().contains(search) ||
+          (service['customer_name'] ?? '').toString().toLowerCase().contains(search) ||
           (service['service_type'] ?? '').toString().toLowerCase().contains(search) ||
-          (service['id'] ?? '').toString().toLowerCase().contains(search);
-      return matchesSearch;
+          (service['id'] ?? '').toString().toLowerCase().contains(search) ||
+          (service['customer_phone'] ?? '').toString().toLowerCase().contains(search);
+      
+      final matchesFilter = _selectedFilter == 'همه' || 
+          (service['service_type'] ?? '').toString().isNotEmpty;
+      
+      return matchesSearch && matchesFilter;
     }).toList();
 
     return Directionality(

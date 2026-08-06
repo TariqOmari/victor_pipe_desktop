@@ -193,7 +193,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 27,
+        version: 28,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -233,7 +233,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 27,
+        version: 28,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -461,6 +461,32 @@ class DatabaseHelper {
         print('✅ Database upgraded to version 27!');
       }
 
+      // NEW: Fix service_invoices table for version 28
+      if (oldVersion < 28) {
+        try {
+          print('🔄 Fixing service_invoices table for version 28...');
+          // Check if invoice_number column exists
+          final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
+          final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+          
+          if (!columnNames.contains('invoice_number')) {
+            // Add invoice_number column
+            await db.execute('ALTER TABLE service_invoices ADD COLUMN invoice_number TEXT');
+            print('✅ Added invoice_number column to service_invoices');
+            
+            // Update existing rows with a generated invoice number
+            await db.execute('UPDATE service_invoices SET invoice_number = "SERV" || substr("00000" || id, -5, 5) WHERE invoice_number IS NULL');
+            print('✅ Updated existing service invoices with invoice numbers');
+          }
+          
+          // Make invoice_number NOT NULL UNIQUE
+          print('⚠️ Note: To make invoice_number NOT NULL UNIQUE, recreate the table or ensure all rows have values');
+        } catch (e) {
+          print('⚠️ Error fixing service_invoices table: $e');
+        }
+        print('✅ Database upgraded to version 28!');
+      }
+
       if (oldVersion < 13) {
         try {
           await _ensureProducedProductsTable(db);
@@ -668,11 +694,18 @@ class DatabaseHelper {
           production_date TEXT,
           production_date_en TEXT,
           status TEXT,
-          batch TEXT,
           description TEXT,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
       ''');
+
+      // ADD THIS NEW COLUMN
+      try {
+        await db.execute('ALTER TABLE produced_products ADD COLUMN remaining_stock REAL DEFAULT 0');
+        print('✅ Added remaining_stock column to produced_products');
+      } catch (e) {
+        print('⚠️ remaining_stock column already exists or could not be added: $e');
+      }
 
       try {
         await db.execute('ALTER TABLE produced_products ADD COLUMN loading TEXT');
@@ -736,6 +769,151 @@ class DatabaseHelper {
     } catch (e) {
       print('⚠️ Error checking table $tableName: $e');
       return false;
+    }
+  }
+
+  // ============ PRODUCT STOCK MANAGEMENT ============
+
+  // Update product stock when sold
+  Future<bool> deductProductStock(int productId, double weightToDeduct, String unit) async {
+    try {
+      final db = await database;
+      
+      // Get current product
+      final product = await db.query(
+        'produced_products',
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+      
+      if (product.isEmpty) {
+        print('❌ Product not found: $productId');
+        return false;
+      }
+      
+      final currentStock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
+      final productWeight = double.tryParse(product.first['weight']?.toString() ?? '0') ?? 0;
+      final productUnit = product.first['unit']?.toString() ?? '';
+      
+      // Convert weight to same unit for comparison
+      double weightToDeductInKg = _convertToKg(weightToDeduct, unit);
+      double currentStockInKg = _convertToKg(currentStock, productUnit);
+      
+      // If no remaining_stock set, use total weight
+      if (currentStock == 0 && productWeight > 0) {
+        // Initialize stock with total weight
+        final initialStock = productWeight;
+        await db.update(
+          'produced_products',
+          {'remaining_stock': initialStock},
+          where: 'id = ?',
+          whereArgs: [productId],
+        );
+        currentStockInKg = _convertToKg(initialStock, productUnit);
+      }
+      
+      // Check if enough stock
+      if (weightToDeductInKg > currentStockInKg) {
+        print('❌ Insufficient stock! Available: ${currentStockInKg}kg, Requested: ${weightToDeductInKg}kg');
+        return false;
+      }
+      
+      // Calculate new stock
+      double newStockInKg = currentStockInKg - weightToDeductInKg;
+      double newStockInProductUnit = _convertFromKg(newStockInKg, productUnit);
+      
+      // Update product stock
+      await db.update(
+        'produced_products',
+        {'remaining_stock': newStockInProductUnit},
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+      
+      print('✅ Product $productId stock updated: ${currentStockInKg}kg -> ${newStockInKg}kg');
+      return true;
+      
+    } catch (e) {
+      print('❌ Error deducting product stock: $e');
+      return false;
+    }
+  }
+
+  // Helper: Convert weight to KG
+  double _convertToKg(double weight, String unit) {
+    if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+      return weight;
+    } else if (unit == 'تن' || unit == 'ton' || unit == 'Ton') {
+      return weight * 1000;
+    }
+    return weight; // For non-weight units, treat as is
+  }
+
+  // Helper: Convert from KG to product unit
+  double _convertFromKg(double weightInKg, String unit) {
+    if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+      return weightInKg;
+    } else if (unit == 'تن' || unit == 'ton' || unit == 'Ton') {
+      return weightInKg / 1000;
+    }
+    return weightInKg;
+  }
+
+  // Get product stock details
+  Future<Map<String, dynamic>> getProductStock(int productId) async {
+    try {
+      final db = await database;
+      final product = await db.query(
+        'produced_products',
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+      
+      if (product.isEmpty) {
+        return {'stock': 0, 'unit': '', 'available': false};
+      }
+      
+      final stock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
+      final unit = product.first['unit']?.toString() ?? '';
+      final totalWeight = double.tryParse(product.first['weight']?.toString() ?? '0') ?? 0;
+      
+      // If no remaining_stock set, use total weight
+      final availableStock = stock > 0 ? stock : totalWeight;
+      
+      return {
+        'stock': availableStock,
+        'unit': unit,
+        'available': true,
+        'product_name': product.first['product_name']?.toString() ?? '',
+      };
+    } catch (e) {
+      print('❌ Error getting product stock: $e');
+      return {'stock': 0, 'unit': '', 'available': false};
+    }
+  }
+
+  // Get products with their stock
+  Future<List<Map<String, dynamic>>> getProducedProductsWithStock() async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery('''
+        SELECT 
+          p.*,
+          CASE 
+            WHEN p.remaining_stock IS NOT NULL AND p.remaining_stock > 0 THEN p.remaining_stock
+            ELSE p.weight
+          END AS available_stock,
+          CASE 
+            WHEN p.remaining_stock IS NOT NULL AND p.remaining_stock > 0 THEN 'remaining'
+            ELSE 'total'
+          END AS stock_type
+        FROM produced_products p
+        ORDER BY p.created_at DESC
+      ''');
+      return result;
+    } catch (e) {
+      print('❌ Error getting products with stock: $e');
+      return [];
     }
   }
 
@@ -909,11 +1087,9 @@ class DatabaseHelper {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS daily_expenses(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          invoice_number TEXT UNIQUE,
+          registration_number TEXT UNIQUE,
           date TEXT,
           date_en TEXT,
-          bill_number TEXT,
-          registration_number TEXT,
           category TEXT,
           description TEXT,
           price REAL,
@@ -955,32 +1131,96 @@ class DatabaseHelper {
     }
   }
 
+  // ============ FIXED: Service Invoices Table ============
   Future<void> _ensureServiceInvoicesTable(Database db) async {
     try {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS service_invoices(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          invoice_number TEXT NOT NULL UNIQUE,
-          customer_name TEXT,
-          customer_phone TEXT,
-          customer_address TEXT,
-          service_title TEXT,
-          service_type TEXT,
-          description TEXT,
-          price REAL,
-          currency TEXT,
-          exchange_rate REAL,
-          loading_cost REAL,
-          transfer_cost REAL,
-          clearance_cost REAL,
-          discount REAL,
-          final_price REAL,
-          afn_equivalent REAL,
-          date TEXT,
-          date_en TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''' );
+      final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='service_invoices'");
+      
+      if (tables.isEmpty) {
+        // Create table with invoice_number as NOT NULL UNIQUE
+        await db.execute('''
+          CREATE TABLE service_invoices(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT NOT NULL UNIQUE,
+            customer_name TEXT,
+            customer_phone TEXT,
+            customer_address TEXT,
+            service_title TEXT,
+            service_type TEXT,
+            description TEXT,
+            size TEXT,
+            thickness TEXT,
+            total_weight REAL,
+            unit TEXT,
+            unit_price REAL,
+            total_price REAL,
+            price REAL,
+            currency TEXT,
+            exchange_rate REAL,
+            loading_cost REAL,
+            transfer_cost REAL,
+            clearance_cost REAL,
+            discount REAL,
+            final_price REAL,
+            afn_equivalent REAL,
+            date TEXT,
+            date_en TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        ''');
+        print('✅ service_invoices table created with invoice_number!');
+      } else {
+        // Check existing columns
+        final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
+        final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+        
+        // Add invoice_number if missing
+        if (!columnNames.contains('invoice_number')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN invoice_number TEXT');
+          print('✅ Added invoice_number column to service_invoices');
+          
+          // Update existing rows with generated invoice numbers
+          await db.execute('UPDATE service_invoices SET invoice_number = "SERV" || substr("00000" || id, -5, 5) WHERE invoice_number IS NULL OR invoice_number = ""');
+          print('✅ Updated existing service invoices with invoice numbers');
+        }
+        
+        // Add other missing columns
+        if (!columnNames.contains('customer_phone')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN customer_phone TEXT');
+        }
+        if (!columnNames.contains('customer_address')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN customer_address TEXT');
+        }
+        if (!columnNames.contains('size')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN size TEXT');
+        }
+        if (!columnNames.contains('thickness')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN thickness TEXT');
+        }
+        if (!columnNames.contains('total_weight')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN total_weight REAL');
+        }
+        if (!columnNames.contains('unit')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN unit TEXT');
+        }
+        if (!columnNames.contains('unit_price')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN unit_price REAL');
+        }
+        if (!columnNames.contains('total_price')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN total_price REAL');
+        }
+        if (!columnNames.contains('price')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN price REAL');
+        }
+        if (!columnNames.contains('service_title')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN service_title TEXT');
+        }
+        if (!columnNames.contains('description')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN description TEXT');
+        }
+        
+        print('✅ service_invoices table verified/updated');
+      }
     } catch (e) {
       print('❌ Error ensuring service invoices table: $e');
       rethrow;
@@ -1192,7 +1432,6 @@ class DatabaseHelper {
         production_date TEXT,
         production_date_en TEXT,
         status TEXT,
-        batch TEXT,
         description TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
@@ -1677,7 +1916,23 @@ class DatabaseHelper {
     }
   }
 
-  // ============ SERVICE INVOICES ============
+  Future<Map<String, dynamic>?> getSalesInvoiceByNumber(String invoiceNumber) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'sales_invoices',
+        where: 'invoice_number = ?',
+        whereArgs: [invoiceNumber],
+        limit: 1,
+      );
+      return result.isNotEmpty ? result.first : null;
+    } catch (e) {
+      print('❌ Error getting sales invoice by number: $e');
+      return null;
+    }
+  }
+
+  // ============ SERVICE INVOICES - FIXED ============
   Future<List<Map<String, dynamic>>> getServiceInvoices() async {
     try {
       final db = await database;
@@ -1701,12 +1956,16 @@ class DatabaseHelper {
     }
   }
 
+  // FIXED: No auto-generation - uses invoice_number from payload
   Future<int> insertServiceInvoice(Map<String, dynamic> invoice) async {
     try {
       final db = await database;
+      // Validate invoice_number is provided
       if (invoice['invoice_number'] == null || invoice['invoice_number'].toString().trim().isEmpty) {
-        invoice['invoice_number'] = await getNextServiceInvoiceNumber().then((n) => n.toString().padLeft(5, '0'));
+        print('❌ invoice_number is required but was not provided');
+        return -1;
       }
+      
       final filtered = await _filterMapForTableColumns(db, 'service_invoices', invoice);
       if (filtered.isEmpty) {
         print('⚠️ insertServiceInvoice filtered empty - service_invoices table may not exist or payload had no valid columns');
@@ -1741,6 +2000,23 @@ class DatabaseHelper {
     } catch (e) {
       print('❌ Error deleting service invoice: $e');
       return -1;
+    }
+  }
+
+  // NEW: Check if service invoice number exists
+  Future<Map<String, dynamic>?> getServiceInvoiceByNumber(String invoiceNumber) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'service_invoices',
+        where: 'invoice_number = ?',
+        whereArgs: [invoiceNumber],
+        limit: 1,
+      );
+      return result.isNotEmpty ? result.first : null;
+    } catch (e) {
+      print('❌ Error getting service invoice by number: $e');
+      return null;
     }
   }
 
@@ -1953,27 +2229,40 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getProducedProductsWithSaleStatus() async {
-    try {
-      final db = await database;
-      final result = await db.rawQuery('''
-        SELECT 
-          p.*,
-          COUNT(s.id) AS sale_count,
-          GROUP_CONCAT(s.invoice_number) AS sale_invoices,
-          CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END AS is_sold
-        FROM produced_products p
-        LEFT JOIN sales_invoices s ON s.produced_product_id = p.id
-        GROUP BY p.id
-        ORDER BY p.created_at DESC
-      ''');
-      return result;
-    } catch (e) {
-      print('❌ Error getting produced products with sale status: $e');
-      return [];
-    }
+Future<List<Map<String, dynamic>>> getProducedProductsWithSaleStatus() async {
+  try {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT 
+        p.*,
+        COUNT(s.id) AS sale_count,
+        GROUP_CONCAT(s.invoice_number) AS sale_invoices,
+        CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END AS is_sold,
+        COALESCE(p.remaining_stock, p.weight) AS available_stock
+      FROM produced_products p
+      LEFT JOIN sales_invoices s ON s.produced_product_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    ''');
+    return result;
+  } catch (e) {
+    print('❌ Error getting produced products with sale status: $e');
+    return [];
   }
-
+}
+Future<void> initializeProductStock() async {
+  try {
+    final db = await database;
+    await db.execute('''
+      UPDATE produced_products 
+      SET remaining_stock = weight 
+      WHERE remaining_stock IS NULL OR remaining_stock = 0
+    ''');
+    print('✅ Initialized remaining_stock for all products');
+  } catch (e) {
+    print('❌ Error initializing product stock: $e');
+  }
+}
   // ============ CAPITAL ASSETS ============
   Future<List<Map<String, dynamic>>> getCapitalAssets() async {
     try {
@@ -2004,6 +2293,55 @@ class DatabaseHelper {
       return -1;
     }
   }
+
+  // ============ PRODUCT STOCK MANAGEMENT - ADD BACK STOCK ============
+
+// Add stock back when sale is returned
+Future<bool> addProductStock(int productId, double weightToAdd, String unit) async {
+  try {
+    final db = await database;
+    
+    // Get current product
+    final product = await db.query(
+      'produced_products',
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+    
+    if (product.isEmpty) {
+      print('❌ Product not found: $productId');
+      return false;
+    }
+    
+    final currentStock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
+    final productUnit = product.first['unit']?.toString() ?? '';
+    
+    // Convert weight to same unit
+    double weightToAddInKg = _convertToKg(weightToAdd, unit);
+    double currentStockInKg = _convertToKg(currentStock, productUnit);
+    
+    // Calculate new stock
+    double newStockInKg = currentStockInKg + weightToAddInKg;
+    double newStockInProductUnit = _convertFromKg(newStockInKg, productUnit);
+    
+    // Update product stock
+    await db.update(
+      'produced_products',
+      {'remaining_stock': newStockInProductUnit},
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+    
+    print('✅ Product $productId stock updated: ${currentStockInKg}kg + ${weightToAddInKg}kg = ${newStockInKg}kg');
+    return true;
+    
+  } catch (e) {
+    print('❌ Error adding product stock: $e');
+    return false;
+  }
+}
+
+
 
   Future<int> deleteCapitalAsset(int id) async {
     try {
@@ -2195,7 +2533,7 @@ class DatabaseHelper {
           suppliers.address AS supplier_address
         FROM raw_materials
         LEFT JOIN suppliers ON raw_materials.supplier_id = suppliers.id
-        ORDER BY raw_materials.name ASC
+        ORDER BY raw_materials.created_at DESC, raw_materials.id DESC
       ''');
       print('📦 Raw materials fetched: ${result.length}');
       if (result.isNotEmpty) {
@@ -2237,11 +2575,60 @@ class DatabaseHelper {
   Future<int> deleteRawMaterial(int id) async {
     try {
       final db = await database;
-      return await db.delete(
-        'raw_materials',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+      
+      print('🔄 Deleting raw material ID: $id with all dependencies');
+      
+      // Start a transaction for atomic operation
+      await db.execute('BEGIN TRANSACTION');
+      
+      try {
+        // 1. Get all loans referencing this material
+        final loans = await db.query(
+          'supplier_loans',
+          where: 'raw_material_id = ?',
+          whereArgs: [id],
+        );
+        
+        // 2. Delete all loan payments first
+        for (var loan in loans) {
+          await db.delete(
+            'supplier_loan_payments',
+            where: 'loan_id = ?',
+            whereArgs: [loan['id']],
+          );
+          print('  ✅ Deleted payments for loan ${loan['id']}');
+        }
+        
+        // 3. Delete all loans
+        if (loans.isNotEmpty) {
+          await db.delete(
+            'supplier_loans',
+            where: 'raw_material_id = ?',
+            whereArgs: [id],
+          );
+          print('  ✅ Deleted ${loans.length} supplier loans');
+        }
+        
+        // 4. Finally delete the raw material
+        final result = await db.delete(
+          'raw_materials',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        
+        // Commit transaction
+        await db.execute('COMMIT');
+        
+        print('✅ Raw material $id deleted successfully');
+        return result;
+        
+      } catch (e) {
+        // Rollback on error
+        await db.execute('ROLLBACK');
+        print('❌ Transaction rolled back: $e');
+        return -1;
+      }
+      
     } catch (e) {
       print('❌ Error deleting raw material: $e');
       return -1;
@@ -2262,11 +2649,16 @@ class DatabaseHelper {
   Future<int> insertDailyExpense(Map<String, dynamic> expense) async {
     try {
       final db = await database;
-      if (expense['invoice_number'] == null || (expense['invoice_number'] as String).isEmpty) {
-        final next = await getNextSalesInvoiceNumber();
-        expense['invoice_number'] = next.toString().padLeft(5, '0');
+      
+      // registration_number is required
+      if (expense['registration_number'] == null || 
+          expense['registration_number'].toString().trim().isEmpty) {
+        print('❌ registration_number is required');
+        return -1;
       }
+      
       expense['date_en'] = expense['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
+      
       try {
         final price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0.0;
         final rate = double.tryParse(expense['exchange_rate']?.toString() ?? '0') ?? 0.0;
@@ -2410,5 +2802,63 @@ class DatabaseHelper {
     } catch (e) {
       print('❌ Error resetting database: $e');
     }
+  }
+
+  // ============ PRODUCT STOCK (TOTAL WEIGHT) ============
+Future<Map<String, dynamic>> getTotalProductStock() async {
+  try {
+    final db = await database;
+    
+    final products = await db.query('produced_products');
+    
+    double totalKg = 0;
+    double totalTons = 0;
+    Map<String, double> unitBreakdown = {};
+    
+    for (var product in products) {
+      String unit = product['unit']?.toString() ?? '';
+      // Use remaining_stock if available, otherwise use weight
+      double weight = double.tryParse(product['remaining_stock']?.toString() ?? '0') ?? 0;
+      if (weight == 0) {
+        weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+      }
+      
+      if (_isWeightUnit(unit)) {
+        if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+          totalKg += weight;
+          totalTons += weight / 1000;
+        } else if (unit == 'تن' || unit == 'ton' || unit == 'Ton') {
+          totalKg += weight * 1000;
+          totalTons += weight;
+        }
+      }
+      
+      unitBreakdown[unit] = (unitBreakdown[unit] ?? 0) + weight;
+    }
+    
+    return {
+      'total_kg': totalKg,
+      'total_tons': totalTons,
+      'total_tons_display': '${totalTons.toStringAsFixed(totalTons % 1 == 0 ? 0 : 2)} تن',
+      'total_kg_display': '${totalKg.toStringAsFixed(totalKg % 1 == 0 ? 0 : 0)} کیلوگرم',
+      'unit_breakdown': unitBreakdown,
+      'product_count': products.length,
+    };
+  } catch (e) {
+    print('❌ Error getting total product stock: $e');
+    return {
+      'total_kg': 0,
+      'total_tons': 0,
+      'total_tons_display': '0 تن',
+      'total_kg_display': '0 کیلوگرم',
+      'unit_breakdown': {},
+      'product_count': 0,
+    };
+  }
+}
+
+  bool _isWeightUnit(String unit) {
+    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
+           unit == 'تن' || unit == 'ton' || unit == 'Ton';
   }
 }

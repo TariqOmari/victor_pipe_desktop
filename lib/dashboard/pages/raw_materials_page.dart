@@ -6,22 +6,18 @@ import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
 import '../../l10n/app_localizations.dart';
 
-
 class RawMaterialsPage extends StatefulWidget {
-
   const RawMaterialsPage({super.key});
+
   @override
   State<RawMaterialsPage> createState() => _RawMaterialsPageState();
 }
 
-class _RawMaterialsPageState extends State<RawMaterialsPage>
-    with SingleTickerProviderStateMixin {
+class _RawMaterialsPageState extends State<RawMaterialsPage> {
   List<Map<String, dynamic>> materials = [];
   List<Map<String, dynamic>> suppliers = [];
   bool isLoading = true;
   final DatabaseHelper _db = DatabaseHelper();
-
-  late TabController _tabController;
 
   // Pagination
   int _currentPage = 1;
@@ -35,28 +31,63 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
   // Class level variable for English date
   String? selectedEnglishDate;
 
-  // Unit translation helper
+  // Scroll controller for horizontal scrolling
+  final ScrollController _horizontalScrollController = ScrollController();
+
+  // Helper to check if unit is weight-based
+  bool _isWeightUnit(String unit) {
+    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
+           unit == 'تن' || unit == 'ton' || unit == 'Ton';
+  }
+
+  // Get total tons of all raw materials
+  double _getTotalTons() {
+    double totalTons = 0;
+    for (var material in materials) {
+      String unit = material['unit'] ?? '';
+      double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
+      
+      if (_isWeightUnit(unit)) {
+        // Convert to tons (if kg, divide by 1000)
+        if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+          totalTons += grossWeight / 1000;
+        } else {
+          totalTons += grossWeight; // Already in tons
+        }
+      }
+    }
+    return totalTons;
+  }
+
+  // Unit translation helper - FOR TABLE DISPLAY ONLY
   String _translateUnit(String unit, AppLocalizations l10n) {
-    if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') return l10n.kgUnit;
-    if (unit == 'تن' || unit == 'ton' || unit == 'Ton') return l10n.tonUnit;
+    // For weight units in the TABLE, show as tons
+    if (_isWeightUnit(unit)) return l10n.tonUnit;
     if (unit == 'متر' || unit == 'm' || unit == 'M') return l10n.meterUnit;
     if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return l10n.pcsUnit;
     if (unit == 'لیتر' || unit == 'l' || unit == 'L') return l10n.literUnit;
     return unit;
+  }
 
-
+  // Format unit with conversion for table display - ALWAYS shows kg as tons
+  String _formatUnitWithConversion(String unit, double weight, AppLocalizations l10n) {
+    // For weight units in the TABLE, ALWAYS show as tons
+    if (_isWeightUnit(unit)) {
+      double tons = weight / 1000;
+      return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 1)} ${l10n.tonUnit}';
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} ${_translateUnit(unit, l10n)}';
   }
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadData();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _horizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -78,294 +109,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     }
   }
 
-  // ============ GET UNIT TOTALS ============
-  Map<String, double> _getUnitTotals() {
-    Map<String, double> totals = {};
-    for (var material in materials) {
-      String unit = material['unit'] ?? 'نامشخص';
-      double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
-      totals[unit] = (totals[unit] ?? 0) + grossWeight;
-    }
-    return totals;
-  }
-
-  // ============ CUT FROM UNIT TOTAL ============
-  Future<void> _showCutUnitDialog(String unit, double totalWeight) async {
-    final l10n = AppLocalizations.of(context)!;
-    final weightController = TextEditingController();
-    String selectedType = l10n.discharged;
-    final translatedUnit = _translateUnit(unit, l10n);
-
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: Text('${l10n.cutFromStock} ${unit == 'نامشخص' ? '' : '(' + translatedUnit + ')'}'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                l10n.totalStockForUnit,
-                style: const TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '$totalWeight $translatedUnit',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFCB001D),
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(
-                  labelText: l10n.cutType,
-                  border: const OutlineInputBorder(),
-                ),
-                value: selectedType,
-                items: [
-                  DropdownMenuItem(value: l10n.discharged, child: Text(l10n.discharged)),
-                  DropdownMenuItem(value: l10n.cut, child: Text(l10n.cut)),
-                ],
-                onChanged: (value) {
-                  if (value != null) selectedType = value;
-                },
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: weightController,
-                decoration: InputDecoration(
-                  labelText: l10n.cutAmount,
-                  border: const OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final weight = double.tryParse(weightController.text) ?? 0;
-                if (weight <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(l10n.enterValidAmount), backgroundColor: Colors.red),
-                  );
-                  return;
-                }
-
-                if (weight > totalWeight) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(l10n.insufficientStock), backgroundColor: Colors.red),
-                  );
-                  return;
-                }
-
-                // Find all items with this unit
-                final itemsToUpdate = materials.where((m) => m['unit'] == unit).toList();
-                
-                // Calculate total weight of all items with this unit
-                double totalUnitWeight = 0;
-                for (var item in itemsToUpdate) {
-                  totalUnitWeight += double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
-                }
-
-                // Distribute the cut proportionally
-                for (var item in itemsToUpdate) {
-                  double currentWeight = double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
-                  double ratio = currentWeight / totalUnitWeight;
-                  double cutAmount = weight * ratio;
-                  double newWeight = currentWeight - cutAmount;
-                  
-                  final updatedMaterial = Map<String, dynamic>.from(item);
-                  updatedMaterial['gross_weight'] = newWeight.toStringAsFixed(2);
-                  await _db.updateRawMaterial(item['id'], updatedMaterial);
-                }
-
-                Navigator.pop(context);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('✅ $weight $translatedUnit ${selectedType == l10n.discharged ? l10n.discharged : l10n.cut} ${l10n.from} ${itemsToUpdate.length} ${l10n.items}'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                _loadData();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFCB001D),
-              ),
-              child: Text(l10n.confirm),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============ BUILD UNIT CARDS (TAB 2 - STOCK OVERVIEW) ============
-  List<Widget> _buildUnitStockCards(AppLocalizations l10n) {
-    Map<String, double> unitTotals = _getUnitTotals();
-
-    if (unitTotals.isEmpty) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFFCB001D).withOpacity(0.06),
-              width: 1,
-            ),
-          ),
-          child: Text(
-            l10n.noRawMaterialsInStock,
-            style: const TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 13,
-            ),
-          ),
-        ),
-      ];
-    }
-
-    List<Widget> cards = [];
-    unitTotals.forEach((unit, total) {
-      // Get items count for this unit
-      int itemCount = materials.where((m) => m['unit'] == unit).length;
-      final translatedUnit = _translateUnit(unit, l10n);
-      
-      cards.add(
-        Container(
-          width: 220,
-          margin: const EdgeInsets.only(left: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 4),
-              ),
-            ],
-            border: Border.all(
-              color: const Color(0xFFCB001D).withOpacity(0.15),
-              width: 1.5,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCB001D).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.scale,
-                      color: Color(0xFFCB001D),
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      unit == 'نامشخص' ? l10n.noUnit : translatedUnit,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    l10n.totalStock,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF888888),
-                    ),
-                  ),
-                  Text(
-                    total.toStringAsFixed(0),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: Color(0xFFCB001D),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${l10n.itemsCount}: $itemCount',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF888888),
-                    ),
-                  ),
-                  // Cut Button
-                  InkWell(
-                    onTap: () => _showCutUnitDialog(unit, total),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.orange.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.cut, color: Colors.orange, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            l10n.cut,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.orange,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-
-    return cards;
-  }
-
-  // ============ BUILD UNIT SUMMARY CARDS (TAB 1) ============
+  // ============ BUILD UNIT SUMMARY CARDS ============
   List<Widget> _buildUnitSummaryCards(AppLocalizations l10n) {
     Map<String, Map<String, double>> unitTotals = {};
     
@@ -407,6 +151,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     List<Widget> cards = [];
     unitTotals.forEach((unit, totals) {
       final translatedUnit = _translateUnit(unit, l10n);
+      
+      // Format weights with conversion
+      String displayNet = _formatUnitWithConversion(unit, totals['net']!, l10n);
+      String displayGross = _formatUnitWithConversion(unit, totals['gross']!, l10n);
+      
       cards.add(
         Container(
           width: 170,
@@ -467,7 +216,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                     ),
                   ),
                   Text(
-                    totals['net']!.toStringAsFixed(0),
+                    displayNet,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -488,7 +237,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                     ),
                   ),
                   Text(
-                    totals['gross']!.toStringAsFixed(0),
+                    displayGross,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -506,49 +255,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     return cards;
   }
 
-  // ============ BUILD STOCK TABLE (Tab 2) ============
-  Widget _buildStockTable(AppLocalizations l10n) {
-    if (isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
-    }
-
-    Map<String, double> unitTotals = _getUnitTotals();
-
-    if (materials.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(l10n.noRawMaterialsInStock, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.stockByUnit,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
-          ),
-          const SizedBox(height: 12),
-          // Stock Cards - Responsive grid
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: _buildUnitStockCards(l10n),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============ BUILD MAIN TABLE (Tab 1) ============
+  // ============ BUILD MAIN TABLE ============
   Widget _buildMainTable(AppLocalizations l10n) {
     if (isLoading) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
@@ -570,165 +277,187 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     return Column(
       children: [
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                controller: _horizontalScrollController,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
                 ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCB001D).withOpacity(0.05),
-                        border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 40),
-                          const SizedBox(width: 6),
-                          _buildHeaderCell(l10n.id, 60),
-                          _buildHeaderCell(l10n.materialName, 90),
-                          _buildHeaderCell(l10n.supplierName, 120),
-                          _buildHeaderCell(l10n.supplierPhone, 90),
-                          _buildHeaderCell(l10n.supplierAddress, 120),
-                          _buildHeaderCell(l10n.date, 100),
-                          _buildHeaderCell(l10n.unit, 60),
-                          _buildHeaderCell(l10n.netWeight, 65),
-                          _buildHeaderCell(l10n.grossWeight, 65),
-                          _buildHeaderCell(l10n.unitPrice, 65),
-                          _buildHeaderCell(l10n.sellerBasePrice, 80),
-                          _buildHeaderCell(l10n.initialPayment, 80),
-                          _buildHeaderCell(l10n.paymentMethod, 80),
-                          _buildHeaderCell(l10n.product, 60),
-                          _buildHeaderCell(l10n.commission, 60),
-                          _buildHeaderCell(l10n.transferCost, 60),
-                          _buildHeaderCell(l10n.miscellaneous, 60),
-                          _buildHeaderCell(l10n.ghurfedari, 60),
-                          _buildHeaderCell(l10n.barchalani, 60),
-                          _buildHeaderCell(l10n.purchaseType, 70),
-                          _buildHeaderCell(l10n.finalPrice, 80),
-                          _buildHeaderCell(l10n.actions, 80),
-                        ],
-                      ),
-                    ),
-                    ..._paginatedMaterials.map((material) {
-                      final isSelected = _selectedIds.contains(material['id'] as int);
-                      final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
-                      
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  child: Column(
+                    children: [
+                      // Table Header
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
-                          border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
+                          color: const Color(0xFFCB001D).withOpacity(0.05),
+                          border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
                         ),
                         child: Row(
                           children: [
-                            SizedBox(
-                              width: 40,
-                              child: Checkbox(
-                                value: isSelected,
-                                onChanged: (_) => _toggleSelection(material['id'] as int),
-                                activeColor: const Color(0xFFCB001D),
-                                checkColor: Colors.white,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
+                            const SizedBox(width: 40),
                             const SizedBox(width: 6),
-                            _buildDataCell(material['id'].toString(), 60),
-                            _buildDataCell(material['name'] ?? '-', 90),
-                            _buildDataCell(material['supplier_name'] ?? '-', 120),
-                            _buildDataCell(material['supplier_phone'] ?? '-', 90),
-                            _buildDataCell(material['supplier_address'] ?? '-', 120),
-                            Container(
-                              width: 100,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    material['date_en'] ?? '-',
-                                    style: const TextStyle(
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1A1A2E),
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    material['date'] ?? '-',
-                                    style: const TextStyle(
-                                      fontSize: 7,
-                                      color: Color(0xFFCB001D),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            _buildDataCell(translatedUnit, 60),
-                            _buildDataCell(material['net_weight'] ?? '-', 65),
-                            _buildDataCell(material['gross_weight'] ?? '-', 65),
-                            _buildDataCell(material['unit_price'] ?? '-', 65),
-                            _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
-                            _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
-                            _buildDataCell(material['seller_payment_method'] == 'cash'
-                                ? l10n.cash
-                                : material['seller_payment_method'] == 'loan_full'
-                                    ? l10n.fullLoan
-                                    : material['seller_payment_method'] == 'loan_partial'
-                                        ? l10n.partialLoan
-                                        : '-', 80),
-                            _buildDataCell(material['product'] ?? '-', 60),
-                            _buildDataCell(material['commission'] ?? '-', 60),
-                            _buildDataCell(material['transfer_cost'] ?? '-', 60),
-                            _buildDataCell(material['miscellaneous'] ?? '-', 60),
-                            _buildDataCell(material['ghurfedari'] ?? '-', 60),
-                            _buildDataCell(material['barchalani'] ?? '-', 60),
-                            Container(
-                              width: 70,
-                              child: _buildPurchaseTypeChip(material['purchase_type'], l10n),
-                            ),
-                            _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80, isBold: true, isRed: true),
-                            SizedBox(
-                              width: 80,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onPressed: () => _showEditDialog(context, material, l10n),
-                                    tooltip: l10n.edit,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  IconButton(
-                                    icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onPressed: () => _showDeleteDialog(context, material, l10n),
-                                    tooltip: l10n.delete,
-                                  ),
-                                ],
-                              ),
-                            ),
+                            _buildHeaderCell(l10n.id, 60),
+                            _buildHeaderCell(l10n.materialName, 90),
+                            _buildHeaderCell(l10n.supplierName, 120),
+                            _buildHeaderCell(l10n.supplierPhone, 90),
+                            _buildHeaderCell(l10n.supplierAddress, 120),
+                            _buildHeaderCell(l10n.date, 100),
+                            _buildHeaderCell(l10n.unit, 60),
+                            _buildHeaderCell(l10n.netWeight, 65),
+                            _buildHeaderCell(l10n.grossWeight, 65),
+                            _buildHeaderCell(l10n.unitPrice, 65),
+                            _buildHeaderCell(l10n.sellerBasePrice, 80),
+                            _buildHeaderCell(l10n.initialPayment, 80),
+                            _buildHeaderCell(l10n.paymentMethod, 80),
+                            _buildHeaderCell(l10n.product, 60),
+                            _buildHeaderCell(l10n.commission, 60),
+                            _buildHeaderCell(l10n.transferCost, 60),
+                            _buildHeaderCell(l10n.miscellaneous, 60),
+                            _buildHeaderCell(l10n.ghurfedari, 60),
+                            _buildHeaderCell(l10n.barchalani, 60),
+                            _buildHeaderCell(l10n.purchaseType, 70),
+                            _buildHeaderCell(l10n.finalPrice, 80),
+                            _buildHeaderCell(l10n.actions, 80),
                           ],
                         ),
-                      );
-                    }).toList(),
-                  ],
+                      ),
+                      // Table Rows
+                      ..._paginatedMaterials.map((material) {
+                        final isSelected = _selectedIds.contains(material['id'] as int);
+                        final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
+                        
+                        // Get weight values for formatting
+                        double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
+                        double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
+                        String unit = material['unit'] ?? '-';
+                        
+                        // Format weights with conversion if needed
+                        String displayNet = _formatUnitWithConversion(unit, netWeight, l10n);
+                        String displayGross = _formatUnitWithConversion(unit, grossWeight, l10n);
+                        
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
+                            border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 40,
+                                child: Checkbox(
+                                  value: isSelected,
+                                  onChanged: (_) => _toggleSelection(material['id'] as int),
+                                  activeColor: const Color(0xFFCB001D),
+                                  checkColor: Colors.white,
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              _buildDataCell(material['id'].toString(), 60),
+                              _buildDataCell(material['name'] ?? '-', 90),
+                              _buildDataCell(material['supplier_name'] ?? '-', 120),
+                              _buildDataCell(material['supplier_phone'] ?? '-', 90),
+                              _buildDataCell(material['supplier_address'] ?? '-', 120),
+                              Container(
+                                width: 100,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      material['date_en'] ?? '-',
+                                      style: const TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1A1A2E),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      material['date'] ?? '-',
+                                      style: const TextStyle(
+                                        fontSize: 7,
+                                        color: Color(0xFFCB001D),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _buildDataCell(translatedUnit, 60),
+                              _buildDataCell(displayNet, 65),
+                              _buildDataCell(displayGross, 65),
+                              _buildDataCell(material['unit_price'] ?? '-', 65),
+                              _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
+                              _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
+                              _buildDataCell(material['seller_payment_method'] == 'cash'
+                                  ? l10n.cash
+                                  : material['seller_payment_method'] == 'loan_full'
+                                      ? l10n.fullLoan
+                                      : material['seller_payment_method'] == 'loan_partial'
+                                          ? l10n.partialLoan
+                                          : '-', 80),
+                              _buildDataCell(material['product'] ?? '-', 60),
+                              _buildDataCell(material['commission'] ?? '-', 60),
+                              _buildDataCell(material['transfer_cost'] ?? '-', 60),
+                              _buildDataCell(material['miscellaneous'] ?? '-', 60),
+                              _buildDataCell(material['ghurfedari'] ?? '-', 60),
+                              _buildDataCell(material['barchalani'] ?? '-', 60),
+                              Container(
+                                width: 70,
+                                child: _buildPurchaseTypeChip(material['purchase_type'], l10n),
+                              ),
+                              _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80, isBold: true, isRed: true),
+                              SizedBox(
+                                width: 80,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _showEditDialog(context, material, l10n),
+                                      tooltip: l10n.edit,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _showDeleteDialog(context, material, l10n),
+                                      tooltip: l10n.delete,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
+        // Pagination with Scroll Indicators
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
@@ -773,7 +502,37 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
               ),
               Row(
                 children: [
-                  Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  // Horizontal Scroll Indicators
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFCB001D), size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30),
+                    onPressed: () {
+                      _horizontalScrollController.animateTo(
+                        _horizontalScrollController.offset - 200,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    tooltip: 'Scroll Left',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios, color: Color(0xFFCB001D), size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30),
+                    onPressed: () {
+                      _horizontalScrollController.animateTo(
+                        _horizontalScrollController.offset + 200,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    tooltip: 'Scroll Right',
+                  ),
+                  const SizedBox(width: 8),
+                  // Page Info
+                  Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', 
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
@@ -911,47 +670,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     );
   }
 
-  Widget _buildStatCard(String title, String value, [IconData? icon, Color? color]) {
-    final cardColor = color ?? const Color(0xFFCB001D);
-    final cardIcon = icon ?? Icons.inventory_2_outlined;
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
-          ],
-          border: Border.all(color: cardColor.withOpacity(0.06), width: 1),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: cardColor.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(cardIcon, color: cardColor, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(color: Colors.grey.shade600, fontSize: 10, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 1),
-                  Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ============ ADD DIALOG ============
   void _showAddDialog(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -982,8 +700,28 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
     String? selectedSupplierId;
     String? selectedDate;
 
+    // Helper to convert kg to ton (ONLY USED IN DIALOG)
+    String _convertToTon(double weight) {
+      if (weight <= 0) return '0';
+      double tons = weight / 1000;
+      return tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
+    }
+
+    String _getUnitSymbol(String unit) {
+      if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') return 'تن';
+      if (unit == 'تن' || unit == 'ton' || unit == 'Ton') return 'تن';
+      if (unit == 'متر' || unit == 'm' || unit == 'M') return 'متر';
+      if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return 'عدد';
+      if (unit == 'لیتر' || unit == 'l' || unit == 'L') return 'لیتر';
+      return unit;
+    }
+
+    // ============================================
+    // CHANGED: Now uses NET WEIGHT for calculations
+    // ============================================
     void _updateFinalPrice() {
-      double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
+      // CHANGED: Use netWeight instead of grossWeight
+      double netWeight = double.tryParse(netWeightController.text) ?? 0;
       double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
       double productCost = double.tryParse(productController.text) ?? 0;
       double commission = double.tryParse(commissionController.text) ?? 0;
@@ -993,7 +731,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
       double barchalani = double.tryParse(barchalaniController.text) ?? 0;
       double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
 
-      double basePrice = grossWeight * unitPrice;
+      // CHANGED: basePrice = netWeight * unitPrice (not grossWeight)
+      double basePrice = netWeight * unitPrice;
       double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
       double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
       double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
@@ -1014,6 +753,25 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
+          double netWeight = double.tryParse(netWeightController.text) ?? 0;
+          double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
+          String selectedUnit = unitController.text;
+          
+          String netTon = _convertToTon(netWeight);
+          String grossTon = _convertToTon(grossWeight);
+          String unitSymbol = _getUnitSymbol(selectedUnit);
+          bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
+          
+          // Get unit display name
+          String unitDisplay = '';
+          if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
+            unitDisplay = 'kg';
+          } else if (selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton') {
+            unitDisplay = 'تن';
+          } else {
+            unitDisplay = selectedUnit;
+          }
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -1154,32 +912,209 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
                         },
                       ),
                       const SizedBox(height: 8),
-                      Row(
+                      // Net Weight with kg AND ton side by side
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: netWeightController,
-                              decoration: InputDecoration(
-                                labelText: l10n.netWeightRequired,
-                                border: const OutlineInputBorder(),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              ),
-                              keyboardType: TextInputType.number,
+                          TextField(
+                            controller: netWeightController,
+                            decoration: InputDecoration(
+                              labelText: l10n.netWeightRequired,
+                              border: const OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) {
+                              setStateDialog(() {});
+                              _updateFinalPrice();
+                            },
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: grossWeightController,
-                              decoration: InputDecoration(
-                                labelText: l10n.grossWeightRequired,
-                                border: const OutlineInputBorder(),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          if (netWeight > 0 && selectedUnit.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCB001D).withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFCB001D).withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isKg) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$netWeight kg',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(Icons.arrow_forward, color: const Color(0xFFCB001D), size: 14),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$netTon تن',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFCB001D),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$netWeight $unitDisplay',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => _updateFinalPrice(),
                             ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Gross Weight with kg AND ton side by side
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: grossWeightController,
+                            decoration: InputDecoration(
+                              labelText: l10n.grossWeightRequired,
+                              border: const OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) {
+                              setStateDialog(() {});
+                              _updateFinalPrice();
+                            },
                           ),
+                          if (grossWeight > 0 && selectedUnit.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCB001D).withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFCB001D).withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isKg) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$grossWeight kg',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(Icons.arrow_forward, color: const Color(0xFFCB001D), size: 14),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$grossTon تن',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFCB001D),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$grossWeight $unitDisplay',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -1473,38 +1408,35 @@ class _RawMaterialsPageState extends State<RawMaterialsPage>
 
                     final result = await _db.insertRawMaterial(material);
                     
-                    // SAVE SUPPLIER LOAN - CORRECT VERSION
-               // DELETE THIS ENTIRE BLOCK
-// SAVE SUPPLIER LOAN - CORRECT VERSION
-if (selectedSellerPaymentMethod != 'cash') {
-  final supplier = suppliers.firstWhere((s) => s['id'].toString() == selectedSupplierId, orElse: () => {});
-  final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 ? 0 : (sellerPayment - sellerPaidAmount);
-  final loanPayload = {
-    'supplier_id': int.parse(selectedSupplierId!),
-    'raw_material_id': result,
-    'invoice_number': 'SL-${DateTime.now().millisecondsSinceEpoch}',
-    'supplier_name': supplier['name'] ?? 'فروشنده',
-    'supplier_company': supplier['address'] ?? '',
-    'total_amount': sellerPayment,
-    'paid_amount': selectedSellerPaymentMethod == 'loan_full' ? 0 : sellerPaidAmount,
-    'remaining_amount': remainingSeller,
-    'loan_type': selectedSellerPaymentMethod == 'loan_full' ? 'full' : 'partial',
-    'currency': selectedCurrency,
-    'date': dateController.text.trim(),
-    'date_en': selectedEnglishDate,
-    'description': 'خرید مواد خام از فروشنده',
-  };
-  final loanId = await _db.insertSupplierLoan(loanPayload);
-  if (loanId != -1 && sellerPaidAmount > 0) {
-    await _db.insertSupplierLoanPayment({
-      'loan_id': loanId,
-      'amount': sellerPaidAmount,
-      'note': 'پرداخت اولیه فروشنده هنگام ثبت ماده خام',
-      'date': dateController.text.trim(),
-      'date_en': selectedEnglishDate,
-    });
-  }
-}
+                    if (selectedSellerPaymentMethod != 'cash') {
+                      final supplier = suppliers.firstWhere((s) => s['id'].toString() == selectedSupplierId, orElse: () => {});
+                      final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 ? 0 : (sellerPayment - sellerPaidAmount);
+                      final loanPayload = {
+                        'supplier_id': int.parse(selectedSupplierId!),
+                        'raw_material_id': result,
+                        'invoice_number': 'SL-${DateTime.now().millisecondsSinceEpoch}',
+                        'supplier_name': supplier['name'] ?? 'فروشنده',
+                        'supplier_company': supplier['address'] ?? '',
+                        'total_amount': sellerPayment,
+                        'paid_amount': selectedSellerPaymentMethod == 'loan_full' ? 0 : sellerPaidAmount,
+                        'remaining_amount': remainingSeller,
+                        'loan_type': selectedSellerPaymentMethod == 'loan_full' ? 'full' : 'partial',
+                        'currency': selectedCurrency,
+                        'date': dateController.text.trim(),
+                        'date_en': selectedEnglishDate,
+                        'description': 'خرید مواد خام از فروشنده',
+                      };
+                      final loanId = await _db.insertSupplierLoan(loanPayload);
+                      if (loanId != -1 && sellerPaidAmount > 0) {
+                        await _db.insertSupplierLoanPayment({
+                          'loan_id': loanId,
+                          'amount': sellerPaidAmount,
+                          'note': 'پرداخت اولیه فروشنده هنگام ثبت ماده خام',
+                          'date': dateController.text.trim(),
+                          'date_en': selectedEnglishDate,
+                        });
+                      }
+                    }
                     
                     Navigator.pop(context);
 
@@ -1620,17 +1552,54 @@ if (selectedSellerPaymentMethod != 'cash') {
             ),
             const SizedBox(height: 16),
 
-            // Stats
-            Row(
-              children: [
-                _buildStatCard(l10n.totalMaterials, materials.length.toString()),
-                const SizedBox(width: 12),
-                _buildStatCard(l10n.suppliers, suppliers.length.toString()),
-              ],
+            // ONE CARD - Total Tons
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+                ],
+                border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.15), width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCB001D).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.scale, color: Color(0xFFCB001D), size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'مجموع وزن به تن',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 10, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          '${_getTotalTons().toStringAsFixed(_getTotalTons() % 1 == 0 ? 0 : 1)} تن',
+                          style: const TextStyle(
+                            fontSize: 20, 
+                            fontWeight: FontWeight.bold, 
+                            color: Color(0xFFCB001D)
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
 
-            // Unit-based totals cards - Summary (Tab 1 style)
+            // Unit-based totals cards - Summary
             if (materials.isNotEmpty) ...[
               Text(
                 l10n.stockSummaryByUnit,
@@ -1644,7 +1613,7 @@ if (selectedSellerPaymentMethod != 'cash') {
             ],
             const SizedBox(height: 14),
 
-            // Tabs Container
+            // Main Table Container
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -1654,37 +1623,11 @@ if (selectedSellerPaymentMethod != 'cash') {
                     BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    TabBar(
-                      controller: _tabController,
-                      tabs: [
-                        Tab(text: l10n.rawMaterialsTab),
-                        Tab(text: l10n.stockTab),
-                      ],
-                      labelColor: const Color(0xFFCB001D),
-                      unselectedLabelColor: Colors.grey,
-                      indicatorColor: const Color(0xFFCB001D),
-                      indicatorWeight: 3,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _buildMainTable(l10n),
-                          _buildStockTable(l10n),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                child: _buildMainTable(l10n),
               ),
             ),
           ],
-        ), 
+        ),
       ),
     );
   }

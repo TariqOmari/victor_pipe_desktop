@@ -909,5 +909,17 @@
 'ignoredColumns': 'Ignored columns',
 'loansSupplierName': 'Supplier Name',
 
+'totalTons': 'Total Weight in Tons',
+
+
+'returnDetails': 'Return Details',
+'stock': '📦 Stock',
+
+  'totalItems': 'items',
+  'totalTons': 'Total Weight',
+  'productionSummary': 'Production Summary',
+  'totalLabel': 'Total:',
+  'itemsCountLabel': 'Items:',
+  'productionSummaryByUnit': 'Summary by Unit',
 };
 

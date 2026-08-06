@@ -30,6 +30,39 @@ class _SalesPageState extends State<SalesPage> {
   String _selectedFilter = 'همه';
   final TextEditingController _searchController = TextEditingController();
 
+  // Helper to check if unit is weight-based
+  bool _isWeightUnit(String unit) {
+    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
+           unit == 'تن' || unit == 'ton' || unit == 'Ton';
+  }
+
+  // Format weight with conversion - ALWAYS shows kg as tons
+  String _formatWeightWithConversion(String unit, double weight) {
+    if (_isWeightUnit(unit)) {
+      double tons = weight / 1000;
+      return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
+  }
+
+  // Get total tons of all sales
+  double _getTotalTons() {
+    double totalTons = 0;
+    for (var sale in _sales) {
+      String unit = sale['unit']?.toString() ?? '';
+      double weight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
+      
+      if (_isWeightUnit(unit)) {
+        if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+          totalTons += weight / 1000;
+        } else {
+          totalTons += weight;
+        }
+      }
+    }
+    return totalTons;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -113,6 +146,9 @@ class _SalesPageState extends State<SalesPage> {
     final afnEquivalentController = TextEditingController();
     final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
     final paidAmountController = TextEditingController();
+    
+    final invoiceNumberController = TextEditingController();
+    
     String selectedPaymentMethod = 'cash';
     String selectedCurrency = 'USD';
     String selectedType = 'فروش';
@@ -166,6 +202,16 @@ class _SalesPageState extends State<SalesPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
+          double unitCount = double.tryParse(unitCountController.text) ?? 0;
+          String currentUnit = unitController.text;
+          bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
+          
+          // Calculate converted values for display in modal
+          double weightPerUnitInTons = isKg ? weightPerUnit / 1000 : weightPerUnit;
+          double totalWeight = weightPerUnit * unitCount;
+          double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -178,6 +224,15 @@ class _SalesPageState extends State<SalesPage> {
                     children: [
                       _buildSectionTitle(l10n.salesManagement, l10n),
                       const SizedBox(height: 8),
+                      
+                      _buildTextField(
+                        controller: invoiceNumberController,
+                        label: l10n.invoiceNumberLabel,
+                        icon: Icons.numbers,
+                        l10n: l10n,
+                      ),
+                      const SizedBox(height: 12),
+                      
                       DropdownButtonFormField<Map<String, dynamic>>(
                         value: selectedParty,
                         isExpanded: true,
@@ -212,17 +267,46 @@ class _SalesPageState extends State<SalesPage> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: customerNameController, label: l10n.customerName, icon: Icons.person_outline, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: customerNameController,
+                              label: l10n.customerName,
+                              icon: Icons.person_outline,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: companyController, label: l10n.companyName, icon: Icons.business_outlined, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: companyController,
+                              label: l10n.companyName,
+                              icon: Icons.business_outlined,
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: phoneController, label: l10n.phoneNumber, icon: Icons.phone_outlined, keyboardType: TextInputType.phone, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: phoneController,
+                              label: l10n.phoneNumber,
+                              icon: Icons.phone_outlined,
+                              keyboardType: TextInputType.phone,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: addressController, label: l10n.address, icon: Icons.location_on_outlined, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: addressController,
+                              label: l10n.address,
+                              icon: Icons.location_on_outlined,
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -231,7 +315,9 @@ class _SalesPageState extends State<SalesPage> {
                       Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         child: DropdownButtonFormField<String>(
-                          value: selectedProductName,
+                          value: selectedProductName != null && productOptions.any((p) => p['name']?.toString() == selectedProductName) 
+                              ? selectedProductName 
+                              : null,
                           isExpanded: true,
                           decoration: InputDecoration(
                             labelText: l10n.selectProductFromProduction,
@@ -250,6 +336,14 @@ class _SalesPageState extends State<SalesPage> {
                                     'thickness': p['thickness']?.toString() ?? '',
                                     'loading': p['loading']?.toString() ?? '',
                                   }));
+                                  if (selectedProductName != null && !productOptions.any((p) => p['name']?.toString() == selectedProductName)) {
+                                    selectedProductName = null;
+                                    selectedProductId = null;
+                                    selectedProductUnit = null;
+                                    selectedProductThickness = null;
+                                    selectedProductLoading = null;
+                                    productController.text = '';
+                                  }
                                 });
                               },
                             ),
@@ -311,6 +405,7 @@ class _SalesPageState extends State<SalesPage> {
                                 selectedProductUnit = null;
                                 selectedProductThickness = null;
                                 selectedProductLoading = null;
+                                productController.text = '';
                               });
                               return;
                             }
@@ -333,37 +428,281 @@ class _SalesPageState extends State<SalesPage> {
                               }
                             });
                           },
-                        ),
+                        )
                       ),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: productController, label: l10n.productName, icon: Icons.inventory_2_outlined, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: productController,
+                              label: l10n.productName,
+                              icon: Icons.inventory_2_outlined,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: genderController, label: l10n.gender, icon: Icons.category_outlined, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: genderController,
+                              label: l10n.gender,
+                              icon: Icons.category_outlined,
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: sizeController, label: l10n.size, icon: Icons.straighten, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: sizeController,
+                              label: l10n.size,
+                              icon: Icons.straighten,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: thicknessController, label: l10n.thickness, icon: Icons.height, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: thicknessController,
+                              label: l10n.thickness,
+                              icon: Icons.height,
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: weightPerUnitController, label: l10n.weightPerUnit, icon: Icons.scale_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTextField(
+                                  controller: weightPerUnitController,
+                                  label: l10n.weightPerUnit,
+                                  icon: Icons.scale_outlined,
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (_) => setDialogState(() {
+                                    updateTotals();
+                                    setDialogState(() {});
+                                  }),
+                                  l10n: l10n,
+                                ),
+                                if (weightPerUnit > 0 && isKg)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$weightPerUnit kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${weightPerUnitInTons.toStringAsFixed(weightPerUnitInTons % 1 == 0 ? 0 : 2)} تن',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                if (weightPerUnit > 0 && !isKg && _isWeightUnit(currentUnit))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$weightPerUnit $currentUnit',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF1A1A2E),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: unitCountController, label: l10n.unitCount, icon: Icons.numbers, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: unitCountController,
+                              label: l10n.unitCount,
+                              icon: Icons.numbers,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: totalWeightController, label: l10n.totalWeight, icon: Icons.monitor_weight_outlined, keyboardType: TextInputType.number, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTextField(
+                                  controller: totalWeightController,
+                                  label: l10n.totalWeight,
+                                  icon: Icons.monitor_weight_outlined,
+                                  keyboardType: TextInputType.number,
+                                  readOnly: true,
+                                  l10n: l10n,
+                                ),
+                                if (totalWeight > 0 && isKg)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.2),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '$totalWeight kg',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFCB001D).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: const Color(0xFFCB001D).withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2)} تن',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFFCB001D),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                if (totalWeight > 0 && !isKg && _isWeightUnit(currentUnit))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '$totalWeight $currentUnit',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF1A1A2E),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: unitController, label: l10n.unit, icon: Icons.scale, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: unitController,
+                              label: l10n.unit,
+                              icon: Icons.scale,
+                              readOnly: true,
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -371,69 +710,173 @@ class _SalesPageState extends State<SalesPage> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: unitController, label: l10n.unit, icon: Icons.widgets_outlined, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: unitController,
+                              label: l10n.unit,
+                              icon: Icons.widgets_outlined,
+                              readOnly: true,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: unitPriceController, label: l10n.unitPricePerKg, icon: Icons.attach_money_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: unitPriceController,
+                              label: l10n.unitPricePerKg,
+                              icon: Icons.attach_money_outlined,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: totalPriceController, label: l10n.totalPrice, icon: Icons.receipt_long_outlined, keyboardType: TextInputType.number, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: totalPriceController,
+                              label: l10n.totalPrice,
+                              icon: Icons.receipt_long_outlined,
+                              keyboardType: TextInputType.number,
+                              readOnly: true,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: priceRateController, label: l10n.exchangeRateFromSystem, icon: Icons.currency_exchange, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: priceRateController,
+                              label: l10n.exchangeRateFromSystem,
+                              icon: Icons.currency_exchange,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _buildTextField(controller: afnEquivalentController, label: l10n.afnEquivalent, icon: Icons.currency_exchange, readOnly: true, l10n: l10n),
+                      _buildTextField(
+                        controller: afnEquivalentController,
+                        label: l10n.afnEquivalent,
+                        icon: Icons.currency_exchange,
+                        readOnly: true,
+                        l10n: l10n,
+                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: loadingController, label: l10n.loadingCost, icon: Icons.local_shipping_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: loadingController,
+                              label: l10n.loadingCost,
+                              icon: Icons.local_shipping_outlined,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: transferController, label: l10n.transferCost, icon: Icons.drive_eta_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: transferController,
+                              label: l10n.transferCost,
+                              icon: Icons.drive_eta_outlined,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: clearanceController, label: l10n.clearanceCost, icon: Icons.fact_check_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: clearanceController,
+                              label: l10n.clearanceCost,
+                              icon: Icons.fact_check_outlined,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: discountController, label: l10n.discount, icon: Icons.discount_outlined, keyboardType: TextInputType.number, onChanged: (_) => setDialogState(updateTotals), l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: discountController,
+                              label: l10n.discount,
+                              icon: Icons.discount_outlined,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(updateTotals),
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: finalPriceController, label: l10n.finalPrice, icon: Icons.payments_outlined, keyboardType: TextInputType.number, readOnly: true, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: finalPriceController,
+                              label: l10n.finalPrice,
+                              icon: Icons.payments_outlined,
+                              keyboardType: TextInputType.number,
+                              readOnly: true,
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: dateController, label: l10n.persianDate, icon: Icons.date_range_outlined, readOnly: true, onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                dateController.text = PersianDateConverter.gregorianToJalali(picked);
-                                selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
-                              });
-                            }
-                          }, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: dateController,
+                              label: l10n.persianDate,
+                              icon: Icons.date_range_outlined,
+                              readOnly: true,
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    dateController.text = PersianDateConverter.gregorianToJalali(picked);
+                                    selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
+                                  });
+                                }
+                              },
+                              l10n: l10n,
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: timeController, label: l10n.loadingTime, icon: Icons.access_time_outlined, readOnly: true, onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.now(),
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                timeController.text = _formatTimeOfDay(picked);
-                                selectedEnglishTime = _formatTimeOfDay(picked);
-                              });
-                            }
-                          }, l10n: l10n)),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: timeController,
+                              label: l10n.loadingTime,
+                              icon: Icons.access_time_outlined,
+                              readOnly: true,
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: TimeOfDay.now(),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    timeController.text = _formatTimeOfDay(picked);
+                                    selectedEnglishTime = _formatTimeOfDay(picked);
+                                  });
+                                }
+                              },
+                              l10n: l10n,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -471,9 +914,22 @@ class _SalesPageState extends State<SalesPage> {
                         onChanged: (value) => setDialogState(() => selectedPaymentMethod = value ?? 'cash'),
                       ),
                       if (selectedPaymentMethod == 'loan_partial') const SizedBox(height: 12),
-                      if (selectedPaymentMethod == 'loan_partial') _buildTextField(controller: paidAmountController, label: l10n.initialPaymentAmount, icon: Icons.payments_outlined, keyboardType: TextInputType.number, l10n: l10n),
+                      if (selectedPaymentMethod == 'loan_partial')
+                        _buildTextField(
+                          controller: paidAmountController,
+                          label: l10n.initialPaymentAmount,
+                          icon: Icons.payments_outlined,
+                          keyboardType: TextInputType.number,
+                          l10n: l10n,
+                        ),
                       const SizedBox(height: 12),
-                      _buildTextField(controller: descriptionController, label: l10n.description, icon: Icons.notes_outlined, maxLines: 2, l10n: l10n),
+                      _buildTextField(
+                        controller: descriptionController,
+                        label: l10n.description,
+                        icon: Icons.notes_outlined,
+                        maxLines: 2,
+                        l10n: l10n,
+                      ),
                     ],
                   ),
                 ),
@@ -482,15 +938,23 @@ class _SalesPageState extends State<SalesPage> {
                 TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
                 ElevatedButton(
                   onPressed: () async {
+                    final invoiceNumber = invoiceNumberController.text.trim();
                     final customerName = customerNameController.text.trim();
                     final phone = phoneController.text.trim();
                     final address = addressController.text.trim();
                     final company = companyController.text.trim();
                     final product = productController.text.trim();
+                    
+                    if (invoiceNumber.isEmpty) {
+                      _showSnackbar('شماره فاکتور الزامی است', Colors.red);
+                      return;
+                    }
+                    
                     if (customerName.isEmpty || product.isEmpty) {
                       _showSnackbar(l10n.customerAndProductRequired, Colors.red);
                       return;
                     }
+                    
                     final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
                     final totalPrice = double.tryParse(totalPriceController.text) ?? 0;
                     final discount = double.tryParse(discountController.text) ?? 0;
@@ -505,12 +969,18 @@ class _SalesPageState extends State<SalesPage> {
                     final currencyType = selectedCurrency;
                     final usdEquivalent = currencyType == 'USD' ? finalPrice : (priceRate <= 0 ? finalPrice : finalPrice / priceRate);
                     final afnEquivalent = currencyType == 'AFN' ? finalPrice : (finalPrice * (priceRate <= 0 ? 1 : priceRate));
-                    final invoiceNumber = await _buildInvoiceNumber();
                     final remainingAmount = selectedPaymentMethod == 'cash'
                         ? 0
                         : (finalPrice - paidAmount) < 0
                             ? 0
                             : finalPrice - paidAmount;
+                    
+                    final existingInvoice = await _db.getSalesInvoiceByNumber(invoiceNumber);
+                    if (existingInvoice != null) {
+                      _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
+                      return;
+                    }
+                    
                     final payload = {
                       'invoice_number': invoiceNumber,
                       'customer_name': customerName,
@@ -549,11 +1019,31 @@ class _SalesPageState extends State<SalesPage> {
                       'date_en': selectedEnglishDate,
                       'produced_product_id': selectedProductId,
                     };
+                    
                     final id = await _db.insertSalesInvoice(payload);
                     if (id == -1) {
                       _showSnackbar(l10n.errorAddingSale, Colors.red);
                       return;
                     }
+
+                    // ===== STOCK DEDUCTION - NEW CODE =====
+                    // Deduct stock if product selected
+                    if (selectedProductId != null && totalWeight > 0) {
+                      final unit = unitController.text.trim();
+                      final stockDeducted = await _db.deductProductStock(
+                        selectedProductId!, 
+                        totalWeight, 
+                        unit
+                      );
+                      
+                      if (!stockDeducted) {
+                        _showSnackbar('⚠️ موجودی کافی نیست!', Colors.red);
+                        // Delete the sale if stock deduction fails
+                        await _db.deleteSalesInvoice(id);
+                        return;
+                      }
+                    }
+                    // ===== END STOCK DEDUCTION =====
 
                     if (selectedPaymentMethod != 'cash') {
                       final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
@@ -617,105 +1107,107 @@ class _SalesPageState extends State<SalesPage> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          final currentParty = selectedParty;
-          final filteredSales = currentParty == null
-              ? <Map<String, dynamic>>[]
-              : _sales.where((sale) {
-                  final name = currentParty['name']?.toString() ?? '';
-                  return sale['customer_name']?.toString() == name || sale['customer_company']?.toString() == name;
-                }).toList();
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final currentParty = selectedParty;
+            final filteredSales = currentParty == null
+                ? <Map<String, dynamic>>[]
+                : _sales.where((sale) {
+                    final name = currentParty['name']?.toString() ?? '';
+                    return sale['customer_name']?.toString() == name || sale['customer_company']?.toString() == name;
+                  }).toList();
 
-          final totalAmount = filteredSales.fold<double>(0, (sum, sale) => sum + (double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0));
-          final totalInvoices = filteredSales.length;
+            final totalAmount = filteredSales.fold<double>(0, (sum, sale) => sum + (double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0));
+            final totalInvoices = filteredSales.length;
 
-          return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.8,
-              height: MediaQuery.of(context).size.height * 0.75,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(l10n.customerTransactionHistory, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
-                          const SizedBox(height: 4),
-                          Text(currentParty == null ? l10n.noCustomerSelected : currentParty['name']?.toString() ?? '-', style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
-                        ],
-                      ),
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.grey, size: 24)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedParty,
-                    isExpanded: true,
-                    decoration: InputDecoration(labelText: l10n.selectCustomerCompany, border: const OutlineInputBorder()),
-                    items: _partyOptions.map((option) {
-                      return DropdownMenuItem<Map<String, dynamic>>(
-                        value: option,
-                        child: Text('${option['name']?.toString() ?? '-'} (${option['source']?.toString() == 'company' ? l10n.company : l10n.customer})'),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() {
-                        selectedParty = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _buildKeyValueChip(l10n.invoicesCount, totalInvoices.toString(), Colors.blue, l10n),
-                      const SizedBox(width: 12),
-                      _buildKeyValueChip(l10n.totalAmount, _formatCurrency(totalAmount), Colors.green, l10n),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: filteredSales.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.history_rounded, size: 64, color: Colors.grey.shade300),
-                                const SizedBox(height: 12),
-                                Text(l10n.noHistoryForCustomer, style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
-                              ],
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.8,
+                height: MediaQuery.of(context).size.height * 0.75,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(l10n.customerTransactionHistory, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+                            const SizedBox(height: 4),
+                            Text(currentParty == null ? l10n.noCustomerSelected : currentParty['name']?.toString() ?? '-', style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                          ],
+                        ),
+                        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.grey, size: 24)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      value: selectedParty,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: l10n.selectCustomerCompany, border: const OutlineInputBorder()),
+                      items: _partyOptions.map((option) {
+                        return DropdownMenuItem<Map<String, dynamic>>(
+                          value: option,
+                          child: Text('${option['name']?.toString() ?? '-'} (${option['source']?.toString() == 'company' ? l10n.company : l10n.customer})'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() {
+                          selectedParty = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _buildKeyValueChip(l10n.invoicesCount, totalInvoices.toString(), Colors.blue, l10n),
+                        const SizedBox(width: 12),
+                        _buildKeyValueChip(l10n.totalAmount, _formatCurrency(totalAmount), Colors.green, l10n),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: filteredSales.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.history_rounded, size: 64, color: Colors.grey.shade300),
+                                  const SizedBox(height: 12),
+                                  Text(l10n.noHistoryForCustomer, style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: filteredSales.length,
+                              separatorBuilder: (_, __) => const Divider(color: Colors.grey),
+                              itemBuilder: (context, index) {
+                                final sale = filteredSales[index];
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  title: Text('${sale['invoice_number'] ?? '-'} • ${sale['customer_name'] ?? sale['customer_company'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  subtitle: Text('${sale['product_name'] ?? '-'} • ${sale['date'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  trailing: Text('${_formatCurrency(sale['final_price'])} ${sale['currency'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFCB001D))),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale, l10n);
+                                  },
+                                );
+                              },
                             ),
-                          )
-                        : ListView.separated(
-                            itemCount: filteredSales.length,
-                            separatorBuilder: (_, __) => const Divider(color: Colors.grey),
-                            itemBuilder: (context, index) {
-                              final sale = filteredSales[index];
-                              return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                title: Text('${sale['invoice_number'] ?? '-'} • ${sale['customer_name'] ?? sale['customer_company'] ?? '-'}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                                subtitle: Text('${sale['product_name'] ?? '-'} • ${sale['date'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                trailing: Text('${_formatCurrency(sale['final_price'])} ${sale['currency'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFCB001D))),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale, l10n);
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -742,13 +1234,21 @@ class _SalesPageState extends State<SalesPage> {
       return invoice?[key]?.toString() ?? defaultValue;
     }
 
-    double getInvoiceNumberValue(String key, {double defaultValue = 0}) {
-      final value = invoice?[key];
-      if (value == null) return defaultValue;
-      if (value is num) return value.toDouble();
-      if (value is String) return double.tryParse(value) ?? defaultValue;
-      return defaultValue;
-    }
+    // Get unit
+    String unit = getInvoiceValue('unit');
+    
+    // Get raw values from database
+    double weightPerUnitRaw = double.tryParse(getInvoiceValue('weight_per_unit')) ?? 0;
+    double unitCount = double.tryParse(getInvoiceValue('unit_count')) ?? 0;
+    double totalWeightRaw = double.tryParse(getInvoiceValue('total_weight')) ?? 0;
+    
+    // Format ALL weight values with conversion - ALWAYS show in tons
+    String displayWeightPerUnit = _formatWeightWithConversion(unit, weightPerUnitRaw);
+    String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
+    
+    // Also format the "weight" column (this is usually the total weight)
+    double weightValue = double.tryParse(getInvoiceValue('weight')) ?? 0;
+    String displayWeightValue = _formatWeightWithConversion(unit, weightValue);
 
     showDialog(
       context: context,
@@ -921,10 +1421,14 @@ class _SalesPageState extends State<SalesPage> {
                               _buildInvoiceDataCell(getInvoiceValue('gender'), 60),
                               _buildInvoiceDataCell(getInvoiceValue('size'), 60),
                               _buildInvoiceDataCell(getInvoiceValue('thickness'), 60),
-                              _buildInvoiceDataCell(getInvoiceValue('weight'), 60),
-                              _buildInvoiceDataCell(getInvoiceValue('weight_per_unit'), 70),
+                              // WEIGHT column - ALWAYS in TONS
+                              _buildInvoiceDataCell(displayWeightValue, 60),
+                              // WEIGHT PER UNIT column - ALWAYS in TONS (100kg = 0.1 تن)
+                              _buildInvoiceDataCell(displayWeightPerUnit, 70),
+                              // UNIT COUNT - stays as number (not converted)
                               _buildInvoiceDataCell(getInvoiceValue('unit_count'), 70),
-                              _buildInvoiceDataCell(getInvoiceValue('total_weight'), 70),
+                              // TOTAL WEIGHT column - ALWAYS in TONS (1000kg = 1 تن)
+                              _buildInvoiceDataCell(displayTotalWeight, 70),
                               _buildInvoiceDataCell(_formatCurrency(invoice?['unit_price']), 70),
                               _buildInvoiceDataCell(_formatCurrency(invoice?['total_price']), 70),
                               _buildInvoiceDataCell(_formatCurrency(invoice?['discount']), 60),
@@ -1015,6 +1519,17 @@ class _SalesPageState extends State<SalesPage> {
       return invoice?[key]?.toString() ?? defaultValue;
     }
 
+    // Get unit
+    String unit = getPdfValue('unit');
+    
+    // Get raw values
+    double weightPerUnitRaw = double.tryParse(getPdfValue('weight_per_unit')) ?? 0;
+    double totalWeightRaw = double.tryParse(getPdfValue('total_weight')) ?? 0;
+    
+    // Format ALL weight values with conversion - ALWAYS show in tons
+    String displayWeightPerUnit = _formatWeightWithConversion(unit, weightPerUnitRaw);
+    String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
+
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -1084,9 +1599,12 @@ class _SalesPageState extends State<SalesPage> {
                       getPdfValue('size'),
                       getPdfValue('thickness'),
                       getPdfValue('weight'),
-                      getPdfValue('weight_per_unit'),
+                      // Weight per unit - ALWAYS in TONS (100kg = 0.1 تن)
+                      displayWeightPerUnit,
+                      // Unit count - stays as number
                       getPdfValue('unit_count'),
-                      getPdfValue('total_weight'),
+                      // Total weight - ALWAYS in TONS (1000kg = 1 تن)
+                      displayTotalWeight,
                       _formatCurrency(invoice?['unit_price']),
                       _formatCurrency(invoice?['total_price']),
                       _formatCurrency(invoice?['discount']),
@@ -1274,6 +1792,8 @@ class _SalesPageState extends State<SalesPage> {
   Widget _buildQuickStats(AppLocalizations l10n) {
     final totalSales = _sales.fold<double>(0, (sum, item) => sum + (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0));
     final totalInvoices = _sales.length;
+    final totalTons = _getTotalTons();
+    
     return Row(
       children: [
         _buildStatCard(l10n.totalSales, _formatCurrency(totalSales), Icons.attach_money_outlined, const Color(0xFFCB001D)),
@@ -1281,6 +1801,8 @@ class _SalesPageState extends State<SalesPage> {
         _buildStatCard(l10n.totalInvoices, totalInvoices.toString(), Icons.receipt_long_outlined, Colors.blue.shade700),
         const SizedBox(width: 12),
         _buildStatCard(l10n.usdTotal, _formatCurrency(_sales.fold<double>(0, (sum, item) => sum + ((item['currency'] == 'USD' ? (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0) : 0)))), Icons.currency_exchange, Colors.green.shade700),
+        const SizedBox(width: 12),
+        _buildStatCard('مجموع وزن', '${totalTons.toStringAsFixed(totalTons % 1 == 0 ? 0 : 2)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
     );
   }
@@ -1353,6 +1875,7 @@ class _SalesPageState extends State<SalesPage> {
           final sale = paged[index];
           final inv = (sale['invoice_number'] ?? '').toString();
           final checked = _selectedInvoices.contains(inv);
+          
           return InkWell(
             onTap: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale, l10n),
             child: Container(

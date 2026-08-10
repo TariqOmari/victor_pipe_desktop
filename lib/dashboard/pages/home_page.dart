@@ -33,6 +33,23 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> suppliers = [];
   List<Map<String, dynamic>> users = [];
 
+  // Helper to check if unit is weight-based
+  bool _isWeightUnit(String unit) {
+    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
+           unit == 'تن' || unit == 'ton' || unit == 'Ton';
+  }
+
+  // Convert weight to tons (returns double)
+  double _convertToTons(String unit, double weight) {
+    if (_isWeightUnit(unit)) {
+      if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+        return weight / 1000;
+      }
+      return weight;
+    }
+    return weight;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -46,8 +63,8 @@ class _HomePageState extends State<HomePage> {
         _db.getRawMaterials(),
         _db.getSalesInvoices(),
         _db.getProducedProducts(),
-        _db.getSellLoans(),       // Customer loans
-        _db.getSupplierLoans(),   // Supplier loans
+        _db.getSellLoans(),
+        _db.getSupplierLoans(),
         _db.getSuppliers(),
         _db.getCustomers(),
         _db.getCapitalAssets(),
@@ -60,8 +77,8 @@ class _HomePageState extends State<HomePage> {
       rawMaterials = results[0] as List<Map<String, dynamic>>;
       salesInvoices = results[1] as List<Map<String, dynamic>>;
       producedProducts = results[2] as List<Map<String, dynamic>>;
-      sellLoans = results[3] as List<Map<String, dynamic>>;       // Customer loans
-      supplierLoans = results[4] as List<Map<String, dynamic>>;   // Supplier loans
+      sellLoans = results[3] as List<Map<String, dynamic>>;
+      supplierLoans = results[4] as List<Map<String, dynamic>>;
       suppliers = results[5] as List<Map<String, dynamic>>;
       customers = results[6] as List<Map<String, dynamic>>;
       capitalAssets = results[7] as List<Map<String, dynamic>>;
@@ -90,12 +107,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _calculateStatistics() {
-    // ============ RAW MATERIALS STATS - SEPARATE KG AND TON ============
-    double totalWeightKG = 0;
+    // ============ RAW MATERIALS STATS ============
     double totalWeightTON = 0;
     double totalRawMaterialCostAFN = 0;
     double totalRawMaterialCostUSD = 0;
-    Map<String, double> materialTypesKG = {};
     Map<String, double> materialTypesTON = {};
     
     for (var material in rawMaterials) {
@@ -111,21 +126,43 @@ class _HomePageState extends State<HomePage> {
         totalRawMaterialCostAFN += cost;
       }
       
-      if (unit == 'ton' || unit == 't' || unit == 'تن') {
-        totalWeightTON += weight;
-        materialTypesTON[type] = (materialTypesTON[type] ?? 0) + weight;
-      } else {
-        totalWeightKG += weight;
-        materialTypesKG[type] = (materialTypesKG[type] ?? 0) + weight;
+      double weightInTons = weight;
+      if (unit == 'kg' || unit == 'کیلوگرم' || unit == 'kilogram') {
+        weightInTons = weight / 1000;
       }
+      totalWeightTON += weightInTons;
+      materialTypesTON[type] = (materialTypesTON[type] ?? 0) + weightInTons;
     }
 
     // ============ SALES STATS ============
-    double totalSalesAmount = 0;
-    double totalSalesPaid = 0;
-    double totalSalesRemaining = 0;
+    double totalSalesAmountAFN = 0;
+    double totalSalesAmountUSD = 0;
+    double totalSalesPaidAFN = 0;
+    double totalSalesPaidUSD = 0;
+    double totalSalesRemainingAFN = 0;
+    double totalSalesRemainingUSD = 0;
     int totalSalesCount = salesInvoices.length;
     int returnedSalesCount = salesInvoices.where((s) => s['is_back_returned'] == 1).length;
+
+    double totalSalesWeightTON = 0;
+    for (var sale in salesInvoices) {
+      double weight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
+      String unit = sale['unit']?.toString()?.toLowerCase() ?? 'kg';
+      totalSalesWeightTON += _convertToTons(unit, weight);
+      
+      double finalPrice = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+      String currency = sale['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      
+      if (currency == 'USD') {
+        totalSalesAmountUSD += finalPrice;
+        totalSalesPaidUSD += double.tryParse(sale['paid_amount']?.toString() ?? '0') ?? 0;
+        totalSalesRemainingUSD += double.tryParse(sale['remaining_amount']?.toString() ?? '0') ?? 0;
+      } else {
+        totalSalesAmountAFN += finalPrice;
+        totalSalesPaidAFN += double.tryParse(sale['paid_amount']?.toString() ?? '0') ?? 0;
+        totalSalesRemainingAFN += double.tryParse(sale['remaining_amount']?.toString() ?? '0') ?? 0;
+      }
+    }
 
     Map<String, double> salesByDate = {};
     DateTime now = DateTime.now();
@@ -137,10 +174,6 @@ class _HomePageState extends State<HomePage> {
 
     for (var sale in salesInvoices) {
       double finalPrice = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
-      totalSalesAmount += finalPrice;
-      totalSalesPaid += double.tryParse(sale['paid_amount']?.toString() ?? '0') ?? 0;
-      totalSalesRemaining += double.tryParse(sale['remaining_amount']?.toString() ?? '0') ?? 0;
-      
       String dateStr = sale['date_en']?.toString() ?? '';
       if (dateStr.isNotEmpty) {
         try {
@@ -156,8 +189,15 @@ class _HomePageState extends State<HomePage> {
     // ============ PRODUCTION STATS ============
     int totalProduced = producedProducts.length;
     int producedSold = producedProducts.where((p) => p['is_sold'] == 1).length;
+    
+    double productionWeightTON = 0;
+    for (var product in producedProducts) {
+      double weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+      String unit = product['unit']?.toString()?.toLowerCase() ?? 'kg';
+      productionWeightTON += _convertToTons(unit, weight);
+    }
 
-    // ============ CUSTOMER LOANS STATS (from sell_loans) ============
+    // ============ CUSTOMER LOANS STATS ============
     double totalCustomerLoansUSD = 0;
     double totalCustomerLoansAFN = 0;
     double totalCustomerLoansPaidUSD = 0;
@@ -182,7 +222,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    // ============ SUPPLIER LOANS STATS (from supplier_loans) ============
+    // ============ SUPPLIER LOANS STATS ============
     double totalSupplierLoansUSD = 0;
     double totalSupplierLoansAFN = 0;
     double totalSupplierLoansPaidUSD = 0;
@@ -208,9 +248,16 @@ class _HomePageState extends State<HomePage> {
     }
 
     // ============ CAPITAL STATS ============
-    double totalCapital = 0;
+    double totalCapitalAFN = 0;
+    double totalCapitalUSD = 0;
     for (var asset in capitalAssets) {
-      totalCapital += double.tryParse(asset['current_balance']?.toString() ?? '0') ?? 0;
+      double amount = double.tryParse(asset['current_balance']?.toString() ?? '0') ?? 0;
+      String currency = asset['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      if (currency == 'USD') {
+        totalCapitalUSD += amount;
+      } else {
+        totalCapitalAFN += amount;
+      }
     }
 
     // ============ SARAFI STATS ============
@@ -236,41 +283,59 @@ class _HomePageState extends State<HomePage> {
     }
 
     // ============ WASTE STATS ============
-    double totalWasteValue = 0;
-    double totalWasteWeight = 0;
+    double totalWasteValueAFN = 0;
+    double totalWasteValueUSD = 0;
+    double totalWasteWeightTON = 0;
     for (var waste in wasteRecords) {
-      totalWasteValue += double.tryParse(waste['value']?.toString() ?? '0') ?? 0;
-      totalWasteWeight += double.tryParse(waste['weight']?.toString() ?? '0') ?? 0;
+      double value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0;
+      String currency = waste['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      if (currency == 'USD') {
+        totalWasteValueUSD += value;
+      } else {
+        totalWasteValueAFN += value;
+      }
+      double weight = double.tryParse(waste['weight']?.toString() ?? '0') ?? 0;
+      totalWasteWeightTON += weight / 1000;
     }
 
     // ============ EXPENSES STATS ============
-    double totalExpenses = 0;
+    double totalExpensesAFN = 0;
+    double totalExpensesUSD = 0;
     for (var expense in dailyExpenses) {
-      totalExpenses += double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
+      double amount = double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
+      String currency = expense['currency']?.toString()?.toUpperCase() ?? 'AFN';
+      if (currency == 'USD') {
+        totalExpensesUSD += amount;
+      } else {
+        totalExpensesAFN += amount;
+      }
     }
 
     dashboardData = {
       'rawMaterials': {
-        'weightKG': totalWeightKG,
         'weightTON': totalWeightTON,
         'totalCostAFN': totalRawMaterialCostAFN,
         'totalCostUSD': totalRawMaterialCostUSD,
         'count': rawMaterials.length,
-        'typesKG': materialTypesKG,
         'typesTON': materialTypesTON,
       },
       'sales': {
-        'totalAmount': totalSalesAmount,
-        'totalPaid': totalSalesPaid,
-        'totalRemaining': totalSalesRemaining,
+        'totalAmountAFN': totalSalesAmountAFN,
+        'totalAmountUSD': totalSalesAmountUSD,
+        'totalPaidAFN': totalSalesPaidAFN,
+        'totalPaidUSD': totalSalesPaidUSD,
+        'totalRemainingAFN': totalSalesRemainingAFN,
+        'totalRemainingUSD': totalSalesRemainingUSD,
         'count': totalSalesCount,
         'returned': returnedSalesCount,
         'byDate': salesByDate,
+        'weightTON': totalSalesWeightTON,
       },
       'production': {
         'total': totalProduced,
         'sold': producedSold,
         'available': totalProduced - producedSold,
+        'weightTON': productionWeightTON,
       },
       'loans': {
         'customer': {
@@ -293,7 +358,8 @@ class _HomePageState extends State<HomePage> {
         },
       },
       'capital': {
-        'total': totalCapital,
+        'totalAFN': totalCapitalAFN,
+        'totalUSD': totalCapitalUSD,
         'assets': capitalAssets.length,
       },
       'sarafi': {
@@ -304,12 +370,14 @@ class _HomePageState extends State<HomePage> {
         'transactions': sarafiTransactions.length,
       },
       'waste': {
-        'totalValue': totalWasteValue,
-        'totalWeight': totalWasteWeight,
+        'totalValueAFN': totalWasteValueAFN,
+        'totalValueUSD': totalWasteValueUSD,
+        'totalWeightTON': totalWasteWeightTON,
         'count': wasteRecords.length,
       },
       'expenses': {
-        'total': totalExpenses,
+        'totalAFN': totalExpensesAFN,
+        'totalUSD': totalExpensesUSD,
         'count': dailyExpenses.length,
       },
       'customers': {
@@ -414,82 +482,70 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildStatsRow1(AppLocalizations l10n, LanguageProvider languageProvider) {
-    double kg = dashboardData['rawMaterials']?['weightKG'] ?? 0;
     double ton = dashboardData['rawMaterials']?['weightTON'] ?? 0;
     
     double totalCostAFN = dashboardData['rawMaterials']?['totalCostAFN'] ?? 0;
     double totalCostUSD = dashboardData['rawMaterials']?['totalCostUSD'] ?? 0;
     
-    // Calculate Sales totals in AFN and USD
-    double totalSalesAFN = 0;
-    double totalSalesUSD = 0;
+    double totalSalesAFN = dashboardData['sales']?['totalAmountAFN'] ?? 0;
+    double totalSalesUSD = dashboardData['sales']?['totalAmountUSD'] ?? 0;
+    double totalSalesPaidAFN = dashboardData['sales']?['totalPaidAFN'] ?? 0;
+    double totalSalesPaidUSD = dashboardData['sales']?['totalPaidUSD'] ?? 0;
+    double totalSalesRemainingAFN = dashboardData['sales']?['totalRemainingAFN'] ?? 0;
+    double totalSalesRemainingUSD = dashboardData['sales']?['totalRemainingUSD'] ?? 0;
     
-    for (var sale in salesInvoices) {
-      double amount = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
-      String currency = sale['currency']?.toString()?.toUpperCase() ?? 'AFN';
-      
-      if (currency == 'USD') {
-        totalSalesUSD += amount;
-      } else {
-        totalSalesAFN += amount;
-      }
-    }
+    double salesWeightTON = dashboardData['sales']?['weightTON'] ?? 0;
     
-    // Show both KG and TON clearly
-    String kgDisplay = '${_formatNumber(kg)} ${l10n.kg}';
     String tonDisplay = '${_formatNumber(ton)} ${l10n.ton}';
+    String salesWeightDisplay = '${_formatNumber(salesWeightTON)} ${l10n.ton}';
 
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
             title: l10n.rawMaterials,
-            value: kgDisplay,
-            subtitle: tonDisplay,
+            afnValue: _formatCurrencyFull(totalCostAFN),
+            usdValue: _formatCurrencyFull(totalCostUSD),
+            subtitle: '${dashboardData['rawMaterials']?['count'] ?? 0} ${l10n.items} | وزن: $tonDisplay',
             icon: Icons.warehouse,
             color: const Color(0xFFCB001D),
-            details: '${dashboardData['rawMaterials']?['count'] ?? 0} ${l10n.items} | ارزش: ${_formatCurrencyFull(totalCostAFN)} AFN / ${_formatCurrencyFull(totalCostUSD)} USD',
-            trend: '+12%',
-            trendUp: true,
+            details: 'مواد خام',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             title: l10n.totalSales,
-            value: '${_formatCurrencyFull(totalSalesAFN)} AFN',
-            subtitle: '${_formatCurrencyFull(totalSalesUSD)} USD',
+            afnValue: _formatCurrencyFull(totalSalesAFN),
+            usdValue: _formatCurrencyFull(totalSalesUSD),
+            subtitle: '${dashboardData['sales']?['count'] ?? 0} ${l10n.invoices} | وزن: $salesWeightDisplay',
             icon: Icons.attach_money,
             color: Colors.green,
-            details: '${dashboardData['sales']?['count'] ?? 0} ${l10n.invoices} | ${l10n.paid}: ${_formatCurrencyFull(dashboardData['sales']?['totalPaid'] ?? 0)} | ${l10n.remaining}: ${_formatCurrencyFull(dashboardData['sales']?['totalRemaining'] ?? 0)}',
-            trend: '+8%',
-            trendUp: true,
+            details: 'پرداخت: ${_formatCurrencyFull(totalSalesPaidAFN)} AFN | مانده: ${_formatCurrencyFull(totalSalesRemainingAFN)} AFN',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             title: l10n.productions,
-            value: '${dashboardData['production']?['total'] ?? 0}',
+            afnValue: '${dashboardData['production']?['total'] ?? 0}',
+            usdValue: null,
             subtitle: '${dashboardData['production']?['sold'] ?? 0} ${l10n.sold}',
             icon: Icons.factory,
             color: Colors.orange,
-            details: '${l10n.available}: ${dashboardData['production']?['available'] ?? 0}',
-            trend: '${dashboardData['production']?['available'] ?? 0}',
-            trendUp: true,
+            details: 'موجود: ${dashboardData['production']?['available'] ?? 0} | وزن: ${_formatNumber(dashboardData['production']?['weightTON'] ?? 0)} ${l10n.ton}',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             title: l10n.returnedSales,
-            value: '${dashboardData['sales']?['returned'] ?? 0}',
+            afnValue: '${dashboardData['sales']?['returned'] ?? 0}',
+            usdValue: null,
             subtitle: l10n.returnedInvoices,
             icon: Icons.undo,
             color: Colors.red,
             details: '${((dashboardData['sales']?['returned'] ?? 0) / (dashboardData['sales']?['count'] ?? 1) * 100).toStringAsFixed(1)}%',
-            trend: '${dashboardData['sales']?['returned'] ?? 0}',
-            trendUp: false,
           ),
         ),
       ],
@@ -497,14 +553,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildStatsRow2(AppLocalizations l10n, LanguageProvider languageProvider) {
-    // Customer loans data
     double customerTotalUSD = dashboardData['loans']?['customer']?['totalUSD'] ?? 0;
     double customerTotalAFN = dashboardData['loans']?['customer']?['totalAFN'] ?? 0;
     double customerRemainingUSD = dashboardData['loans']?['customer']?['remainingUSD'] ?? 0;
     double customerRemainingAFN = dashboardData['loans']?['customer']?['remainingAFN'] ?? 0;
     int customerCount = dashboardData['loans']?['customer']?['count'] ?? 0;
     
-    // Supplier loans data
     double supplierTotalUSD = dashboardData['loans']?['supplier']?['totalUSD'] ?? 0;
     double supplierTotalAFN = dashboardData['loans']?['supplier']?['totalAFN'] ?? 0;
     double supplierRemainingUSD = dashboardData['loans']?['supplier']?['remainingUSD'] ?? 0;
@@ -513,59 +567,51 @@ class _HomePageState extends State<HomePage> {
 
     return Row(
       children: [
-        // Customer Loans - Total
         Expanded(
           child: _buildStatCard(
             title: '${l10n.customerLoans} (کل)',
-            value: '${_formatCurrencyFull(customerTotalAFN)} AFN',
-            subtitle: '${_formatCurrencyFull(customerTotalUSD)} USD',
+            afnValue: _formatCurrencyFull(customerTotalAFN),
+            usdValue: _formatCurrencyFull(customerTotalUSD),
+            subtitle: '${customerCount} ${l10n.loans}',
             icon: Icons.people,
             color: Colors.purple,
-            details: '${customerCount} ${l10n.loans}',
-            trend: '${customerCount}',
-            trendUp: true,
+            details: 'کل وام مشتریان',
           ),
         ),
         const SizedBox(width: 12),
-        // Customer Loans - Remaining
         Expanded(
           child: _buildStatCard(
             title: '${l10n.customerLoans} (باقی)',
-            value: '${_formatCurrencyFull(customerRemainingAFN)} AFN',
-            subtitle: '${_formatCurrencyFull(customerRemainingUSD)} USD',
+            afnValue: _formatCurrencyFull(customerRemainingAFN),
+            usdValue: _formatCurrencyFull(customerRemainingUSD),
+            subtitle: '${customerCount} ${l10n.loans}',
             icon: Icons.pending,
             color: Colors.purple,
-            details: '${customerCount} ${l10n.loans}',
-            trend: '${customerCount}',
-            trendUp: true,
+            details: 'باقی‌مانده وام مشتریان',
           ),
         ),
         const SizedBox(width: 12),
-        // Supplier Loans - Total
         Expanded(
           child: _buildStatCard(
             title: '${l10n.supplierLoans} (کل)',
-            value: '${_formatCurrencyFull(supplierTotalAFN)} AFN',
-            subtitle: '${_formatCurrencyFull(supplierTotalUSD)} USD',
+            afnValue: _formatCurrencyFull(supplierTotalAFN),
+            usdValue: _formatCurrencyFull(supplierTotalUSD),
+            subtitle: '${supplierCount} ${l10n.loans}',
             icon: Icons.business,
             color: Colors.teal,
-            details: '${supplierCount} ${l10n.loans}',
-            trend: '${supplierCount}',
-            trendUp: true,
+            details: 'کل وام تأمین‌کنندگان',
           ),
         ),
         const SizedBox(width: 12),
-        // Supplier Loans - Remaining
         Expanded(
           child: _buildStatCard(
             title: '${l10n.supplierLoans} (باقی)',
-            value: '${_formatCurrencyFull(supplierRemainingAFN)} AFN',
-            subtitle: '${_formatCurrencyFull(supplierRemainingUSD)} USD',
+            afnValue: _formatCurrencyFull(supplierRemainingAFN),
+            usdValue: _formatCurrencyFull(supplierRemainingUSD),
+            subtitle: '${supplierCount} ${l10n.loans}',
             icon: Icons.pending,
             color: Colors.teal,
-            details: '${supplierCount} ${l10n.loans}',
-            trend: '${supplierCount}',
-            trendUp: true,
+            details: 'باقی‌مانده وام تأمین‌کنندگان',
           ),
         ),
       ],
@@ -575,58 +621,64 @@ class _HomePageState extends State<HomePage> {
   Widget _buildStatsRow3(AppLocalizations l10n, LanguageProvider languageProvider) {
     double sarafiUSD = dashboardData['sarafi']?['totalUSD'] ?? 0;
     double sarafiAFN = dashboardData['sarafi']?['totalAFN'] ?? 0;
+    
+    double wasteValueAFN = dashboardData['waste']?['totalValueAFN'] ?? 0;
+    double wasteValueUSD = dashboardData['waste']?['totalValueUSD'] ?? 0;
+    double wasteWeightTON = dashboardData['waste']?['totalWeightTON'] ?? 0;
+    
+    double expensesAFN = dashboardData['expenses']?['totalAFN'] ?? 0;
+    double expensesUSD = dashboardData['expenses']?['totalUSD'] ?? 0;
+    
+    double capitalAFN = dashboardData['capital']?['totalAFN'] ?? 0;
+    double capitalUSD = dashboardData['capital']?['totalUSD'] ?? 0;
 
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
             title: l10n.sarafi,
-            value: '\$${_formatNumber(sarafiUSD)}',
-            subtitle: 'AFN ${_formatNumber(sarafiAFN)}',
+            afnValue: _formatCurrencyFull(sarafiAFN),
+            usdValue: _formatCurrencyFull(sarafiUSD),
+            subtitle: '${dashboardData['sarafi']?['deposits'] ?? 0} واریز | ${dashboardData['sarafi']?['withdrawals'] ?? 0} برداشت',
             icon: Icons.currency_exchange,
             color: Colors.amber,
-            details: '${dashboardData['sarafi']?['deposits'] ?? 0} ${l10n.deposits} | ${dashboardData['sarafi']?['withdrawals'] ?? 0} ${l10n.withdrawals}',
-            trend: '${dashboardData['sarafi']?['transactions'] ?? 0}',
-            trendUp: true,
+            details: '${dashboardData['sarafi']?['transactions'] ?? 0} تراکنش',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             title: l10n.wastes,
-            value: _formatCurrencyFull(dashboardData['waste']?['totalValue'] ?? 0),
-            subtitle: '${_formatNumber(dashboardData['waste']?['totalWeight'] ?? 0)} ${l10n.kg}',
+            afnValue: _formatCurrencyFull(wasteValueAFN),
+            usdValue: _formatCurrencyFull(wasteValueUSD),
+            subtitle: '${_formatNumber(wasteWeightTON)} ${l10n.ton}',
             icon: Icons.delete,
             color: Colors.red,
-            details: '${dashboardData['waste']?['count'] ?? 0} ${l10n.items}',
-            trend: '${dashboardData['waste']?['count'] ?? 0}',
-            trendUp: false,
+            details: '${dashboardData['waste']?['count'] ?? 0} مورد ضایعات',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             title: l10n.dailyExpenses,
-            value: _formatCurrencyFull(dashboardData['expenses']?['total'] ?? 0),
-            subtitle: '${dashboardData['expenses']?['count'] ?? 0} ${l10n.expenses}',
+            afnValue: _formatCurrencyFull(expensesAFN),
+            usdValue: _formatCurrencyFull(expensesUSD),
+            subtitle: '${dashboardData['expenses']?['count'] ?? 0} مورد',
             icon: Icons.receipt,
             color: Colors.grey,
-            details: l10n.dailyExpenses,
-            trend: '${dashboardData['expenses']?['count'] ?? 0}',
-            trendUp: true,
+            details: 'مصارف روزانه',
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
-            title: l10n.suppliers,
-            value: '${dashboardData['suppliers']?['count'] ?? 0}',
-            subtitle: l10n.activeSuppliers,
-            icon: Icons.local_shipping,
-            color: Colors.orange,
-            details: '${dashboardData['suppliers']?['count'] ?? 0} ${l10n.suppliers}',
-            trend: '${dashboardData['suppliers']?['count'] ?? 0}',
-            trendUp: true,
+            title: l10n.capital,
+            afnValue: _formatCurrencyFull(capitalAFN),
+            usdValue: _formatCurrencyFull(capitalUSD),
+            subtitle: '${dashboardData['capital']?['assets'] ?? 0} دارایی',
+            icon: Icons.account_balance,
+            color: Colors.blue,
+            details: 'سرمایه کل',
           ),
         ),
       ],
@@ -635,13 +687,12 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildStatCard({
     required String title,
-    required String value,
+    required String afnValue,
+    String? usdValue,
     required String subtitle,
     required IconData icon,
     required Color color,
     String? details,
-    String? trend,
-    bool trendUp = true,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -664,66 +715,33 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 16),
+              ),
+              const SizedBox(width: 8),
               Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(icon, color: color, size: 16),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: color,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (trend != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: (trendUp ? Colors.green : Colors.red).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        trendUp ? Icons.trending_up : Icons.trending_down,
-                        color: trendUp ? Colors.green : Colors.red,
-                        size: 12,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        trend,
-                        style: TextStyle(
-                          color: trendUp ? Colors.green : Colors.red,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 10),
+          // AFN Value - Main (Big)
           Text(
-            value,
+            '$afnValue AFN',
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -731,22 +749,35 @@ class _HomePageState extends State<HomePage> {
             ),
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 2),
+          // USD Value - Below AFN (Smaller)
+          if (usdValue != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              '$usdValue USD',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          const SizedBox(height: 4),
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: Colors.grey.shade500,
               fontSize: 11,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w400,
             ),
           ),
           if (details != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               details,
               style: TextStyle(
                 fontSize: 10,
-                color: Colors.grey.shade500,
+                color: Colors.grey.shade400,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -918,17 +949,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildMaterialDistributionChart(AppLocalizations l10n, LanguageProvider languageProvider) {
-    var typesKG = dashboardData['rawMaterials']?['typesKG'] as Map<String, double>? ?? {};
     var typesTON = dashboardData['rawMaterials']?['typesTON'] as Map<String, double>? ?? {};
     
-    Map<String, double> allTypes = {};
-    typesKG.forEach((key, value) {
-      allTypes[key] = (allTypes[key] ?? 0) + value;
-    });
-    typesTON.forEach((key, value) {
-      allTypes['$key (${l10n.ton})'] = (allTypes['$key (${l10n.ton})'] ?? 0) + value;
-    });
-
     List<PieChartSectionData> sections = [];
     List<Color> colors = [
       const Color(0xFFCB001D), 
@@ -943,11 +965,11 @@ class _HomePageState extends State<HomePage> {
     
     int colorIndex = 0;
     double totalWeight = 0;
-    allTypes.forEach((key, value) {
+    typesTON.forEach((key, value) {
       totalWeight += value;
     });
     
-    allTypes.forEach((type, weight) {
+    typesTON.forEach((type, weight) {
       if (weight > 0) {
         double percentage = totalWeight > 0 ? (weight / totalWeight * 100) : 0;
         sections.add(
@@ -999,7 +1021,7 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '🎯 ${l10n.materialDistribution}',
+            '🎯 ${l10n.materialDistribution} (${l10n.ton})',
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -1020,15 +1042,15 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          if (allTypes.isNotEmpty) ...[
+          if (typesTON.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 4,
-              children: allTypes.keys.toList().asMap().entries.map((entry) {
+              children: typesTON.keys.toList().asMap().entries.map((entry) {
                 int idx = entry.key;
                 String type = entry.value;
-                double weight = allTypes[type] ?? 0;
+                double weight = typesTON[type] ?? 0;
                 double percentage = totalWeight > 0 ? (weight / totalWeight * 100) : 0;
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1058,7 +1080,7 @@ class _HomePageState extends State<HomePage> {
     double number = double.tryParse(value.toString()) ?? 0;
     return NumberFormat('#,##0').format(number);
   }
-
+  
   String _formatNumber(dynamic value) {
     if (value == null) return '۰';
     double number = double.tryParse(value.toString()) ?? 0;

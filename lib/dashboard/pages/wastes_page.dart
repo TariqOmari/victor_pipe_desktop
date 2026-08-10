@@ -106,8 +106,8 @@ class _WastesPageState extends State<WastesPage> {
     final weightController = TextEditingController(text: waste?['weight']?.toString() ?? '');
     final quantityController = TextEditingController(text: waste?['quantity']?.toString() ?? '');
     final valueController = TextEditingController(text: waste?['value']?.toString() ?? '');
-    final priceRateController = TextEditingController(text: waste?['exchange_rate']?.toString() ?? '0.011');
-    final afnEquivalentController = TextEditingController(text: waste?['afn_equivalent']?.toString() ?? '');
+    final priceRateController = TextEditingController(text: waste?['exchange_rate']?.toString() ?? '1');
+    final equivalentController = TextEditingController(text: waste?['afn_equivalent']?.toString() ?? '');
     final totalWeightController = TextEditingController(text: '');
     String selectedCurrency = waste?['currency']?.toString() ?? 'USD';
     String selectedEnglishDate = waste?['date_en']?.toString() ?? PersianDateConverter.getEnglishDate(DateTime.now());
@@ -115,10 +115,13 @@ class _WastesPageState extends State<WastesPage> {
     void updateTotals() {
       final value = double.tryParse(valueController.text) ?? 0;
       final rate = double.tryParse(priceRateController.text) ?? 1;
+      
       if (selectedCurrency == 'AFN') {
-        afnEquivalentController.text = value > 0 && rate > 0 ? (value / rate).toStringAsFixed(0) : '';
+        // AFN selected: value / rate = USD equivalent
+        equivalentController.text = value > 0 && rate > 0 ? (value / rate).toStringAsFixed(2) : '';
       } else {
-        afnEquivalentController.text = value > 0 && rate > 0 ? (value * rate).toStringAsFixed(0) : '';
+        // USD selected: value * rate = AFN equivalent
+        equivalentController.text = value > 0 && rate > 0 ? (value * rate).toStringAsFixed(0) : '';
       }
     }
 
@@ -360,13 +363,13 @@ class _WastesPageState extends State<WastesPage> {
                         children: [
                           Expanded(child: _buildTextField(controller: valueController, label: l10n.wasteValueLabel, icon: Icons.attach_money_outlined, keyboardType: TextInputType.number, l10n: l10n, onChanged: (_) => setDialogState(updateTotals))),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildTextField(controller: priceRateController, label: l10n.exchangeRate, icon: Icons.currency_exchange, keyboardType: TextInputType.number, l10n: l10n, onChanged: (_) => setDialogState(updateTotals))),
+                          Expanded(child: _buildTextField(controller: priceRateController, label: selectedCurrency == 'USD' ? 'نرخ ارز (USD به AFN) *' : 'نرخ ارز (AFN به USD) *', icon: Icons.currency_exchange, keyboardType: TextInputType.number, l10n: l10n, onChanged: (_) => setDialogState(updateTotals))),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField(controller: afnEquivalentController, label: selectedCurrency == 'AFN' ? l10n.usdEquivalentLabel : l10n.afnEquivalentLabel, icon: Icons.currency_exchange, readOnly: true, l10n: l10n)),
+                          Expanded(child: _buildTextField(controller: equivalentController, label: selectedCurrency == 'AFN' ? 'معادل به دالر (USD)' : 'معادل به افغانی (AFN)', icon: Icons.currency_exchange, readOnly: true, l10n: l10n)),
                           const SizedBox(width: 12),
                           Expanded(
                             child: DropdownButtonFormField<String>(
@@ -411,9 +414,9 @@ class _WastesPageState extends State<WastesPage> {
                       'quantity': double.tryParse(quantityController.text) ?? 0,
                       'value': double.tryParse(valueController.text) ?? 0,
                       'currency': selectedCurrency,
-                      'exchange_rate': double.tryParse(priceRateController.text) ?? 0.011,
+                      'exchange_rate': double.tryParse(priceRateController.text) ?? 1,
                       'description': descriptionController.text.trim(),
-                      'afn_equivalent': double.tryParse(afnEquivalentController.text) ?? 0,
+                      'afn_equivalent': double.tryParse(equivalentController.text) ?? 0,
                     };
 
                     try {

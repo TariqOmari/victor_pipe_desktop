@@ -173,18 +173,25 @@ class Sidebar extends StatelessWidget {
                 ),
                 _buildMenuItem(
                   context: context,
-                  index: 15,
+                  index: 15,  // 👈 FIXED: Now points to CustomerCompanyLoansPage
                   icon: Icons.account_balance_wallet,
-                  title: l10n.loans,
+                  title: l10n.loans,  // Customer Loans
                   isSelected: selectedIndex == 15,
                 ),
                 _buildMenuItem(
                   context: context,
-                  index: 16,
+                  index: 16,  // 👈 FIXED: Now points to SupplierLoansPage
                   icon: Icons.storefront,
-                  title: l10n.supplierLoans,
+                  title: l10n.supplierLoans,  // Supplier Loans
                   isSelected: selectedIndex == 16,
                 ),
+                _buildMenuItem(
+  context: context,
+  index: 17,  // 👈 ADD THIS - points to IncomesPage
+  icon: Icons.monetization_on,  // Money icon
+  title: 'عواید',  // Hardcoded Persian // or 'عواید' if you have it in localization
+  isSelected: selectedIndex == 17,
+),
                 
                 Padding(
                   padding: EdgeInsets.symmetric(

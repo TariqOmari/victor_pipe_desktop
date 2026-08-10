@@ -679,56 +679,65 @@ class DatabaseHelper {
   }
 
   Future<void> _ensureProducedProductsTable(Database db) async {
+  try {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS produced_products(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_name TEXT NOT NULL,
+        production_type TEXT,
+        loading TEXT,
+        thickness TEXT,
+        length TEXT,
+        quantity INTEGER,
+        weight TEXT,
+        unit TEXT,
+        production_date TEXT,
+        production_date_en TEXT,
+        status TEXT,
+        description TEXT,
+        total_weight TEXT DEFAULT '0',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    // ADD total_weight COLUMN
     try {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS produced_products(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          product_name TEXT NOT NULL,
-          production_type TEXT,
-          loading TEXT,
-          thickness TEXT,
-          length TEXT,
-          quantity INTEGER,
-          weight TEXT,
-          unit TEXT,
-          production_date TEXT,
-          production_date_en TEXT,
-          status TEXT,
-          description TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''');
-
-      // ADD THIS NEW COLUMN
-      try {
-        await db.execute('ALTER TABLE produced_products ADD COLUMN remaining_stock REAL DEFAULT 0');
-        print('✅ Added remaining_stock column to produced_products');
-      } catch (e) {
-        print('⚠️ remaining_stock column already exists or could not be added: $e');
-      }
-
-      try {
-        await db.execute('ALTER TABLE produced_products ADD COLUMN loading TEXT');
-      } catch (e) {
-        print('⚠️ loading column already exists or could not be added: $e');
-      }
-
-      try {
-        await db.execute('ALTER TABLE produced_products ADD COLUMN production_type TEXT');
-      } catch (e) {
-        print('⚠️ production_type column already exists or could not be added: $e');
-      }
-
-      try {
-        await db.execute('ALTER TABLE produced_products ADD COLUMN production_date_en TEXT');
-      } catch (e) {
-        print('⚠️ production_date_en column already exists or could not be added: $e');
-      }
+      await db.execute('ALTER TABLE produced_products ADD COLUMN total_weight TEXT DEFAULT "0"');
+      print('✅ Added total_weight column to produced_products');
     } catch (e) {
-      print('❌ Error ensuring produced_products table: $e');
-      rethrow;
+      print('⚠️ total_weight column already exists or could not be added: $e');
     }
+
+    // ADD remaining_stock COLUMN
+    try {
+      await db.execute('ALTER TABLE produced_products ADD COLUMN remaining_stock REAL DEFAULT 0');
+      print('✅ Added remaining_stock column to produced_products');
+    } catch (e) {
+      print('⚠️ remaining_stock column already exists or could not be added: $e');
+    }
+
+    try {
+      await db.execute('ALTER TABLE produced_products ADD COLUMN loading TEXT');
+    } catch (e) {
+      print('⚠️ loading column already exists or could not be added: $e');
+    }
+
+    try {
+      await db.execute('ALTER TABLE produced_products ADD COLUMN production_type TEXT');
+    } catch (e) {
+      print('⚠️ production_type column already exists or could not be added: $e');
+    }
+
+    try {
+      await db.execute('ALTER TABLE produced_products ADD COLUMN production_date_en TEXT');
+    } catch (e) {
+      print('⚠️ production_date_en column already exists or could not be added: $e');
+    }
+  } catch (e) {
+    print('❌ Error ensuring produced_products table: $e');
+    rethrow;
   }
+}
 
   Future<void> _ensureCapitalTables(Database db) async {
     try {
@@ -775,69 +784,69 @@ class DatabaseHelper {
   // ============ PRODUCT STOCK MANAGEMENT ============
 
   // Update product stock when sold
-  Future<bool> deductProductStock(int productId, double weightToDeduct, String unit) async {
-    try {
-      final db = await database;
-      
-      // Get current product
-      final product = await db.query(
-        'produced_products',
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-      
-      if (product.isEmpty) {
-        print('❌ Product not found: $productId');
-        return false;
-      }
-      
-      final currentStock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
-      final productWeight = double.tryParse(product.first['weight']?.toString() ?? '0') ?? 0;
-      final productUnit = product.first['unit']?.toString() ?? '';
-      
-      // Convert weight to same unit for comparison
-      double weightToDeductInKg = _convertToKg(weightToDeduct, unit);
-      double currentStockInKg = _convertToKg(currentStock, productUnit);
-      
-      // If no remaining_stock set, use total weight
-      if (currentStock == 0 && productWeight > 0) {
-        // Initialize stock with total weight
-        final initialStock = productWeight;
-        await db.update(
-          'produced_products',
-          {'remaining_stock': initialStock},
-          where: 'id = ?',
-          whereArgs: [productId],
-        );
-        currentStockInKg = _convertToKg(initialStock, productUnit);
-      }
-      
-      // Check if enough stock
-      if (weightToDeductInKg > currentStockInKg) {
-        print('❌ Insufficient stock! Available: ${currentStockInKg}kg, Requested: ${weightToDeductInKg}kg');
-        return false;
-      }
-      
-      // Calculate new stock
-      double newStockInKg = currentStockInKg - weightToDeductInKg;
-      double newStockInProductUnit = _convertFromKg(newStockInKg, productUnit);
-      
-      // Update product stock
-      await db.update(
-        'produced_products',
-        {'remaining_stock': newStockInProductUnit},
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-      
-      print('✅ Product $productId stock updated: ${currentStockInKg}kg -> ${newStockInKg}kg');
-      return true;
-      
-    } catch (e) {
-      print('❌ Error deducting product stock: $e');
+ // Update product stock when sold
+Future<bool> deductProductStock(int productId, double weightToDeduct, String unit) async {
+  try {
+    final db = await database;
+    
+    // Get current product
+    final product = await db.query(
+      'produced_products',
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+    
+    if (product.isEmpty) {
+      print('❌ Product not found: $productId');
       return false;
     }
+    
+    final currentStock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
+    final productUnit = product.first['unit']?.toString() ?? '';
+    final totalWeight = double.tryParse(product.first['total_weight']?.toString() ?? '0') ?? 0;
+    
+    // Convert weight to same unit for comparison
+    double weightToDeductInKg = _convertToKg(weightToDeduct, unit);
+    double currentStockInKg = _convertToKg(currentStock, productUnit);
+    
+    // If no remaining_stock set, use total_weight
+    if (currentStock == 0 && totalWeight > 0) {
+      // Initialize stock with total weight
+      await db.update(
+        'produced_products',
+        {'remaining_stock': totalWeight},
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+      currentStockInKg = _convertToKg(totalWeight, productUnit);
+    }
+    
+    // Check if enough stock
+    if (weightToDeductInKg > currentStockInKg) {
+      print('❌ Insufficient stock! Available: ${currentStockInKg}kg, Requested: ${weightToDeductInKg}kg');
+      return false;
+    }
+    
+    // Calculate new stock
+    double newStockInKg = currentStockInKg - weightToDeductInKg;
+    double newStockInProductUnit = _convertFromKg(newStockInKg, productUnit);
+    
+    // Update product stock
+    await db.update(
+      'produced_products',
+      {'remaining_stock': newStockInProductUnit},
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+    
+    print('✅ Product $productId stock updated: ${currentStockInKg}kg -> ${newStockInKg}kg');
+    return true;
+    
+  } catch (e) {
+    print('❌ Error deducting product stock: $e');
+    return false;
   }
+}
 
   // Helper: Convert weight to KG
   double _convertToKg(double weight, String unit) {
@@ -2253,12 +2262,33 @@ Future<List<Map<String, dynamic>>> getProducedProductsWithSaleStatus() async {
 Future<void> initializeProductStock() async {
   try {
     final db = await database;
+    
+    // First check if total_weight column exists, if not, create it
+    try {
+      await db.execute('ALTER TABLE produced_products ADD COLUMN total_weight TEXT DEFAULT "0"');
+      print('✅ Added total_weight column to produced_products');
+    } catch (e) {
+      print('⚠️ total_weight column already exists or could not be added: $e');
+    }
+    
+    // Update remaining_stock to total_weight for products that have total_weight
     await db.execute('''
       UPDATE produced_products 
-      SET remaining_stock = weight 
-      WHERE remaining_stock IS NULL OR remaining_stock = 0
+      SET remaining_stock = CAST(total_weight AS REAL)
+      WHERE (remaining_stock IS NULL OR remaining_stock = 0) 
+      AND total_weight IS NOT NULL AND total_weight != '0'
     ''');
-    print('✅ Initialized remaining_stock for all products');
+    
+    // For products without total_weight, calculate from quantity * weight
+    await db.execute('''
+      UPDATE produced_products 
+      SET remaining_stock = CAST(quantity AS REAL) * CAST(weight AS REAL),
+          total_weight = CAST(quantity AS REAL) * CAST(weight AS REAL)
+      WHERE (remaining_stock IS NULL OR remaining_stock = 0) 
+      AND (total_weight IS NULL OR total_weight = '0')
+    ''');
+    
+    print('✅ Initialized remaining_stock and total_weight for all products');
   } catch (e) {
     print('❌ Error initializing product stock: $e');
   }
@@ -2482,30 +2512,75 @@ Future<bool> addProductStock(int productId, double weightToAdd, String unit) asy
     }
   }
 
-  Future<int> insertProducedProduct(Map<String, dynamic> product) async {
-    try {
-      final db = await database;
-      return await db.insert('produced_products', product);
-    } catch (e) {
-      print('❌ Error inserting produced product: $e');
-      return -1;
-    }
+Future<int> insertProducedProduct(Map<String, dynamic> product) async {
+  try {
+    final db = await database;
+    
+    // Calculate total weight: quantity * weight
+    final quantity = int.tryParse(product['quantity']?.toString() ?? '0') ?? 0;
+    final weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+    final totalWeight = quantity * weight;
+    
+    // Add total_weight to the payload
+    product['total_weight'] = totalWeight.toString();
+    
+    // Set remaining_stock to total_weight (initial stock = total weight)
+    product['remaining_stock'] = totalWeight.toDouble();
+    
+    return await db.insert('produced_products', product);
+  } catch (e) {
+    print('❌ Error inserting produced product: $e');
+    return -1;
   }
+}
 
-  Future<int> updateProducedProduct(int id, Map<String, dynamic> product) async {
-    try {
-      final db = await database;
-      return await db.update(
-        'produced_products',
-        product,
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    } catch (e) {
-      print('❌ Error updating produced product: $e');
-      return -1;
+ Future<int> updateProducedProduct(int id, Map<String, dynamic> product) async {
+  try {
+    final db = await database;
+    
+    // Get current product to know current remaining_stock
+    final currentProduct = await db.query(
+      'produced_products',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    
+    if (currentProduct.isNotEmpty) {
+      final currentRemainingStock = double.tryParse(currentProduct.first['remaining_stock']?.toString() ?? '0') ?? 0;
+      
+      // Recalculate total weight if quantity or weight changed
+      if (product.containsKey('quantity') || product.containsKey('weight')) {
+        final quantity = int.tryParse(product['quantity']?.toString() ?? '0') ?? 0;
+        final weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+        final totalWeight = quantity * weight;
+        product['total_weight'] = totalWeight.toString();
+        
+        // Only update remaining_stock if it hasn't been sold (stock == total weight)
+        // or if we're increasing the total
+        final oldTotalWeight = double.tryParse(currentProduct.first['total_weight']?.toString() ?? '0') ?? 0;
+        if (currentRemainingStock == oldTotalWeight) {
+          // No sales have been made, update remaining_stock to new total
+          product['remaining_stock'] = totalWeight.toDouble();
+        } else if (totalWeight > oldTotalWeight) {
+          // Added more quantity, add the difference to remaining_stock
+          final difference = totalWeight - oldTotalWeight;
+          product['remaining_stock'] = currentRemainingStock + difference;
+        }
+        // If total decreased, don't automatically reduce remaining_stock (prevents negative stock)
+      }
     }
+    
+    return await db.update(
+      'produced_products',
+      product,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  } catch (e) {
+    print('❌ Error updating produced product: $e');
+    return -1;
   }
+}
 
   Future<int> deleteProducedProduct(int id) async {
     try {
@@ -2557,20 +2632,20 @@ Future<bool> addProductStock(int productId, double weightToAdd, String unit) asy
     }
   }
 
-  Future<int> updateRawMaterial(int id, Map<String, dynamic> material) async {
-    try {
-      final db = await database;
-      return await db.update(
-        'raw_materials',
-        material,
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    } catch (e) {
-      print('❌ Error updating raw material: $e');
-      return -1;
-    }
+ Future<int> updateRawMaterial(int id, Map<String, dynamic> material) async {
+  try {
+    final db = await database;
+    return await db.update(
+      'raw_materials',
+      material,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  } catch (e) {
+    print('❌ Error updating raw material: $e');
+    return -1;
   }
+}
 
   Future<int> deleteRawMaterial(int id) async {
     try {
@@ -2817,10 +2892,10 @@ Future<Map<String, dynamic>> getTotalProductStock() async {
     
     for (var product in products) {
       String unit = product['unit']?.toString() ?? '';
-      // Use remaining_stock if available, otherwise use weight
+      // Use remaining_stock if available, otherwise use total_weight
       double weight = double.tryParse(product['remaining_stock']?.toString() ?? '0') ?? 0;
       if (weight == 0) {
-        weight = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+        weight = double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0;
       }
       
       if (_isWeightUnit(unit)) {

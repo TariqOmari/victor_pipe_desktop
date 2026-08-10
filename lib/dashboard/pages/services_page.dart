@@ -113,7 +113,7 @@ class _ServicesPageState extends State<ServicesPage> {
       text: service?['total_price']?.toString() ?? ''
     );
     final exchangeRateController = TextEditingController(
-      text: service?['exchange_rate']?.toString() ?? '85'
+      text: service?['exchange_rate']?.toString() ?? '1'
     );
     final loadingController = TextEditingController(
       text: service?['loading_cost']?.toString() ?? ''
@@ -130,7 +130,7 @@ class _ServicesPageState extends State<ServicesPage> {
     final finalPriceController = TextEditingController(
       text: service?['final_price']?.toString() ?? ''
     );
-    final afnEquivalentController = TextEditingController(
+    final equivalentController = TextEditingController(
       text: service?['afn_equivalent']?.toString() ?? ''
     );
     final dateController = TextEditingController(
@@ -140,28 +140,44 @@ class _ServicesPageState extends State<ServicesPage> {
         PersianDateConverter.getEnglishDate(DateTime.now());
     String selectedCurrency = service?['currency']?.toString() ?? 'USD';
 
+    // ============================================
+    // FIXED: Unit price is ALWAYS per ton
+    // ============================================
     void updateTotals() {
-      final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
-      final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      final exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
-      final loadingCost = double.tryParse(loadingController.text) ?? 0;
-      final transferCost = double.tryParse(transferController.text) ?? 0;
-      final clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-      final discount = double.tryParse(discountController.text) ?? 0;
+      double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
       
-      // Calculate total price
-      final totalPrice = totalWeight * unitPrice;
+      // Convert weight to tons if unit is KG
+      double totalWeightInTons = totalWeight;
+      bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
+      if (isKg) {
+        totalWeightInTons = totalWeight / 1000;
+      }
+      
+      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+      double loadingCost = double.tryParse(loadingController.text) ?? 0;
+      double transferCost = double.tryParse(transferController.text) ?? 0;
+      double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+      double discount = double.tryParse(discountController.text) ?? 0;
+      
+      // FIXED: totalPrice = (weight in tons) * unitPrice (unit price is PER TON)
+      double totalPrice = totalWeightInTons * unitPrice;
       totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
       
       // Calculate final price
-      final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+      double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
       finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
       
-      if (selectedCurrency == 'AFN') {
-        afnEquivalentController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
-      } else {
-        afnEquivalentController.text = finalPrice > 0 
+      // Calculate equivalent based on selected currency
+      if (selectedCurrency == 'USD') {
+        // USD selected: finalPrice * rate = AFN equivalent
+        equivalentController.text = finalPrice > 0 
             ? (finalPrice * (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(0) 
+            : '';
+      } else {
+        // AFN selected: finalPrice / rate = USD equivalent
+        equivalentController.text = finalPrice > 0 
+            ? (finalPrice / (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(2) 
             : '';
       }
     }
@@ -176,6 +192,16 @@ class _ServicesPageState extends State<ServicesPage> {
               ? _formatWeightWithConversion(totalWeight) 
               : '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} $selectedUnit';
 
+          // Calculate price per ton hint
+          double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+          String pricePerTonHint = '';
+          if (selectedUnit.isNotEmpty && totalWeight > 0 && unitPrice > 0) {
+            double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
+            if (totalWeightInTons > 0) {
+              pricePerTonHint = 'قیمت هر تن: ${unitPrice.toStringAsFixed(0)}';
+            }
+          }
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -189,7 +215,7 @@ class _ServicesPageState extends State<ServicesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Invoice Number - NEW
+                      // Invoice Number
                       _buildTextField(
                         controller: invoiceNumberController,
                         label: l10n.invoiceNumberLabel,
@@ -390,29 +416,86 @@ class _ServicesPageState extends State<ServicesPage> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // Unit Price and Total Price
-                      Row(
+                      // Unit Price with per ton hint
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: unitPriceController, 
-                              label: l10n.unitPrice, 
-                              icon: Icons.price_check_outlined, 
-                              keyboardType: TextInputType.number, 
-                              onChanged: (_) => setDialogState(updateTotals), 
-                              l10n: l10n
-                            )
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: unitPriceController, 
+                                  label: '${l10n.unitPrice} (قیمت هر تن)', 
+                                  icon: Icons.price_check_outlined, 
+                                  keyboardType: TextInputType.number, 
+                                  onChanged: (_) => setDialogState(updateTotals), 
+                                  l10n: l10n
+                                )
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: totalPriceController, 
+                                  label: l10n.totalPrice, 
+                                  icon: Icons.attach_money_outlined, 
+                                  readOnly: true, 
+                                  l10n: l10n
+                                )
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: totalPriceController, 
-                              label: l10n.totalPrice, 
-                              icon: Icons.attach_money_outlined, 
-                              readOnly: true, 
-                              l10n: l10n
-                            )
-                          ),
+                          if (selectedUnit.isNotEmpty && totalWeight > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: Colors.blue.withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 14),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'قیمت بر اساس هر تن محاسبه می‌شود',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    if (pricePerTonHint.isNotEmpty) ...[
+                                      const SizedBox(width: 12),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          pricePerTonHint,
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFCB001D),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -445,7 +528,9 @@ class _ServicesPageState extends State<ServicesPage> {
                           Expanded(
                             child: _buildTextField(
                               controller: exchangeRateController, 
-                              label: l10n.exchangeRate, 
+                              label: selectedCurrency == 'USD' 
+                                  ? 'نرخ ارز (USD به AFN) *' 
+                                  : 'نرخ ارز (AFN به USD) *',
                               icon: Icons.currency_exchange, 
                               keyboardType: TextInputType.number, 
                               onChanged: (_) => setDialogState(updateTotals), 
@@ -456,10 +541,12 @@ class _ServicesPageState extends State<ServicesPage> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // AFN Equivalent
+                      // Equivalent (AFN/USD)
                       _buildTextField(
-                        controller: afnEquivalentController, 
-                        label: l10n.afnEquivalent, 
+                        controller: equivalentController, 
+                        label: selectedCurrency == 'USD' 
+                            ? 'معادل به افغانی (AFN)' 
+                            : 'معادل به دالر (USD)',
                         icon: Icons.currency_exchange, 
                         readOnly: true, 
                         l10n: l10n
@@ -609,7 +696,7 @@ class _ServicesPageState extends State<ServicesPage> {
                       'clearance_cost': double.tryParse(clearanceController.text) ?? 0,
                       'discount': double.tryParse(discountController.text) ?? 0,
                       'final_price': double.tryParse(finalPriceController.text) ?? 0,
-                      'afn_equivalent': double.tryParse(afnEquivalentController.text) ?? 0,
+                      'afn_equivalent': double.tryParse(equivalentController.text) ?? 0,
                       'date': dateController.text.trim(),
                       'date_en': selectedEnglishDate,
                     };

@@ -21,6 +21,7 @@ import 'pages/capital_Page.dart';
 import 'pages/sarafi_page.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import 'pages/incomes_page.dart'; // Add this with the other imports
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -39,23 +40,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     // Initialize pages here where widget is available
     pages = [
-      const HomePage(),
-      const CustomersPage(),
-      const SuppliersPage(),
-      const RawMaterialsPage(),
-      const SalesPage(),
-      const BackReturnedSalesPage(),
-      const ServicesPage(),
-      const DailyExpensesPage(),
-      const WastesPage(),
-      const CustomersCompaniesPage(),
-      const ProductionManagementPage(),
-      const ReportsPage(),
-      const CapitalPage(),
-      const SarafiPage(),
-      AdminsPage(currentUser: widget.user),
-      const SupplierLoansPage(),
-      const CustomerCompanyLoansPage(),
+      const HomePage(),                          // index 0
+      const CustomersPage(),                     // index 1
+      const SuppliersPage(),                     // index 2
+      const RawMaterialsPage(),                  // index 3
+      const SalesPage(),                         // index 4
+      const BackReturnedSalesPage(),             // index 5
+      const ServicesPage(),                      // index 6
+      const DailyExpensesPage(),                 // index 7
+      const WastesPage(),                        // index 8
+      const CustomersCompaniesPage(),            // index 9
+      const ProductionManagementPage(),          // index 10
+      const ReportsPage(),                       // index 11
+      const CapitalPage(),                       // index 12
+      const SarafiPage(),                        // index 13
+      AdminsPage(currentUser: widget.user),     // index 14
+      const CustomerCompanyLoansPage(),          // index 15 👈 FIXED: Customer Loans
+      const SupplierLoansPage(),   
+      const IncomesPage(),                   // index 16 👈 FIXED: Supplier Loans
     ];
   }
 

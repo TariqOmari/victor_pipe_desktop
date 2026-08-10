@@ -33,7 +33,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _currencyController = TextEditingController();
   final TextEditingController _exchangeRateController = TextEditingController();
-  final TextEditingController _usdEquivalentController = TextEditingController();
+  final TextEditingController _equivalentController = TextEditingController();
 
   final List<String> _categories = [
     'همه',
@@ -61,7 +61,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _priceController.dispose();
     _currencyController.dispose();
     _exchangeRateController.dispose();
-    _usdEquivalentController.dispose();
+    _equivalentController.dispose();
     super.dispose();
   }
 
@@ -111,9 +111,24 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _priceController.clear();
     _currencyController.clear();
     _exchangeRateController.clear();
-    _usdEquivalentController.clear();
+    _equivalentController.clear();
     
     String? selectedEnglishDate;
+    String selectedCurrency = 'افغانی';
+    
+    void updateEquivalent() {
+      final price = double.tryParse(_priceController.text) ?? 0;
+      final rate = double.tryParse(_exchangeRateController.text) ?? 1;
+      
+      if (selectedCurrency == 'دالر') {
+        // USD selected: price * rate = AFN equivalent
+        _equivalentController.text = (price * rate).toStringAsFixed(0);
+      } else {
+        // AFN or other selected: price / rate = USD equivalent
+        _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
+      }
+    }
+    
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -191,28 +206,60 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                       icon: Icons.money_outlined,
                       hint: '0',
                       keyboardType: TextInputType.number,
+                      onChanged: (_) => setDialogState(updateEquivalent),
                       l10n: l10n,
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: _buildDropdownField(
-                            controller: _currencyController,
-                            label: l10n.currency,
-                            icon: Icons.currency_exchange_outlined,
-                            items: ['افغانی', 'دالر', 'یورو'],
-                            l10n: l10n,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.currency_exchange_outlined, color: const Color(0xFFCB001D), size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: selectedCurrency,
+                                      isExpanded: true,
+                                      items: ['افغانی', 'دالر', 'یورو'].map((item) {
+                                        return DropdownMenuItem<String>(
+                                          value: item,
+                                          child: Text(item),
+                                        );
+                                      }).toList(),
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setDialogState(() {
+                                            selectedCurrency = value;
+                                            updateEquivalent();
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildTextField(
                             controller: _exchangeRateController,
-                            label: l10n.exchangeRate,
+                            label: selectedCurrency == 'دالر' 
+                                ? 'نرخ ارز (USD به AFN) *' 
+                                : 'نرخ ارز (AFN به USD) *',
                             icon: Icons.trending_up_outlined,
-                            hint: '0.011',
+                            hint: selectedCurrency == 'دالر' ? '70' : '0.015',
                             keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateEquivalent),
                             l10n: l10n,
                           ),
                         ),
@@ -220,11 +267,14 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     ),
                     const SizedBox(height: 12),
                     _buildTextField(
-                      controller: _usdEquivalentController,
-                      label: l10n.usdEquivalent,
+                      controller: _equivalentController,
+                      label: selectedCurrency == 'دالر' 
+                          ? 'معادل به افغانی (AFN)' 
+                          : 'معادل به دالر (USD)',
                       icon: Icons.attach_money_outlined,
                       hint: '0',
                       keyboardType: TextInputType.number,
+                      readOnly: true,
                       l10n: l10n,
                     ),
                   ],
@@ -258,19 +308,30 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   }
 
                   Navigator.of(context).pop();
+                  final price = double.tryParse(_priceController.text) ?? 0;
+                  final rate = double.tryParse(_exchangeRateController.text) ?? 1;
+                  
+                  // Calculate USD equivalent based on currency
+                  int usdEquivalent;
+                  if (selectedCurrency == 'دالر') {
+                    // USD to AFN: price * rate
+                    usdEquivalent = (price * rate).round();
+                  } else {
+                    // AFN to USD: price / rate
+                    usdEquivalent = rate > 0 ? (price / rate).round() : 0;
+                  }
+                  
                   final insertPayload = {
                     'registration_number': _registrationNumberController.text.trim(),
                     'date': _dateController.text,
                     'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                     'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
                     'description': _descriptionController.text,
-                    'price': double.tryParse(_priceController.text) ?? 0,
-                    'currency': _currencyController.text.isNotEmpty ? _currencyController.text : 'افغانی',
-                    'exchange_rate': double.tryParse(_exchangeRateController.text) ?? 0.011,
+                    'price': price,
+                    'currency': selectedCurrency,
+                    'exchange_rate': rate,
+                    'usd_equivalent': usdEquivalent,
                   };
-                  final price = double.tryParse(_priceController.text) ?? 0;
-                  final rate = double.tryParse(_exchangeRateController.text) ?? 0.0;
-                  insertPayload['usd_equivalent'] = (price * rate).round();
 
                   final id = await _db.insertDailyExpense(insertPayload);
                   if (id != -1) {
@@ -303,178 +364,236 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _categoryController.text = expense['category'] ?? '';
     _descriptionController.text = expense['description'] ?? '';
     _priceController.text = expense['price'].toString();
-    _currencyController.text = expense['currency'] ?? '';
+    String selectedCurrency = expense['currency'] ?? 'افغانی';
     _exchangeRateController.text = expense['exchangeRate'].toString();
-    _usdEquivalentController.text = expense['usdEquivalent'].toString();
+    _equivalentController.text = expense['usdEquivalent'].toString();
 
     String? selectedEnglishDate = expense['date_en'];
+    
+    void updateEquivalent() {
+      final price = double.tryParse(_priceController.text) ?? 0;
+      final rate = double.tryParse(_exchangeRateController.text) ?? 1;
+      
+      if (selectedCurrency == 'دالر') {
+        _equivalentController.text = (price * rate).toStringAsFixed(0);
+      } else {
+        _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
+      }
+    }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          l10n.editExpense,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        content: SizedBox(
-          width: 650,
-          height: 520,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField(
-                  controller: _registrationNumberController,
-                  label: 'شماره ثبت',
-                  icon: Icons.numbers_outlined,
-                  hint: 'شماره ثبت را وارد کنید',
-                  l10n: l10n,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _dateController,
-                  decoration: InputDecoration(
-                    labelText: l10n.persianDate,
-                    suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
-                    border: OutlineInputBorder(),
-                  ),
-                  readOnly: true,
-                  onTap: () async {
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      String persianDate = PersianDateConverter.gregorianToJalali(picked);
-                      String englishDate = PersianDateConverter.getEnglishDate(picked);
-                      setState(() {
-                        _dateController.text = persianDate;
-                        selectedEnglishDate = englishDate;
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildTextField(
-                  controller: _categoryController,
-                  label: l10n.category,
-                  icon: Icons.category_outlined,
-                  hint: l10n.categoryHint,
-                  l10n: l10n,
-                ),
-                const SizedBox(height: 12),
-                _buildTextField(
-                  controller: _descriptionController,
-                  label: l10n.description,
-                  icon: Icons.description_outlined,
-                  maxLines: 2,
-                  l10n: l10n,
-                ),
-                const SizedBox(height: 12),
-                _buildTextField(
-                  controller: _priceController,
-                  label: l10n.price,
-                  icon: Icons.money_outlined,
-                  keyboardType: TextInputType.number,
-                  l10n: l10n,
-                ),
-                const SizedBox(height: 12),
-                Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(
+              l10n.editExpense,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+            content: SizedBox(
+              width: 650,
+              height: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: _buildDropdownField(
-                        controller: _currencyController,
-                        label: l10n.currency,
-                        icon: Icons.currency_exchange_outlined,
-                        items: ['افغانی', 'دالر', 'یورو'],
-                        l10n: l10n,
-                      ),
+                    _buildTextField(
+                      controller: _registrationNumberController,
+                      label: 'شماره ثبت',
+                      icon: Icons.numbers_outlined,
+                      hint: 'شماره ثبت را وارد کنید',
+                      l10n: l10n,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildTextField(
-                        controller: _exchangeRateController,
-                        label: l10n.exchangeRate,
-                        icon: Icons.trending_up_outlined,
-                        keyboardType: TextInputType.number,
-                        l10n: l10n,
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _dateController,
+                      decoration: InputDecoration(
+                        labelText: l10n.persianDate,
+                        suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
+                        border: OutlineInputBorder(),
                       ),
+                      readOnly: true,
+                      onTap: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (picked != null) {
+                          String persianDate = PersianDateConverter.gregorianToJalali(picked);
+                          String englishDate = PersianDateConverter.getEnglishDate(picked);
+                          setDialogState(() {
+                            _dateController.text = persianDate;
+                            selectedEnglishDate = englishDate;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: _categoryController,
+                      label: l10n.category,
+                      icon: Icons.category_outlined,
+                      hint: l10n.categoryHint,
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: _descriptionController,
+                      label: l10n.description,
+                      icon: Icons.description_outlined,
+                      maxLines: 2,
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: _priceController,
+                      label: l10n.price,
+                      icon: Icons.money_outlined,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setDialogState(updateEquivalent),
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.currency_exchange_outlined, color: const Color(0xFFCB001D), size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: selectedCurrency,
+                                      isExpanded: true,
+                                      items: ['افغانی', 'دالر', 'یورو'].map((item) {
+                                        return DropdownMenuItem<String>(
+                                          value: item,
+                                          child: Text(item),
+                                        );
+                                      }).toList(),
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setDialogState(() {
+                                            selectedCurrency = value;
+                                            updateEquivalent();
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: _exchangeRateController,
+                            label: selectedCurrency == 'دالر' 
+                                ? 'نرخ ارز (USD به AFN) *' 
+                                : 'نرخ ارز (AFN به USD) *',
+                            icon: Icons.trending_up_outlined,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateEquivalent),
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: _equivalentController,
+                      label: selectedCurrency == 'دالر' 
+                          ? 'معادل به افغانی (AFN)' 
+                          : 'معادل به دالر (USD)',
+                      icon: Icons.attach_money_outlined,
+                      keyboardType: TextInputType.number,
+                      readOnly: true,
+                      l10n: l10n,
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                _buildTextField(
-                  controller: _usdEquivalentController,
-                  label: l10n.usdEquivalent,
-                  icon: Icons.attach_money_outlined,
-                  keyboardType: TextInputType.number,
-                  l10n: l10n,
-                ),
-              ],
-            ),
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              l10n.cancel,
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (_registrationNumberController.text.isEmpty) {
-                _showSnackBar('لطفاً شماره ثبت را وارد کنید', Colors.red);
-                return;
-              }
-              if (_dateController.text.isEmpty) {
-                _showSnackBar(l10n.pleaseEnterDate, Colors.red);
-                return;
-              }
-
-              final payload = {
-                'registration_number': _registrationNumberController.text.trim(),
-                'date': _dateController.text,
-                'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
-                'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
-                'description': _descriptionController.text,
-                'price': double.tryParse(_priceController.text) ?? 0,
-                'currency': _currencyController.text.isNotEmpty ? _currencyController.text : 'افغانی',
-                'exchange_rate': double.tryParse(_exchangeRateController.text) ?? 0.011,
-              };
-              final price = double.tryParse(_priceController.text) ?? 0;
-              final rate = double.tryParse(_exchangeRateController.text) ?? 0.0;
-              payload['usd_equivalent'] = (price * rate).round();
-
-              final res = await _db.updateDailyExpense(expense['id'] as int, payload);
-              if (res != -1) {
-                await _loadExpenses();
-                Navigator.pop(context);
-                _showSnackBar(l10n.expenseUpdatedSuccess, Colors.blue);
-              } else {
-                _showSnackBar('شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCB001D),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
               ),
             ),
-            child: Text(l10n.saveChanges),
-          ),
-        ],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  l10n.cancel,
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_registrationNumberController.text.isEmpty) {
+                    _showSnackBar('لطفاً شماره ثبت را وارد کنید', Colors.red);
+                    return;
+                  }
+                  if (_dateController.text.isEmpty) {
+                    _showSnackBar(l10n.pleaseEnterDate, Colors.red);
+                    return;
+                  }
+
+                  final price = double.tryParse(_priceController.text) ?? 0;
+                  final rate = double.tryParse(_exchangeRateController.text) ?? 1;
+                  
+                  int usdEquivalent;
+                  if (selectedCurrency == 'دالر') {
+                    usdEquivalent = (price * rate).round();
+                  } else {
+                    usdEquivalent = rate > 0 ? (price / rate).round() : 0;
+                  }
+
+                  final payload = {
+                    'registration_number': _registrationNumberController.text.trim(),
+                    'date': _dateController.text,
+                    'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
+                    'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
+                    'description': _descriptionController.text,
+                    'price': price,
+                    'currency': selectedCurrency,
+                    'exchange_rate': rate,
+                    'usd_equivalent': usdEquivalent,
+                  };
+
+                  final res = await _db.updateDailyExpense(expense['id'] as int, payload);
+                  if (res != -1) {
+                    await _loadExpenses();
+                    Navigator.pop(context);
+                    _showSnackBar(l10n.expenseUpdatedSuccess, Colors.blue);
+                  } else {
+                    _showSnackBar('شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFCB001D),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(l10n.saveChanges),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -554,11 +673,15 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     String? hint,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool readOnly = false,
+    Function(String)? onChanged,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      readOnly: readOnly,
+      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -578,49 +701,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      ),
-    );
-  }
-
-  Widget _buildDropdownField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    required List<String> items,
-    required AppLocalizations l10n,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFFCB001D), size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: controller.text.isNotEmpty ? controller.text : null,
-                hint: Text(
-                  label,
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-                isExpanded: true,
-                items: items.map((item) {
-                  return DropdownMenuItem<String>(
-                    value: item,
-                    child: Text(item),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  controller.text = value ?? '';
-                },
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -739,7 +819,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
           ],
         ),
-        // Only Add New Expense button - removed Print and Today Invoice buttons
         Row(
           children: [
             ElevatedButton.icon(

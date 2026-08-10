@@ -1045,4 +1045,14 @@ Map<String, String> faTranslations = {
   'totalLabel': 'مجموع:',
   'itemsCountLabel': 'تعداد اقلام:',
   'productionSummaryByUnit': 'خلاصه بر اساس واحد',
+
+
+  'rawMaterial': 'مواد خام',
+'rawMaterialUpdatedSuccess': '✅ ماده خام با موفقیت به‌روزرسانی شد',
+'errorUpdatingRawMaterial': '❌ خطا در به‌روزرسانی مواد خام',
+'update': 'به‌روزرسانی',
+
+
+'sale': 'فروش',
+
 };

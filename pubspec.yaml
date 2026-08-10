@@ -76,3 +76,4 @@ flutter:
           weight: 800
         - asset: assets/fonts/Vazirmatn-Black.ttf
           weight: 900
+        - asset: assets/sell_invoice.pdf

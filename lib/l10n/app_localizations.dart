@@ -123,7 +123,7 @@ class AppLocalizations {
   String get remainingAmount => _get('remainingAmount');
   String get saleType => _get('saleType');
   String get addSale => _get('addSale');
-  String get editSale => _get('editSale');
+
   String get deleteSale => _get('deleteSale');
   String get backReturn => _get('backReturn');
   String get backReturnReason => _get('backReturnReason');
@@ -971,11 +971,19 @@ class AppLocalizations {
   String get ignoredColumns => _get('ignoredColumns');
   String get loansSupplierName => _get('loansSupplierName');
   String get returnDetails => _get('returnDetails');
-  
+  // ============ RAW MATERIALS PAGE ============
+String get rawMaterial => _get('rawMaterial');  // Add this if missing
+String get rawMaterialUpdatedSuccess => _get('rawMaterialUpdatedSuccess');
+String get errorUpdatingRawMaterial => _get('errorUpdatingRawMaterial');
+ // Make sure you have this too
   // ============ NEW STOCK TRANSLATIONS ============
   String get stock => _get('stock');
   String get totalItems => _get('totalItems');
   String get totalTons => _get('totalTons');
+
+  
+
+
 
   String _get(String key) {
     if (locale.languageCode == 'en') {

@@ -4,6 +4,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel;
+import 'dart:io';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -31,21 +34,469 @@ class _ServicesPageState extends State<ServicesPage> {
   String _formatWeightWithConversion(double weight) {
     if (weight <= 0) return '0';
     double tons = weight / 1000;
-    
-    // For numbers less than 1 ton, show 3 decimal places
     if (tons < 1) {
       return '${tons.toStringAsFixed(3)} تن';
     }
-    // For numbers 1 ton or more, show 2 decimal places
     return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
   }
 
-  // Format weight for display based on unit
   String _formatWeightForDisplay(double weight, String unit) {
     if (unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم') {
       return _formatWeightWithConversion(weight);
     }
     return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 2)} $unit';
+  }
+
+  // ============ PERSIAN DIGIT CONVERSION HELPERS ============
+  String _convertPersianToEnglishDigits(String value) {
+    if (value.isEmpty) return value;
+    
+    const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    
+    String result = value;
+    for (int i = 0; i < 10; i++) {
+      result = result.replaceAll(persianDigits[i], englishDigits[i]);
+      result = result.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+    return result;
+  }
+
+  String _getCellValueDirect(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final cell = row[index];
+    if (cell == null) return '';
+    if (cell.value == null) return '';
+    
+    String value;
+    if (cell.value is String) {
+      value = (cell.value as String).trim();
+    } else if (cell.value is num) {
+      num val = cell.value as num;
+      value = val.toString();
+    } else {
+      value = cell.value.toString().trim();
+    }
+    
+    if (value.isNotEmpty) {
+      value = _convertPersianToEnglishDigits(value);
+    }
+    
+    return value;
+  }
+
+  double _parseNumber(String value) {
+    if (value.isEmpty) return 0;
+    String cleaned = value.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    if (cleaned.isEmpty) return 0;
+    try {
+      return double.parse(cleaned);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // ============ EXCEL IMPORT ============
+  Future<void> _importExcel() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFFCB001D)),
+              const SizedBox(height: 16),
+              const Text(
+                'در حال وارد کردن اکسل...',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _pickAndImportExcel();
+      
+      Navigator.pop(context);
+
+      if (result['success']) {
+        _showImportResultDialog(context, result);
+        await _loadServices();
+      } else {
+        _showSnackbar(result['message'] ?? 'خطا در وارد کردن فایل', Colors.red);
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showSnackbar('خطا در وارد کردن: $e', Colors.red);
+    }
+  }
+
+  Future<Map<String, dynamic>> _pickAndImportExcel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result == null) {
+        return {'success': false, 'message': 'فایلی انتخاب نشد'};
+      }
+
+      final file = File(result.files.single.path!);
+      final bytes = await file.readAsBytes();
+      
+      try {
+        final excelFile = excel.Excel.decodeBytes(bytes);
+        final sheet = excelFile.tables[excelFile.tables.keys.first];
+        if (sheet == null) {
+          return {'success': false, 'message': 'فایل اکسل معتبر نیست'};
+        }
+        return await _parseExcelSheet(sheet);
+      } catch (e) {
+        return {'success': false, 'message': 'فایل اکسل خراب است یا فرمت آن پشتیبانی نمی‌شود'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'خطا در خواندن فایل: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
+    try {
+      List<Map<String, dynamic>> importedData = [];
+      int successCount = 0;
+      int skippedCount = 0;
+      List<String> errors = [];
+
+      // گرفتن هدرها از ردیف اول
+      final headersRow = sheet.rows.first;
+      List<String> headers = [];
+      for (var cell in headersRow) {
+        if (cell != null && cell.value != null) {
+          headers.add(cell.value.toString().trim());
+        }
+      }
+
+      print('📋 Headers: $headers');
+
+      // پیدا کردن ایندکس فیلدها
+      int invoiceNumberIndex = -1;
+      int customerNameIndex = -1;
+      int customerPhoneIndex = -1;
+      int customerAddressIndex = -1;
+      int serviceTypeIndex = -1;
+      int sizeIndex = -1;
+      int thicknessIndex = -1;
+      int totalWeightIndex = -1;
+      int unitIndex = -1;
+      int unitPriceIndex = -1;
+      int totalPriceIndex = -1;
+      int currencyIndex = -1;
+      int exchangeRateIndex = -1;
+      int loadingCostIndex = -1;
+      int transferCostIndex = -1;
+      int clearanceCostIndex = -1;
+      int discountIndex = -1;
+      int finalPriceIndex = -1;
+      int afnEquivalentIndex = -1;
+      int dateIndex = -1;
+
+      for (int i = 0; i < headers.length; i++) {
+        String h = headers[i];
+        String hLower = h.toLowerCase();
+        
+        if (hLower.contains('شماره') || hLower.contains('فاکتور') || hLower.contains('invoice')) {
+          invoiceNumberIndex = i;
+        } else if (hLower.contains('مشتری') || hLower.contains('خریدار') || hLower.contains('نام') && hLower.contains('مشتری') || hLower.contains('customer')) {
+          customerNameIndex = i;
+        } else if (hLower.contains('تلفن') || hLower.contains('phone')) {
+          customerPhoneIndex = i;
+        } else if (hLower.contains('آدرس') || hLower.contains('address')) {
+          customerAddressIndex = i;
+        } else if (hLower.contains('نوع خدمت') || hLower.contains('service') || hLower.contains('خدمت')) {
+          serviceTypeIndex = i;
+        } else if (hLower.contains('سایز') || hLower.contains('size')) {
+          sizeIndex = i;
+        } else if (hLower.contains('ضخامت') || hLower.contains('thickness')) {
+          thicknessIndex = i;
+        } else if (hLower.contains('وزن کل') || hLower.contains('total weight')) {
+          totalWeightIndex = i;
+        } else if (hLower.contains('واحد') && !hLower.contains('پول')) {
+          unitIndex = i;
+        } else if (hLower.contains('قیمت واحد') || hLower.contains('unit price')) {
+          unitPriceIndex = i;
+        } else if (hLower.contains('قیمت کل') || hLower.contains('total price')) {
+          totalPriceIndex = i;
+        } else if (hLower.contains('ارز') || hLower.contains('واحد پول') || hLower.contains('currency')) {
+          currencyIndex = i;
+        } else if (hLower.contains('نرخ') || hLower.contains('exchange') || hLower.contains('rate')) {
+          exchangeRateIndex = i;
+        } else if (hLower.contains('بارگیری') || hLower.contains('loading')) {
+          loadingCostIndex = i;
+        } else if (hLower.contains('حمل') || hLower.contains('transfer')) {
+          transferCostIndex = i;
+        } else if (hLower.contains('ترخیص') || hLower.contains('clearance')) {
+          clearanceCostIndex = i;
+        } else if (hLower.contains('تخفیف') || hLower.contains('discount')) {
+          discountIndex = i;
+        } else if (hLower.contains('قیمت نهایی') || hLower.contains('final price')) {
+          finalPriceIndex = i;
+        } else if (hLower.contains('معادل') || hLower.contains('afn') || hLower.contains('افغانی')) {
+          afnEquivalentIndex = i;
+        } else if (hLower.contains('تاریخ') || hLower.contains('date')) {
+          dateIndex = i;
+        }
+      }
+
+      print('📋 InvoiceNumber: $invoiceNumberIndex, Customer: $customerNameIndex');
+
+      if (invoiceNumberIndex == -1 || customerNameIndex == -1) {
+        return {
+          'success': false,
+          'message': 'فیلدهای مورد نیاز پیدا نشد: شماره فاکتور، مشتری'
+        };
+      }
+
+      // پردازش ردیف‌ها
+      for (int i = 1; i < sheet.rows.length; i++) {
+        final row = sheet.rows[i];
+        
+        bool hasData = false;
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty && val != '0' && val != '-' && val != '\$') {
+              hasData = true;
+              break;
+            }
+          }
+        }
+        if (!hasData) continue;
+
+        try {
+          String invoiceNumber = _getCellValueDirect(row, invoiceNumberIndex);
+          String customerName = _getCellValueDirect(row, customerNameIndex);
+          String customerPhone = customerPhoneIndex != -1 ? _getCellValueDirect(row, customerPhoneIndex) : '';
+          String customerAddress = customerAddressIndex != -1 ? _getCellValueDirect(row, customerAddressIndex) : '';
+          String serviceType = serviceTypeIndex != -1 ? _getCellValueDirect(row, serviceTypeIndex) : '';
+          String size = sizeIndex != -1 ? _getCellValueDirect(row, sizeIndex) : '';
+          String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
+          String totalWeightStr = totalWeightIndex != -1 ? _getCellValueDirect(row, totalWeightIndex) : '0';
+          String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'TON';
+          String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
+          String totalPriceStr = totalPriceIndex != -1 ? _getCellValueDirect(row, totalPriceIndex) : '0';
+          String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'USD';
+          String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValueDirect(row, exchangeRateIndex) : '1';
+          String loadingCostStr = loadingCostIndex != -1 ? _getCellValueDirect(row, loadingCostIndex) : '0';
+          String transferCostStr = transferCostIndex != -1 ? _getCellValueDirect(row, transferCostIndex) : '0';
+          String clearanceCostStr = clearanceCostIndex != -1 ? _getCellValueDirect(row, clearanceCostIndex) : '0';
+          String discountStr = discountIndex != -1 ? _getCellValueDirect(row, discountIndex) : '0';
+          String finalPriceStr = finalPriceIndex != -1 ? _getCellValueDirect(row, finalPriceIndex) : '0';
+          String afnEquivalentStr = afnEquivalentIndex != -1 ? _getCellValueDirect(row, afnEquivalentIndex) : '0';
+          String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
+
+          // پاک کردن علامت‌های اضافی
+          totalWeightStr = totalWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          unitPriceStr = unitPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          totalPriceStr = totalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          loadingCostStr = loadingCostStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          transferCostStr = transferCostStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          clearanceCostStr = clearanceCostStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          discountStr = discountStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          finalPriceStr = finalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          afnEquivalentStr = afnEquivalentStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          exchangeRateStr = exchangeRateStr.replaceAll(RegExp(r'[$,]'), '').trim();
+
+          print('📝 Row ${i+1}: Invoice="$invoiceNumber", Customer="$customerName"');
+
+          if (invoiceNumber.isEmpty || customerName.isEmpty) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': فیلدهای مورد نیاز کامل نیستند');
+            continue;
+          }
+
+          // چک کردن تکراری بودن شماره فاکتور
+          final existing = await _db.getServiceInvoiceByNumber(invoiceNumber);
+          if (existing != null) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': شماره فاکتور "' + invoiceNumber + '" تکراری است');
+            continue;
+          }
+
+          double totalWeight = _parseNumber(totalWeightStr);
+          double unitPrice = _parseNumber(unitPriceStr);
+          double totalPrice = _parseNumber(totalPriceStr);
+          double loadingCost = _parseNumber(loadingCostStr);
+          double transferCost = _parseNumber(transferCostStr);
+          double clearanceCost = _parseNumber(clearanceCostStr);
+          double discount = _parseNumber(discountStr);
+          double finalPrice = _parseNumber(finalPriceStr);
+          double afnEquivalent = _parseNumber(afnEquivalentStr);
+          double exchangeRate = _parseNumber(exchangeRateStr);
+
+          // اگر قیمت نهایی محاسبه نشده بود
+          if (finalPrice <= 0 && totalPrice > 0) {
+            finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+          }
+
+          // اگر معادل افغانی محاسبه نشده بود
+          String currencyFinal = currency == 'AFN' || currency == 'افغانی' ? 'AFN' : 'USD';
+          if (afnEquivalent <= 0 && finalPrice > 0) {
+            if (currencyFinal == 'USD') {
+              afnEquivalent = finalPrice * exchangeRate;
+            } else {
+              afnEquivalent = finalPrice;
+            }
+          }
+
+          // تاریخ
+          if (date.isEmpty) {
+            date = PersianDateConverter.gregorianToJalali(DateTime.now());
+          }
+          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+          // تبدیل واحد
+          String unitFinal = 'TON';
+          if (unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' || unit == 'کیلو') {
+            unitFinal = 'KG';
+          }
+
+          // ساخت داده
+          Map<String, dynamic> service = {
+            'invoice_number': invoiceNumber,
+            'customer_name': customerName,
+            'customer_phone': customerPhone,
+            'customer_address': customerAddress,
+            'service_type': serviceType,
+            'size': size,
+            'thickness': thickness,
+            'total_weight': totalWeight,
+            'unit': unitFinal,
+            'unit_price': unitPrice,
+            'total_price': totalPrice > 0 ? totalPrice : finalPrice,
+            'currency': currencyFinal,
+            'exchange_rate': exchangeRate > 0 ? exchangeRate : 1,
+            'loading_cost': loadingCost,
+            'transfer_cost': transferCost,
+            'clearance_cost': clearanceCost,
+            'discount': discount,
+            'final_price': finalPrice > 0 ? finalPrice : totalPrice,
+            'afn_equivalent': afnEquivalent > 0 ? afnEquivalent : (finalPrice * exchangeRate),
+            'date': date,
+            'date_en': dateEn,
+          };
+
+          print('📦 Inserting: ${service['invoice_number']}');
+          
+          int result = await _db.insertServiceInvoice(service);
+          if (result != -1) {
+            successCount++;
+            importedData.add(service);
+            print('✅ Row ${i+1} imported!');
+          } else {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': خطا در ذخیره‌سازی');
+          }
+
+        } catch (e) {
+          skippedCount++;
+          errors.add('ردیف ' + (i+1).toString() + ': خطا - ' + e.toString());
+          print('❌ Error: $e');
+        }
+      }
+
+      return {
+        'success': true,
+        'successCount': successCount,
+        'skippedCount': skippedCount,
+        'importedData': importedData,
+        'errors': errors,
+        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+      };
+
+    } catch (e) {
+      print('❌ Error: $e');
+      return {
+        'success': false,
+        'message': 'خطا در پردازش فایل: $e',
+      };
+    }
+  }
+
+  void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('نتیجه وارد کردن'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✅ ${result['successCount']} رکورد با موفقیت وارد شد',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                if (result['skippedCount'] > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '⚠️ ${result['skippedCount']} رکورد نادیده گرفته شد',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (result['errors'] != null && result['errors'].isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'خطاها:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    height: 100,
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: (result['errors'] as List<String>)
+                            .take(5)
+                            .map((error) => Text(
+                                  error,
+                                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                  if ((result['errors'] as List<String>).length > 5)
+                    Text(
+                      'و ${(result['errors'] as List<String>).length - 5} خطای دیگر...',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('باشه'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -77,10 +528,12 @@ class _ServicesPageState extends State<ServicesPage> {
     }
   }
 
+  // ============================================
+  // SERVICE DIALOG - EXISTING CODE
+  // ============================================
   Future<void> _showServiceDialog({Map<String, dynamic>? service}) async {
     final l10n = AppLocalizations.of(context)!;
     
-    // Initialize controllers
     final invoiceNumberController = TextEditingController(
       text: service?['invoice_number']?.toString() ?? ''
     );
@@ -140,18 +593,10 @@ class _ServicesPageState extends State<ServicesPage> {
         PersianDateConverter.getEnglishDate(DateTime.now());
     String selectedCurrency = service?['currency']?.toString() ?? 'USD';
 
-    // ============================================
-    // FIXED: Unit price is ALWAYS per ton
-    // ============================================
     void updateTotals() {
       double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
-      
-      // Convert weight to tons if unit is KG
-      double totalWeightInTons = totalWeight;
       bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
-      if (isKg) {
-        totalWeightInTons = totalWeight / 1000;
-      }
+      double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
       
       double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
       double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
@@ -160,22 +605,17 @@ class _ServicesPageState extends State<ServicesPage> {
       double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
       double discount = double.tryParse(discountController.text) ?? 0;
       
-      // FIXED: totalPrice = (weight in tons) * unitPrice (unit price is PER TON)
       double totalPrice = totalWeightInTons * unitPrice;
       totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
       
-      // Calculate final price
       double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
       finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
       
-      // Calculate equivalent based on selected currency
       if (selectedCurrency == 'USD') {
-        // USD selected: finalPrice * rate = AFN equivalent
         equivalentController.text = finalPrice > 0 
             ? (finalPrice * (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(0) 
             : '';
       } else {
-        // AFN selected: finalPrice / rate = USD equivalent
         equivalentController.text = finalPrice > 0 
             ? (finalPrice / (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(2) 
             : '';
@@ -192,7 +632,6 @@ class _ServicesPageState extends State<ServicesPage> {
               ? _formatWeightWithConversion(totalWeight) 
               : '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} $selectedUnit';
 
-          // Calculate price per ton hint
           double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
           String pricePerTonHint = '';
           if (selectedUnit.isNotEmpty && totalWeight > 0 && unitPrice > 0) {
@@ -215,7 +654,6 @@ class _ServicesPageState extends State<ServicesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Invoice Number
                       _buildTextField(
                         controller: invoiceNumberController,
                         label: l10n.invoiceNumberLabel,
@@ -223,8 +661,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         l10n: l10n,
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Customer Name
                       _buildTextField(
                         controller: customerNameController, 
                         label: l10n.customerName, 
@@ -232,8 +668,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         l10n: l10n
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Customer Phone
                       _buildTextField(
                         controller: customerPhoneController, 
                         label: l10n.customerPhone, 
@@ -242,8 +676,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         l10n: l10n
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Customer Address
                       _buildTextField(
                         controller: customerAddressController, 
                         label: l10n.customerAddress, 
@@ -251,8 +683,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         l10n: l10n
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Service Type
                       _buildTextField(
                         controller: serviceTypeController, 
                         label: l10n.serviceTypeLabel2, 
@@ -260,8 +690,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         l10n: l10n
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Size and Thickness
                       Row(
                         children: [
                           Expanded(
@@ -284,8 +712,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Total Weight and Unit
                       Row(
                         children: [
                           Expanded(
@@ -415,8 +841,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Unit Price with per ton hint
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -499,8 +923,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Currency and Exchange Rate
                       Row(
                         children: [
                           Expanded(
@@ -540,8 +962,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Equivalent (AFN/USD)
                       _buildTextField(
                         controller: equivalentController, 
                         label: selectedCurrency == 'USD' 
@@ -552,8 +972,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         l10n: l10n
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Loading, Transfer, Clearance
                       Row(
                         children: [
                           Expanded(
@@ -606,8 +1024,6 @@ class _ServicesPageState extends State<ServicesPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
-                      // Final Price and Date
                       Row(
                         children: [
                           Expanded(
@@ -662,13 +1078,11 @@ class _ServicesPageState extends State<ServicesPage> {
                   onPressed: () async {
                     final invoiceNumber = invoiceNumberController.text.trim();
                     
-                    // Validate invoice number
                     if (invoiceNumber.isEmpty) {
                       _showSnackbar('شماره فاکتور الزامی است', Colors.red);
                       return;
                     }
                     
-                    // Check if invoice number already exists
                     if (service == null) {
                       final existing = await _db.getServiceInvoiceByNumber(invoiceNumber);
                       if (existing != null) {
@@ -790,7 +1204,6 @@ class _ServicesPageState extends State<ServicesPage> {
       ttf = pw.Font.helvetica();
     }
 
-    // Format weight for PDF
     String unit = service['unit']?.toString() ?? 'TON';
     double totalWeight = double.tryParse(service['total_weight']?.toString() ?? '0') ?? 0;
     String displayWeight = unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' 
@@ -809,7 +1222,6 @@ class _ServicesPageState extends State<ServicesPage> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Header - Matching Sales Invoice Style
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                   decoration: pw.BoxDecoration(
@@ -859,7 +1271,6 @@ class _ServicesPageState extends State<ServicesPage> {
                 ),
                 pw.SizedBox(height: 12),
 
-                // Customer Info - Matching Sales Invoice Style
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
@@ -922,7 +1333,6 @@ class _ServicesPageState extends State<ServicesPage> {
                 ),
                 pw.SizedBox(height: 16),
 
-                // Service Details Table - Matching Sales Invoice Style
                 pw.Table.fromTextArray(
                   headers: [l10n.descriptionLabel, l10n.amountLabel],
                   data: [
@@ -946,7 +1356,6 @@ class _ServicesPageState extends State<ServicesPage> {
                 ),
                 pw.SizedBox(height: 16),
 
-                // Currency Info - Matching Sales Invoice Style
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
@@ -974,7 +1383,6 @@ class _ServicesPageState extends State<ServicesPage> {
                 ),
                 pw.Spacer(),
 
-                // Footer - Matching Sales Invoice Style
                 pw.Divider(color: PdfColors.grey300, thickness: 0.5),
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                   pw.Text(
@@ -1035,15 +1443,30 @@ class _ServicesPageState extends State<ServicesPage> {
             ),
           ],
         ),
-        ElevatedButton.icon(
-          onPressed: () => _showServiceDialog(),
-          icon: const Icon(Icons.add_circle_outline),
-          label: Text(l10n.addNewService),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFCB001D),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _importExcel,
+              icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
+              label: const Text('Import Excel', style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFCB001D)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: () => _showServiceDialog(),
+              icon: const Icon(Icons.add_circle_outline),
+              label: Text(l10n.addNewService),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1053,7 +1476,6 @@ class _ServicesPageState extends State<ServicesPage> {
     final totalServices = _services.length;
     final totalRevenue = _services.fold<double>(0, (sum, item) => sum + (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0));
     
-    // Calculate total weight in tons from all services
     double totalWeightInTons = 0;
     for (var service in _services) {
       String unit = service['unit']?.toString() ?? 'TON';
@@ -1159,7 +1581,6 @@ class _ServicesPageState extends State<ServicesPage> {
       ),
       child: Column(
         children: [
-          // Header Row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -1209,7 +1630,6 @@ class _ServicesPageState extends State<ServicesPage> {
               ),
             ),
           ),
-          // Data Rows
           Expanded(
             child: paged.isEmpty
                 ? Center(child: Text(l10n.noServicesFound, style: const TextStyle(color: Colors.grey)))
@@ -1222,7 +1642,6 @@ class _ServicesPageState extends State<ServicesPage> {
                           final id = (service['invoice_number'] ?? service['id'] ?? '').toString();
                           final checked = _selectedServices.contains(id);
                           
-                          // Format weight based on unit
                           String unit = service['unit']?.toString() ?? 'TON';
                           double totalWeight = double.tryParse(service['total_weight']?.toString() ?? '0') ?? 0;
                           String displayWeight = unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' 
@@ -1304,7 +1723,6 @@ class _ServicesPageState extends State<ServicesPage> {
                     ),
                   ),
           ),
-          // Pagination
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -1366,7 +1784,6 @@ class _ServicesPageState extends State<ServicesPage> {
     );
   }
 
-  // Helper widgets for table
   Widget _buildHeaderCell(String text, double width) {
     return SizedBox(
       width: width,
@@ -1492,5 +1909,5 @@ class _ServicesPageState extends State<ServicesPage> {
         ),
       ),
     );
-  }
+  } 
 }

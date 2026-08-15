@@ -4,6 +4,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel;
+import 'dart:io';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -102,6 +105,364 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     }
   }
 
+  // ==================== EXCEL IMPORT ====================
+  Future<void> _importExcel() async {
+    final l10n = AppLocalizations.of(context)!;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFFCB001D)),
+              const SizedBox(height: 16),
+              const Text(
+                'در حال وارد کردن اکسل...',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _pickAndImportExcel();
+      
+      Navigator.pop(context);
+
+      if (result['success']) {
+        _showImportResultDialog(context, result);
+        await _loadExpenses();
+      } else {
+        _showSnackBar(result['message'] ?? 'خطا در وارد کردن فایل', Colors.red);
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showSnackBar('خطا در وارد کردن: $e', Colors.red);
+    }
+  }
+
+  Future<Map<String, dynamic>> _pickAndImportExcel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result == null) {
+        return {'success': false, 'message': 'فایلی انتخاب نشد'};
+      }
+
+      final file = File(result.files.single.path!);
+      final bytes = await file.readAsBytes();
+      
+      try {
+        final excelFile = excel.Excel.decodeBytes(bytes);
+        final sheet = excelFile.tables[excelFile.tables.keys.first];
+        if (sheet == null) {
+          return {'success': false, 'message': 'فایل اکسل معتبر نیست'};
+        }
+        return await _parseExcelSheet(sheet);
+      } catch (e) {
+        return {'success': false, 'message': 'فایل اکسل خراب است یا فرمت آن پشتیبانی نمی‌شود'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'خطا در خواندن فایل: $e'};
+    }
+  }
+
+  // ============ PERSIAN DIGIT CONVERSION ============
+  String _convertPersianToEnglishDigits(String value) {
+    if (value.isEmpty) return value;
+    
+    const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    
+    String result = value;
+    for (int i = 0; i < 10; i++) {
+      result = result.replaceAll(persianDigits[i], englishDigits[i]);
+      result = result.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+    return result;
+  }
+
+  String _getCellValue(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final cell = row[index];
+    if (cell == null) return '';
+    if (cell.value == null) return '';
+    
+    String value;
+    if (cell.value is String) {
+      value = (cell.value as String).trim();
+    } else if (cell.value is num) {
+      num val = cell.value as num;
+      value = val.toString();
+    } else {
+      value = cell.value.toString().trim();
+    }
+    
+    if (value.isNotEmpty) {
+      value = _convertPersianToEnglishDigits(value);
+    }
+    
+    return value;
+  }
+
+  double _parseNumber(String value) {
+    if (value.isEmpty) return 0;
+    String cleaned = value.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    if (cleaned.isEmpty) return 0;
+    try {
+      return double.parse(cleaned);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
+    try {
+      List<Map<String, dynamic>> importedData = [];
+      int successCount = 0;
+      int skippedCount = 0;
+      List<String> errors = [];
+
+      // گرفتن هدرها از ردیف اول
+      final headersRow = sheet.rows.first;
+      List<String> headers = [];
+      for (var cell in headersRow) {
+        if (cell != null && cell.value != null) {
+          headers.add(cell.value.toString().trim());
+        }
+      }
+
+      print('📋 Headers: $headers');
+
+      // پیدا کردن ایندکس هر فیلد
+      int regNumberIndex = -1;
+      int dateIndex = -1;
+      int categoryIndex = -1;
+      int descriptionIndex = -1;
+      int priceIndex = -1;
+      int currencyIndex = -1;
+      int exchangeRateIndex = -1;
+
+      for (int i = 0; i < headers.length; i++) {
+        String h = headers[i];
+        if (h.contains('شماره') || h.contains('ثبت') || h.contains('registration')) {
+          regNumberIndex = i;
+        } else if (h.contains('تاریخ') || h.contains('date')) {
+          dateIndex = i;
+        } else if (h.contains('دسته') || h.contains('گروه') || h.contains('category')) {
+          categoryIndex = i;
+        } else if (h.contains('توضیح') || h.contains('شرح') || h.contains('description')) {
+          descriptionIndex = i;
+        } else if (h.contains('قیمت') || h.contains('مبلغ') || h.contains('price') || h.contains('amount')) {
+          priceIndex = i;
+        } else if (h.contains('واحد') || h.contains('پول') || h.contains('currency')) {
+          currencyIndex = i;
+        } else if (h.contains('نرخ') || h.contains('exchange') || h.contains('rate')) {
+          exchangeRateIndex = i;
+        }
+      }
+
+      print('📋 RegNumber: $regNumberIndex, Date: $dateIndex, Category: $categoryIndex, Price: $priceIndex');
+
+      if (regNumberIndex == -1 || dateIndex == -1 || priceIndex == -1) {
+        return {
+          'success': false,
+          'message': 'فیلدهای مورد نیاز پیدا نشد: شماره ثبت، تاریخ، قیمت'
+        };
+      }
+
+      // پردازش ردیف‌ها (از ردیف دوم)
+      for (int i = 1; i < sheet.rows.length; i++) {
+        final row = sheet.rows[i];
+        
+        // چک کردن اینکه ردیف خالی نباشه
+        bool hasData = false;
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty && val != '0') {
+              hasData = true;
+              break;
+            }
+          }
+        }
+        if (!hasData) continue;
+
+        try {
+          // خوندن داده‌ها
+          String regNumber = _getCellValue(row, regNumberIndex);
+          String date = _getCellValue(row, dateIndex);
+          String category = categoryIndex != -1 ? _getCellValue(row, categoryIndex) : 'سایر';
+          String description = descriptionIndex != -1 ? _getCellValue(row, descriptionIndex) : '';
+          String priceStr = _getCellValue(row, priceIndex);
+          String currency = currencyIndex != -1 ? _getCellValue(row, currencyIndex) : 'افغانی';
+          String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValue(row, exchangeRateIndex) : '1';
+
+          print('📝 Row ${i+1}: Reg="$regNumber", Date="$date", Price="$priceStr"');
+
+          if (regNumber.isEmpty || date.isEmpty || priceStr.isEmpty) {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: داده‌ها کامل نیستند');
+            continue;
+          }
+
+          double price = _parseNumber(priceStr);
+          double exchangeRate = _parseNumber(exchangeRateStr);
+
+          if (price <= 0) {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: قیمت نامعتبر');
+            continue;
+          }
+
+          // محاسبه معادل دلار
+          int usdEquivalent;
+          if (currency == 'دالر') {
+            usdEquivalent = (price * exchangeRate).round();
+          } else {
+            usdEquivalent = exchangeRate > 0 ? (price / exchangeRate).round() : 0;
+          }
+
+          // چک کردن تکراری نبودن شماره ثبت
+          final existing = await _db.getDailyExpenses();
+          bool duplicate = existing.any((e) => e['registration_number'] == regNumber);
+          if (duplicate) {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: شماره ثبت "$regNumber" تکراری است');
+            continue;
+          }
+
+          // ساخت داده
+          Map<String, dynamic> expense = {
+            'registration_number': regNumber,
+            'date': date,
+            'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
+            'category': category.isNotEmpty ? category : 'سایر',
+            'description': description,
+            'price': price,
+            'currency': currency.isNotEmpty ? currency : 'افغانی',
+            'exchange_rate': exchangeRate > 0 ? exchangeRate : 1,
+            'usd_equivalent': usdEquivalent,
+          };
+
+          int result = await _db.insertDailyExpense(expense);
+          if (result != -1) {
+            successCount++;
+            importedData.add(expense);
+            print('✅ Row ${i+1} imported!');
+          } else {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: خطا در ذخیره‌سازی');
+          }
+
+        } catch (e) {
+          skippedCount++;
+          errors.add('ردیف ${i+1}: خطا - $e');
+          print('❌ Error: $e');
+        }
+      }
+
+      return {
+        'success': true,
+        'successCount': successCount,
+        'skippedCount': skippedCount,
+        'importedData': importedData,
+        'errors': errors,
+        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+      };
+
+    } catch (e) {
+      print('❌ Error: $e');
+      return {
+        'success': false,
+        'message': 'خطا در پردازش فایل: $e',
+      };
+    }
+  }
+
+  void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('نتیجه وارد کردن'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✅ ${result['successCount']} رکورد با موفقیت وارد شد',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                if (result['skippedCount'] > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '⚠️ ${result['skippedCount']} رکورد نادیده گرفته شد',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (result['errors'] != null && result['errors'].isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'خطاها:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    height: 100,
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: (result['errors'] as List<String>)
+                            .take(5)
+                            .map((error) => Text(
+                                  error,
+                                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                  if ((result['errors'] as List<String>).length > 5)
+                    Text(
+                      'و ${(result['errors'] as List<String>).length - 5} خطای دیگر...',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('باشه'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==================== END EXCEL IMPORT ====================
+
   Future<void> _addExpense() async {
     final l10n = AppLocalizations.of(context)!;
     _registrationNumberController.clear();
@@ -121,10 +482,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       final rate = double.tryParse(_exchangeRateController.text) ?? 1;
       
       if (selectedCurrency == 'دالر') {
-        // USD selected: price * rate = AFN equivalent
         _equivalentController.text = (price * rate).toStringAsFixed(0);
       } else {
-        // AFN or other selected: price / rate = USD equivalent
         _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
       }
     }
@@ -311,13 +670,10 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   final price = double.tryParse(_priceController.text) ?? 0;
                   final rate = double.tryParse(_exchangeRateController.text) ?? 1;
                   
-                  // Calculate USD equivalent based on currency
                   int usdEquivalent;
                   if (selectedCurrency == 'دالر') {
-                    // USD to AFN: price * rate
                     usdEquivalent = (price * rate).round();
                   } else {
-                    // AFN to USD: price / rate
                     usdEquivalent = rate > 0 ? (price / rate).round() : 0;
                   }
                   
@@ -821,6 +1177,19 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         ),
         Row(
           children: [
+            // Import Excel Button
+            OutlinedButton.icon(
+              onPressed: _importExcel,
+              icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
+              label: const Text('Import Excel', style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFCB001D)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Add Expense Button
             ElevatedButton.icon(
               onPressed: _addExpense,
               style: ElevatedButton.styleFrom(

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel;
+import 'dart:io';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -48,11 +51,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
       
       if (_isWeightUnit(unit)) {
-        // Convert to tons (if kg, divide by 1000)
         if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
           totalTons += grossWeight / 1000;
         } else {
-          totalTons += grossWeight; // Already in tons
+          totalTons += grossWeight;
         }
       }
     }
@@ -61,7 +63,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
   // Unit translation helper - FOR TABLE DISPLAY ONLY
   String _translateUnit(String unit, AppLocalizations l10n) {
-    // For weight units in the TABLE, show as tons
     if (_isWeightUnit(unit)) return l10n.tonUnit;
     if (unit == 'متر' || unit == 'm' || unit == 'M') return l10n.meterUnit;
     if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return l10n.pcsUnit;
@@ -69,15 +70,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     return unit;
   }
 
-  // Format unit with conversion for table display - ALWAYS shows kg as tons
-  String _formatUnitWithConversion(String unit, double weight, AppLocalizations l10n) {
-    // For weight units in the TABLE, ALWAYS show as tons
-    if (_isWeightUnit(unit)) {
-      double tons = weight / 1000;
-      return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 1)} ${l10n.tonUnit}';
-    }
-    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} ${_translateUnit(unit, l10n)}';
+  // Format unit with conversion for table display
+String _formatUnitWithConversion(String unit, double weight, AppLocalizations l10n) {
+  if (_isWeightUnit(unit)) {
+    double tons = weight / 1000;
+    // Show 2 decimal places for tons (shows 0.04 instead of 0.0)
+    return '${tons.toStringAsFixed(2)} ${l10n.tonUnit}';
   }
+  return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} ${_translateUnit(unit, l10n)}';
+}
 
   @override
   void initState() {
@@ -107,6 +108,533 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       print('Error loading data: $e');
       setState(() => isLoading = false);
     }
+  }
+
+  // ============ PERSIAN DIGIT CONVERSION HELPERS ============
+  String _convertPersianToEnglishDigits(String value) {
+    if (value.isEmpty) return value;
+    
+    const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    
+    String result = value;
+    for (int i = 0; i < 10; i++) {
+      result = result.replaceAll(persianDigits[i], englishDigits[i]);
+      result = result.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+    return result;
+  }
+
+  String _getCellValue(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final cell = row[index];
+    if (cell == null) return '';
+    if (cell.value == null) return '';
+    
+    String value;
+    if (cell.value is String) {
+      value = (cell.value as String).trim();
+    } else if (cell.value is num) {
+      num val = cell.value as num;
+      value = val.toString();
+    } else {
+      value = cell.value.toString().trim();
+    }
+    
+    if (value.isNotEmpty) {
+      value = _convertPersianToEnglishDigits(value);
+    }
+    
+    return value;
+  }
+
+ double _parseNumber(String value) {
+  if (value.isEmpty) return 0;
+  
+  // حذف فاصله و کاما
+  String cleaned = value.replaceAll(RegExp(r'[,\s]'), '');
+  
+  // چک کردن اینکه عدد هست یا نه
+  if (cleaned.isEmpty) return 0;
+  
+  try {
+    double result = double.parse(cleaned);
+    print('🔢 Parsing "$value" -> $result');
+    return result;
+  } catch (e) {
+    print('⚠️ Could not parse "$value": $e');
+    return 0;
+  }
+}
+
+  // ============ EXCEL IMPORT ============
+  Future<void> _importExcel() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFFCB001D)),
+              const SizedBox(height: 16),
+              const Text(
+                'در حال وارد کردن اکسل...',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _pickAndImportExcel();
+      
+      Navigator.pop(context);
+
+      if (result['success']) {
+        _showImportResultDialog(context, result);
+        await _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'خطا در وارد کردن فایل'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطا در وارد کردن: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> _pickAndImportExcel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result == null) {
+        return {'success': false, 'message': 'فایلی انتخاب نشد'};
+      }
+
+      final file = File(result.files.single.path!);
+      final bytes = await file.readAsBytes();
+      final excelFile = excel.Excel.decodeBytes(bytes);
+
+      final sheet = excelFile.tables[excelFile.tables.keys.first];
+      if (sheet == null) {
+        return {'success': false, 'message': 'فایل اکسل معتبر نیست'};
+      }
+
+      return await _parseExcelSheet(sheet);
+    } catch (e) {
+      return {'success': false, 'message': 'خطا در خواندن فایل: $e'};
+    }
+  }
+
+Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
+     
+  try {
+    List<Map<String, dynamic>> importedData = [];
+    int successCount = 0;
+    int skippedCount = 0;
+    List<String> errors = [];
+
+    // پیدا کردن سطر هدر
+    List<String> headers = [];
+    int headerRowIndex = -1;
+    
+    for (int i = 0; i < sheet.rows.length && i < 20; i++) {
+      final row = sheet.rows[i];
+      if (row.isEmpty) continue;
+      
+      List<String> potentialHeaders = [];
+      for (var cell in row) {
+        if (cell != null && cell.value != null) {
+          String val = cell.value.toString().trim();
+          if (val.isNotEmpty) potentialHeaders.add(val);
+        }
+      }
+      
+      bool hasHeader = potentialHeaders.any((h) => 
+        h.contains('نام مواد') || h.contains('فروشنده') || h.contains('وزن') || h.contains('تاریخ'));
+      
+      if (hasHeader && potentialHeaders.length >= 2) {
+        headers = potentialHeaders;
+        headerRowIndex = i;
+        print('✅ Found headers: $headers');
+        break;
+      }
+    }
+
+    if (headers.isEmpty) {
+      return {'success': false, 'message': 'هیچ ستونی پیدا نشد'};
+    }
+
+    print('📋 Headers count: ${headers.length}');
+    
+    // پیدا کردن ایندکس هر فیلد - با تطابق دقیق
+    int nameIndex = -1;
+    int supplierIndex = -1;
+    int netWeightIndex = -1;
+    int grossWeightIndex = -1;
+    int dateIndex = -1;
+    int unitIndex = -1;
+    int unitPriceIndex = -1;
+    int locationIndex = -1;
+    int materialTypeIndex = -1;
+    int thicknessIndex = -1;
+    int productIndex = -1;
+    int commissionIndex = -1;
+    int transferCostIndex = -1;
+    int miscellaneousIndex = -1;
+    int ghurfedariIndex = -1;
+    int barchalaniIndex = -1;
+    int purchaseTypeIndex = -1;
+    int paymentMethodIndex = -1;
+    int currencyIndex = -1;
+    int exchangeRateIndex = -1;
+
+    for (int i = 0; i < headers.length; i++) {
+      String h = headers[i].trim();
+      print('  Header $i: "$h"');
+      
+      // تطابق دقیق با نام هدرها
+      if (h == 'نام مواد') {
+        nameIndex = i;
+        print('  ✅ Name found at index $i');
+      } else if (h == 'اسم فروشنده') {
+        supplierIndex = i;
+        print('  ✅ Supplier found at index $i');
+      } else if (h == 'وزن خالص') {
+        netWeightIndex = i;
+        print('  ✅ Net Weight found at index $i');
+      } else if (h == 'وزن ناخالص') {
+        grossWeightIndex = i;
+        print('  ✅ Gross Weight found at index $i');
+      } else if (h == 'تاریخ') {
+        dateIndex = i;
+      } else if (h == 'واحد') {
+        unitIndex = i;
+      } else if (h == 'قیمت واحد') {
+        unitPriceIndex = i;
+      } else if (h == 'محل تخلیه') {
+        locationIndex = i;
+      } else if (h == 'نوع مواد') {
+        materialTypeIndex = i;
+      } else if (h == 'ضخامت') {
+        thicknessIndex = i;
+      } else if (h == 'قیمت محصول') {
+        productIndex = i;
+      } else if (h == 'کمیسیون') {
+        commissionIndex = i;
+      } else if (h == 'هزینه حمل') {
+        transferCostIndex = i;
+      } else if (h == 'متفرقه') {
+        miscellaneousIndex = i;
+      } else if (h == 'غرفه‌داری') {
+        ghurfedariIndex = i;
+      } else if (h == 'برچالانی') {
+        barchalaniIndex = i;
+      } else if (h == 'نوع خرید') {
+        purchaseTypeIndex = i;
+      } else if (h == 'روش پرداخت') {
+        paymentMethodIndex = i;
+      } else if (h == 'واحد پول') {
+        currencyIndex = i;
+      } else if (h == 'نرخ ارز') {
+        exchangeRateIndex = i;
+      }
+    }
+
+    print('📋 Name index: $nameIndex');
+    print('📋 Supplier index: $supplierIndex');
+    print('📋 Net Weight index: $netWeightIndex');
+    print('📋 Gross Weight index: $grossWeightIndex');
+
+    // چک کردن REQUIRED
+    if (nameIndex == -1 || supplierIndex == -1 || netWeightIndex == -1 || grossWeightIndex == -1) {
+      String msg = '';
+      if (nameIndex == -1) msg += 'نام مواد، ';
+      if (supplierIndex == -1) msg += 'اسم فروشنده، ';
+      if (netWeightIndex == -1) msg += 'وزن خالص، ';
+      if (grossWeightIndex == -1) msg += 'وزن ناخالص، ';
+      return {
+        'success': false,
+        'message': 'فیلدهای مورد نیاز پیدا نشد: $msg'
+      };
+    }
+
+    // گرفتن فروشنده‌ها
+    final suppliers = await _db.getSuppliers();
+    Map<String, int> supplierMap = {};
+    for (var supplier in suppliers) {
+      supplierMap[supplier['name']?.toString() ?? ''] = supplier['id'];
+    }
+
+    // پردازش ردیف‌ها
+        print('📝 Processing rows from ${headerRowIndex + 2} to ${sheet.rows.length}');
+    
+      for (int i = headerRowIndex + 1; i < sheet.rows.length; i++) {
+      final row = sheet.rows[i];
+      
+      // چک کردن اینکه ردیف داده داره
+      bool rowHasData = false;
+      for (var cell in row) {
+        if (cell != null && cell.value != null) {
+          String val = cell.value.toString().trim();
+          if (val.isNotEmpty && val != '0' && val != '-') {
+            rowHasData = true;
+            break;
+          }
+        }
+      }
+      
+      if (!rowHasData) {
+        print('📝 Row ${i+1}: SKIPPED (empty)');
+        continue;
+      }
+
+      try {
+        // گرفتن داده‌ها با ایندکس
+        String name = _getCellValueDirect(row, nameIndex);
+        String supplierName = _getCellValueDirect(row, supplierIndex);
+      String netWeightStr = _getCellValueDirect(row, netWeightIndex);
+     String grossWeightStr = _getCellValueDirect(row, grossWeightIndex);
+        
+        String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
+        String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
+        String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
+        String location = locationIndex != -1 ? _getCellValueDirect(row, locationIndex) : '';
+        String materialType = materialTypeIndex != -1 ? _getCellValueDirect(row, materialTypeIndex) : '';
+        String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
+        String productStr = productIndex != -1 ? _getCellValueDirect(row, productIndex) : '0';
+        String commissionStr = commissionIndex != -1 ? _getCellValueDirect(row, commissionIndex) : '0';
+        String transferCostStr = transferCostIndex != -1 ? _getCellValueDirect(row, transferCostIndex) : '0';
+        String miscellaneousStr = miscellaneousIndex != -1 ? _getCellValueDirect(row, miscellaneousIndex) : '0';
+        String ghurfedariStr = ghurfedariIndex != -1 ? _getCellValueDirect(row, ghurfedariIndex) : '0';
+        String barchalaniStr = barchalaniIndex != -1 ? _getCellValueDirect(row, barchalaniIndex) : '0';
+        String purchaseType = purchaseTypeIndex != -1 ? _getCellValueDirect(row, purchaseTypeIndex) : 'مستقیم';
+        String paymentMethod = paymentMethodIndex != -1 ? _getCellValueDirect(row, paymentMethodIndex) : 'cash';
+        String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'AFN';
+        String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValueDirect(row, exchangeRateIndex) : '1';
+
+        print('📝 Row ${i+1}:');
+        print('  Name: "$name"');
+        print('  Supplier: "$supplierName"');
+        print('  Net Weight: "$netWeightStr"');
+        print('  Gross Weight: "$grossWeightStr"');
+
+        if (name.isEmpty || supplierName.isEmpty || netWeightStr.isEmpty || grossWeightStr.isEmpty) {
+          skippedCount++;
+          errors.add('ردیف ${i+1}: فیلدهای مورد نیاز کامل نیستند');
+          continue;
+        }
+
+        double netWeight = _parseNumber(netWeightStr);
+        double grossWeight = _parseNumber(grossWeightStr);
+
+        if (netWeight <= 0 || grossWeight <= 0) {
+          skippedCount++;
+          errors.add('ردیف ${i+1}: وزن نامعتبر (خالص: $netWeight, ناخالص: $grossWeight)');
+          continue;
+        }
+
+        // ایجاد فروشنده
+        int? supplierId = supplierMap[supplierName];
+        if (supplierId == null) {
+          supplierId = await _db.insertSupplier({
+            'name': supplierName,
+            'phone': '',
+            'address': location,
+          });
+          if (supplierId != -1) {
+            supplierMap[supplierName] = supplierId;
+            print('✅ Created supplier: $supplierName');
+          } else {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: خطا در ایجاد فروشنده');
+            continue;
+          }
+        }
+
+        // محاسبه قیمت‌ها
+        double unitPrice = _parseNumber(unitPriceStr);
+        double product = _parseNumber(productStr);
+        double commission = _parseNumber(commissionStr);
+        double transferCost = _parseNumber(transferCostStr);
+        double miscellaneous = _parseNumber(miscellaneousStr);
+        double ghurfedari = _parseNumber(ghurfedariStr);
+        double barchalani = _parseNumber(barchalaniStr);
+
+        double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg') ? netWeight / 1000 : netWeight;
+        double basePrice = netWeightInTons * unitPrice;
+        double finalPrice = basePrice + product + commission + transferCost + miscellaneous + ghurfedari + barchalani;
+
+        if (date.isEmpty) {
+          date = PersianDateConverter.gregorianToJalali(DateTime.now());
+        }
+        String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+        // ساخت ماده خام
+        Map<String, dynamic> material = {
+          'supplier_id': supplierId,
+          'name': name,
+          'location': location,
+          'material_type': materialType,
+          'thickness': thickness,
+          'net_weight': netWeight.toString(),
+          'gross_weight': grossWeight.toString(),
+          'date': date,
+          'date_en': dateEn,
+          'unit': unit,
+          'unit_price': unitPrice.toString(),
+          'product': product > 0 ? product.toString() : '0',
+          'commission': commission > 0 ? commission.toString() : '0',
+          'transfer_cost': transferCost > 0 ? transferCost.toString() : '0',
+          'miscellaneous': miscellaneous > 0 ? miscellaneous.toString() : '0',
+          'ghurfedari': ghurfedari > 0 ? ghurfedari.toString() : '0',
+          'barchalani': barchalani > 0 ? barchalani.toString() : '0',
+          'purchase_type': purchaseType,
+          'seller_payment': basePrice > 0 ? basePrice.toStringAsFixed(0) : '0',
+          'seller_payment_method': paymentMethod,
+          'seller_paid_amount': (basePrice > 0 && paymentMethod == 'cash') ? basePrice.toStringAsFixed(0) : '0',
+          'currency': currency,
+          'exchange_rate': _parseNumber(exchangeRateStr),
+          'final_price': finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '0',
+        };
+
+        print('📦 Inserting: ${material['name']}');
+        
+        int result = await _db.insertRawMaterial(material);
+        if (result != -1) {
+          successCount++;
+          importedData.add(material);
+          print('✅ Row ${i+1} imported successfully!');
+        } else {
+          skippedCount++;
+          errors.add('ردیف ${i+1}: خطا در ذخیره‌سازی');
+        }
+
+      } catch (e) {
+        skippedCount++;
+        errors.add('ردیف ${i+1}: خطا - $e');
+        print('❌ Error in row ${i+1}: $e');
+      }
+    }
+
+    return {
+      'success': true,
+      'successCount': successCount,
+      'skippedCount': skippedCount,
+      'importedData': importedData,
+      'errors': errors,
+      'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+    };
+
+  } catch (e) {
+    print('❌ Error: $e');
+    return {
+      'success': false,
+      'message': 'خطا در پردازش فایل: $e',
+    };
+  }
+}
+
+String _getCellValueDirect(List<excel.Data?> row, int index) {
+  if (index < 0 || index >= row.length) return '';
+  final cell = row[index];
+  if (cell == null) return '';
+  if (cell.value == null) return '';
+  
+  String value = cell.value.toString().trim();
+  if (value.isNotEmpty) {
+    value = _convertPersianToEnglishDigits(value);
+  }
+  return value;
+}
+
+  void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('نتیجه وارد کردن'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✅ ${result['successCount']} رکورد با موفقیت وارد شد',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                if (result['skippedCount'] > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '⚠️ ${result['skippedCount']} رکورد نادیده گرفته شد',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (result['errors'] != null && result['errors'].isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'خطاها:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    height: 100,
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: (result['errors'] as List<String>)
+                            .take(5)
+                            .map((error) => Text(
+                                  error,
+                                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                  if ((result['errors'] as List<String>).length > 5)
+                    Text(
+                      'و ${(result['errors'] as List<String>).length - 5} خطای دیگر...',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('باشه'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ============ BUILD UNIT SUMMARY CARDS ============
@@ -152,7 +680,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     unitTotals.forEach((unit, totals) {
       final translatedUnit = _translateUnit(unit, l10n);
       
-      // Format weights with conversion
       String displayNet = _formatUnitWithConversion(unit, totals['net']!, l10n);
       String displayGross = _formatUnitWithConversion(unit, totals['gross']!, l10n);
       
@@ -334,17 +861,14 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                           ],
                         ),
                       ),
-                      // Table Rows
                       ..._paginatedMaterials.map((material) {
                         final isSelected = _selectedIds.contains(material['id'] as int);
                         final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
                         
-                        // Get weight values for formatting
                         double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
                         double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
                         String unit = material['unit'] ?? '-';
                         
-                        // Format weights with conversion if needed
                         String displayNet = _formatUnitWithConversion(unit, netWeight, l10n);
                         String displayGross = _formatUnitWithConversion(unit, grossWeight, l10n);
                         
@@ -457,7 +981,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
             ),
           ),
         ),
-        // Pagination with Scroll Indicators
+        // Pagination
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
@@ -502,7 +1026,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
               ),
               Row(
                 children: [
-                  // Horizontal Scroll Indicators
                   IconButton(
                     icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFCB001D), size: 16),
                     padding: EdgeInsets.zero,
@@ -530,7 +1053,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                     tooltip: 'Scroll Right',
                   ),
                   const SizedBox(width: 8),
-                  // Page Info
                   Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', 
                     style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                   const SizedBox(width: 12),
@@ -700,7 +1222,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     String? selectedSupplierId;
     String? selectedDate;
 
-    // Helper to convert kg to ton (ONLY USED IN DIALOG)
     String _convertToTon(double weight) {
       if (weight <= 0) return '0';
       double tons = weight / 1000;
@@ -716,15 +1237,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       return unit;
     }
 
-    // ============================================
-    // FIXED: Unit price is ALWAYS per ton
-    // ============================================
     void _updateFinalPrice() {
-      // Get weight in tons (always convert to tons for calculation)
       double netWeight = double.tryParse(netWeightController.text) ?? 0;
       String selectedUnit = unitController.text;
       
-      // Convert to tons if in kg
       double netWeightInTons = netWeight;
       if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
         netWeightInTons = netWeight / 1000;
@@ -739,19 +1255,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       double barchalani = double.tryParse(barchalaniController.text) ?? 0;
       double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
 
-      // FIXED: basePrice = netWeightInTons * unitPrice (unit price is PER TON)
       double basePrice = netWeightInTons * unitPrice;
       double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
       double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
       double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
       finalPriceController.text = finalPrice.toStringAsFixed(0);
       
-      // Calculate AFN equivalent based on the exchange rate
       if (selectedCurrency == 'USD') {
-        // Convert from USD to AFN
         afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(0);
       } else {
-        // Convert from AFN to USD
         afnEquivalentController.text = exchangeRate > 0 ? (finalPrice * exchangeRate).toStringAsFixed(3) : '0';
       }
       
@@ -776,7 +1288,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           String unitSymbol = _getUnitSymbol(selectedUnit);
           bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
           
-          // Get unit display name
           String unitDisplay = '';
           if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
             unitDisplay = 'kg';
@@ -784,16 +1295,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
             unitDisplay = 'تن';
           } else {
             unitDisplay = selectedUnit;
-          }
-
-          // Show price per ton hint
-          String pricePerTonHint = '';
-          if (selectedUnit.isNotEmpty && netWeight > 0) {
-            double netWeightInTons = netWeight;
-            if (isKg) {
-              netWeightInTons = netWeight / 1000;
-            }
-            pricePerTonHint = 'قیمت هر تن: ${netWeightInTons > 0 ? (double.tryParse(unitPriceController.text) ?? 0).toStringAsFixed(0) : '0'}';
           }
 
           return Directionality(
@@ -937,7 +1438,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      // Net Weight with kg AND ton side by side
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1040,7 +1540,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // Gross Weight with kg AND ton side by side
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1143,7 +1642,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // Unit Price with per ton hint
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1218,7 +1716,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // Exchange Rate field - ALWAYS visible for both currencies
                       TextField(
                         controller: exchangeRateController,
                         decoration: InputDecoration(
@@ -1530,825 +2027,811 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     );
   }
 
- void _showEditDialog(BuildContext context, Map<String, dynamic> material, AppLocalizations l10n) {
-  // Initialize controllers with existing data
-  final nameController = TextEditingController(text: material['name']?.toString() ?? '');
-  final netWeightController = TextEditingController(text: material['net_weight']?.toString() ?? '');
-  final grossWeightController = TextEditingController(text: material['gross_weight']?.toString() ?? '');
-  final thicknessController = TextEditingController(text: material['thickness']?.toString() ?? '');
-  final materialTypeController = TextEditingController(text: material['material_type']?.toString() ?? '');
-  final locationController = TextEditingController(text: material['location']?.toString() ?? '');
-  final dateController = TextEditingController(text: material['date']?.toString() ?? '');
-  final unitController = TextEditingController(text: material['unit']?.toString() ?? '');
-  final unitPriceController = TextEditingController(text: material['unit_price']?.toString() ?? '');
-  final productController = TextEditingController(text: material['product']?.toString() ?? '');
-  final commissionController = TextEditingController(text: material['commission']?.toString() ?? '');
-  final transferCostController = TextEditingController(text: material['transfer_cost']?.toString() ?? '');
-  final miscellaneousController = TextEditingController(text: material['miscellaneous']?.toString() ?? '');
-  final ghurfedariController = TextEditingController(text: material['ghurfedari']?.toString() ?? '');
-  final barchalaniController = TextEditingController(text: material['barchalani']?.toString() ?? '');
-  final finalPriceController = TextEditingController(text: material['final_price']?.toString() ?? '');
-  final sellerPaymentController = TextEditingController(text: material['seller_payment']?.toString() ?? '');
-  final sellerPaidAmountController = TextEditingController(text: material['seller_paid_amount']?.toString() ?? '');
-  final exchangeRateController = TextEditingController(text: material['exchange_rate']?.toString() ?? '1');
-  final afnEquivalentController = TextEditingController();
+  void _showEditDialog(BuildContext context, Map<String, dynamic> material, AppLocalizations l10n) {
+    // Initialize controllers with existing data
+    final nameController = TextEditingController(text: material['name']?.toString() ?? '');
+    final netWeightController = TextEditingController(text: material['net_weight']?.toString() ?? '');
+    final grossWeightController = TextEditingController(text: material['gross_weight']?.toString() ?? '');
+    final thicknessController = TextEditingController(text: material['thickness']?.toString() ?? '');
+    final materialTypeController = TextEditingController(text: material['material_type']?.toString() ?? '');
+    final locationController = TextEditingController(text: material['location']?.toString() ?? '');
+    final dateController = TextEditingController(text: material['date']?.toString() ?? '');
+    final unitController = TextEditingController(text: material['unit']?.toString() ?? '');
+    final unitPriceController = TextEditingController(text: material['unit_price']?.toString() ?? '');
+    final productController = TextEditingController(text: material['product']?.toString() ?? '');
+    final commissionController = TextEditingController(text: material['commission']?.toString() ?? '');
+    final transferCostController = TextEditingController(text: material['transfer_cost']?.toString() ?? '');
+    final miscellaneousController = TextEditingController(text: material['miscellaneous']?.toString() ?? '');
+    final ghurfedariController = TextEditingController(text: material['ghurfedari']?.toString() ?? '');
+    final barchalaniController = TextEditingController(text: material['barchalani']?.toString() ?? '');
+    final finalPriceController = TextEditingController(text: material['final_price']?.toString() ?? '');
+    final sellerPaymentController = TextEditingController(text: material['seller_payment']?.toString() ?? '');
+    final sellerPaidAmountController = TextEditingController(text: material['seller_paid_amount']?.toString() ?? '');
+    final exchangeRateController = TextEditingController(text: material['exchange_rate']?.toString() ?? '1');
+    final afnEquivalentController = TextEditingController();
 
-  String selectedSellerPaymentMethod = material['seller_payment_method']?.toString() ?? 'cash';
-  String selectedCurrency = material['currency']?.toString() ?? 'AFN';
-  String? selectedPurchaseType = material['purchase_type']?.toString();
-  String? selectedSupplierId = material['supplier_id']?.toString();
-  String? selectedDate = material['date']?.toString();
-  String? selectedEnglishDate = material['date_en']?.toString();
+    String selectedSellerPaymentMethod = material['seller_payment_method']?.toString() ?? 'cash';
+    String selectedCurrency = material['currency']?.toString() ?? 'AFN';
+    String? selectedPurchaseType = material['purchase_type']?.toString();
+    String? selectedSupplierId = material['supplier_id']?.toString();
+    String? selectedDate = material['date']?.toString();
+    String? selectedEnglishDate = material['date_en']?.toString();
 
-  // Helper to convert kg to ton (ONLY USED IN DIALOG)
-  String _convertToTon(double weight) {
-    if (weight <= 0) return '0';
-    double tons = weight / 1000;
-    return tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
-  }
-
-  String _getUnitSymbol(String unit) {
-    if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') return 'تن';
-    if (unit == 'تن' || unit == 'ton' || unit == 'Ton') return 'تن';
-    if (unit == 'متر' || unit == 'm' || unit == 'M') return 'متر';
-    if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return 'عدد';
-    if (unit == 'لیتر' || unit == 'l' || unit == 'L') return 'لیتر';
-    return unit;
-  }
-
-  // ============================================
-  // FIXED: Unit price is ALWAYS per ton
-  // ============================================
-  void _updateFinalPrice() {
-    // Get weight in tons (always convert to tons for calculation)
-    double netWeight = double.tryParse(netWeightController.text) ?? 0;
-    String selectedUnit = unitController.text;
-    
-    // Convert to tons if in kg
-    double netWeightInTons = netWeight;
-    if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
-      netWeightInTons = netWeight / 1000;
+    String _convertToTon(double weight) {
+      if (weight <= 0) return '0';
+      double tons = weight / 1000;
+      return tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
     }
-    
-    double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-    double productCost = double.tryParse(productController.text) ?? 0;
-    double commission = double.tryParse(commissionController.text) ?? 0;
-    double transferCost = double.tryParse(transferCostController.text) ?? 0;
-    double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
-    double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
-    double barchalani = double.tryParse(barchalaniController.text) ?? 0;
-    double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
 
-    // FIXED: basePrice = netWeightInTons * unitPrice (unit price is PER TON)
-    double basePrice = netWeightInTons * unitPrice;
-    double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
-    double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
-    double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
-    finalPriceController.text = finalPrice.toStringAsFixed(0);
-    
-    // Calculate AFN equivalent based on the exchange rate
-    if (selectedCurrency == 'USD') {
-      // Convert from USD to AFN
-      afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(0);
-    } else {
-      // Convert from AFN to USD
-      afnEquivalentController.text = exchangeRate > 0 ? (finalPrice * exchangeRate).toStringAsFixed(3) : '0';
+    String _getUnitSymbol(String unit) {
+      if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') return 'تن';
+      if (unit == 'تن' || unit == 'ton' || unit == 'Ton') return 'تن';
+      if (unit == 'متر' || unit == 'm' || unit == 'M') return 'متر';
+      if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return 'عدد';
+      if (unit == 'لیتر' || unit == 'l' || unit == 'L') return 'لیتر';
+      return unit;
     }
-    
-    sellerPaymentController.text = basePrice.toStringAsFixed(0);
-    if (selectedSellerPaymentMethod == 'cash') {
-      sellerPaidAmountController.text = sellerPaymentController.text;
-    } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
-      sellerPaidAmountController.text = '0';
+
+    void _updateFinalPrice() {
+      double netWeight = double.tryParse(netWeightController.text) ?? 0;
+      String selectedUnit = unitController.text;
+      
+      double netWeightInTons = netWeight;
+      if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
+        netWeightInTons = netWeight / 1000;
+      }
+      
+      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+      double productCost = double.tryParse(productController.text) ?? 0;
+      double commission = double.tryParse(commissionController.text) ?? 0;
+      double transferCost = double.tryParse(transferCostController.text) ?? 0;
+      double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
+      double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
+      double barchalani = double.tryParse(barchalaniController.text) ?? 0;
+      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+
+      double basePrice = netWeightInTons * unitPrice;
+      double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
+      double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
+      double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
+      finalPriceController.text = finalPrice.toStringAsFixed(0);
+      
+      if (selectedCurrency == 'USD') {
+        afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(0);
+      } else {
+        afnEquivalentController.text = exchangeRate > 0 ? (finalPrice * exchangeRate).toStringAsFixed(3) : '0';
+      }
+      
+      sellerPaymentController.text = basePrice.toStringAsFixed(0);
+      if (selectedSellerPaymentMethod == 'cash') {
+        sellerPaidAmountController.text = sellerPaymentController.text;
+      } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
+        sellerPaidAmountController.text = '0';
+      }
     }
-  }
 
-  showDialog(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setStateDialog) {
-        double netWeight = double.tryParse(netWeightController.text) ?? 0;
-        double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
-        String selectedUnit = unitController.text;
-        
-        String netTon = _convertToTon(netWeight);
-        String grossTon = _convertToTon(grossWeight);
-        String unitSymbol = _getUnitSymbol(selectedUnit);
-        bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
-        
-        // Get unit display name
-        String unitDisplay = '';
-        if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
-          unitDisplay = 'kg';
-        } else if (selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton') {
-          unitDisplay = 'تن';
-        } else {
-          unitDisplay = selectedUnit;
-        }
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          double netWeight = double.tryParse(netWeightController.text) ?? 0;
+          double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
+          String selectedUnit = unitController.text;
+          
+          String netTon = _convertToTon(netWeight);
+          String grossTon = _convertToTon(grossWeight);
+          String unitSymbol = _getUnitSymbol(selectedUnit);
+          bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
+          
+          String unitDisplay = '';
+          if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
+            unitDisplay = 'kg';
+          } else if (selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton') {
+            unitDisplay = 'تن';
+          } else {
+            unitDisplay = selectedUnit;
+          }
 
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text('${l10n.edit} ${l10n.rawMaterial}'),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            content: SizedBox(
-              width: 500,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      decoration: InputDecoration(
-                        labelText: l10n.selectSupplier,
-                        labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      value: selectedSupplierId,
-                      items: [
-                        DropdownMenuItem<String>(value: null, child: Text(l10n.selectSupplier)),
-                        ...suppliers.map((supplier) {
-                          return DropdownMenuItem<String>(
-                            value: supplier['id'].toString(),
-                            child: Text(supplier['name']),
-                          );
-                        }).toList(),
-                      ],
-                      onChanged: (value) {
-                        setStateDialog(() {
-                          selectedSupplierId = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: dateController,
-                      decoration: InputDecoration(
-                        labelText: l10n.dateRequired,
-                        labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      onTap: () async {
-                        DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                        );
-                        if (picked != null) {
-                          String persianDate = PersianDateConverter.gregorianToJalali(picked);
-                          String englishDate = PersianDateConverter.getEnglishDate(picked);
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: Text('${l10n.edit} ${l10n.rawMaterial}'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              content: SizedBox(
+                width: 500,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: l10n.selectSupplier,
+                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        value: selectedSupplierId,
+                        items: [
+                          DropdownMenuItem<String>(value: null, child: Text(l10n.selectSupplier)),
+                          ...suppliers.map((supplier) {
+                            return DropdownMenuItem<String>(
+                              value: supplier['id'].toString(),
+                              child: Text(supplier['name']),
+                            );
+                          }).toList(),
+                        ],
+                        onChanged: (value) {
                           setStateDialog(() {
-                            dateController.text = persianDate;
-                            selectedDate = persianDate;
-                            selectedEnglishDate = englishDate;
+                            selectedSupplierId = value;
                           });
-                        }
-                      },
-                      readOnly: true,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: nameController,
-                      decoration: InputDecoration(
-                        labelText: l10n.materialNameRequired,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: locationController,
-                      decoration: InputDecoration(
-                        labelText: l10n.dischargeLocationRequired,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: materialTypeController,
-                      decoration: InputDecoration(
-                        labelText: l10n.materialTypeRequired,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      decoration: InputDecoration(
-                        labelText: l10n.unitRequired,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      value: unitController.text.isNotEmpty ? unitController.text : null,
-                      items: [
-                        DropdownMenuItem<String>(value: 'کیلوگرم', child: Text(l10n.kgUnit)),
-                        DropdownMenuItem<String>(value: 'تن', child: Text(l10n.tonUnit)),
-                        DropdownMenuItem<String>(value: 'متر', child: Text(l10n.meterUnit)),
-                        DropdownMenuItem<String>(value: 'عدد', child: Text(l10n.pcsUnit)),
-                        DropdownMenuItem<String>(value: 'لیتر', child: Text(l10n.literUnit)),
-                      ],
-                      onChanged: (value) {
-                        setStateDialog(() {
-                          unitController.text = value ?? '';
-                          _updateFinalPrice();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: thicknessController,
-                      decoration: InputDecoration(
-                        labelText: l10n.thicknessRequired,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      decoration: InputDecoration(
-                        labelText: l10n.purchaseTypeRequired,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      value: selectedPurchaseType,
-                      items: [
-                        DropdownMenuItem<String>(value: null, child: Text(l10n.selectPurchaseType)),
-                        DropdownMenuItem<String>(value: 'مستقیم', child: Text(l10n.direct)),
-                        DropdownMenuItem<String>(value: 'غیر مستقیم', child: Text(l10n.indirect)),
-                      ],
-                      onChanged: (value) {
-                        setStateDialog(() {
-                          selectedPurchaseType = value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    // Net Weight with kg AND ton side by side
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: netWeightController,
-                          decoration: InputDecoration(
-                            labelText: l10n.netWeightRequired,
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) {
-                            setStateDialog(() {});
-                            _updateFinalPrice();
-                          },
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: dateController,
+                        decoration: InputDecoration(
+                          labelText: l10n.dateRequired,
+                          labelStyle: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
-                        if (netWeight > 0 && selectedUnit.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFCB001D).withOpacity(0.06),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: const Color(0xFFCB001D).withOpacity(0.1),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isKg) ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D).withOpacity(0.2),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$netWeight kg',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1A1A2E),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Icon(Icons.arrow_forward, color: const Color(0xFFCB001D), size: 14),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCB001D).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D).withOpacity(0.3),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$netTon تن',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFCB001D),
-                                        ),
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: Colors.grey.shade300,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$netWeight $unitDisplay',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1A1A2E),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Gross Weight with kg AND ton side by side
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: grossWeightController,
-                          decoration: InputDecoration(
-                            labelText: l10n.grossWeightRequired,
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) {
-                            setStateDialog(() {});
-                            _updateFinalPrice();
-                          },
-                        ),
-                        if (grossWeight > 0 && selectedUnit.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFCB001D).withOpacity(0.06),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: const Color(0xFFCB001D).withOpacity(0.1),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isKg) ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D).withOpacity(0.2),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$grossWeight kg',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1A1A2E),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Icon(Icons.arrow_forward, color: const Color(0xFFCB001D), size: 14),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCB001D).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D).withOpacity(0.3),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$grossTon تن',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFCB001D),
-                                        ),
-                                      ),
-                                    ),
-                                  ] else ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
-                                          color: Colors.grey.shade300,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '$grossWeight $unitDisplay',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1A1A2E),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Unit Price with per ton hint
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: unitPriceController,
-                                decoration: InputDecoration(
-                                  labelText: '${l10n.unitPrice} (${selectedCurrency}) *',
-                                  hintText: 'قیمت هر تن',
-                                  border: const OutlineInputBorder(),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                ),
-                                keyboardType: TextInputType.number,
-                                onChanged: (_) => _updateFinalPrice(),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: selectedCurrency,
-                                decoration: InputDecoration(
-                                  labelText: l10n.currencyPrice,
-                                  border: const OutlineInputBorder(),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                ),
-                                items: const [
-                                  DropdownMenuItem(value: 'AFN', child: Text('افغانی')),
-                                  DropdownMenuItem(value: 'USD', child: Text('دلار')),
-                                ],
-                                onChanged: (value) {
-                                  setStateDialog(() {
-                                    selectedCurrency = value ?? 'AFN';
-                                    _updateFinalPrice();
-                                  });
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (selectedUnit.isNotEmpty && netWeight > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.06),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: Colors.blue.withOpacity(0.1),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 14),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'قیمت بر اساس هر تن محاسبه می‌شود',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.blue.shade700,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Exchange Rate field - ALWAYS visible for both currencies
-                    TextField(
-                      controller: exchangeRateController,
-                      decoration: InputDecoration(
-                        labelText: selectedCurrency == 'USD' 
-                            ? 'نرخ ارز (USD به AFN)' 
-                            : 'نرخ ارز (AFN به USD)',
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        onTap: () async {
+                          DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                          );
+                          if (picked != null) {
+                            String persianDate = PersianDateConverter.gregorianToJalali(picked);
+                            String englishDate = PersianDateConverter.getEnglishDate(picked);
+                            setStateDialog(() {
+                              dateController.text = persianDate;
+                              selectedDate = persianDate;
+                              selectedEnglishDate = englishDate;
+                            });
+                          }
+                        },
+                        readOnly: true,
                       ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => _updateFinalPrice(),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: productController,
-                      decoration: InputDecoration(
-                        labelText: l10n.productPrice,
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => _updateFinalPrice(),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: sellerPaymentController,
-                            enabled: false,
-                            decoration: InputDecoration(
-                              labelText: '${l10n.sellerAmount} (${selectedCurrency})',
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedSellerPaymentMethod,
-                            decoration: InputDecoration(
-                              labelText: l10n.sellerPaymentMethod,
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            items: const [
-                              DropdownMenuItem(value: 'cash', child: Text('نقد')),
-                              DropdownMenuItem(value: 'loan_full', child: Text('قرض کامل')),
-                              DropdownMenuItem(value: 'loan_partial', child: Text('قرض جزئی')),
-                            ],
-                            onChanged: (value) {
-                              setStateDialog(() {
-                                selectedSellerPaymentMethod = value ?? 'cash';
-                                if (selectedSellerPaymentMethod == 'cash') {
-                                  sellerPaidAmountController.text = sellerPaymentController.text;
-                                } else {
-                                  sellerPaidAmountController.text = '0';
-                                }
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (selectedSellerPaymentMethod == 'loan_partial') ...[
                       const SizedBox(height: 8),
                       TextField(
-                        controller: sellerPaidAmountController,
+                        controller: nameController,
                         decoration: InputDecoration(
-                          labelText: l10n.sellerInitialPayment,
+                          labelText: l10n.materialNameRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: locationController,
+                        decoration: InputDecoration(
+                          labelText: l10n.dischargeLocationRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: materialTypeController,
+                        decoration: InputDecoration(
+                          labelText: l10n.materialTypeRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: l10n.unitRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        value: unitController.text.isNotEmpty ? unitController.text : null,
+                        items: [
+                          DropdownMenuItem<String>(value: 'کیلوگرم', child: Text(l10n.kgUnit)),
+                          DropdownMenuItem<String>(value: 'تن', child: Text(l10n.tonUnit)),
+                          DropdownMenuItem<String>(value: 'متر', child: Text(l10n.meterUnit)),
+                          DropdownMenuItem<String>(value: 'عدد', child: Text(l10n.pcsUnit)),
+                          DropdownMenuItem<String>(value: 'لیتر', child: Text(l10n.literUnit)),
+                        ],
+                        onChanged: (value) {
+                          setStateDialog(() {
+                            unitController.text = value ?? '';
+                            _updateFinalPrice();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: thicknessController,
+                        decoration: InputDecoration(
+                          labelText: l10n.thicknessRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: l10n.purchaseTypeRequired,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        value: selectedPurchaseType,
+                        items: [
+                          DropdownMenuItem<String>(value: null, child: Text(l10n.selectPurchaseType)),
+                          DropdownMenuItem<String>(value: 'مستقیم', child: Text(l10n.direct)),
+                          DropdownMenuItem<String>(value: 'غیر مستقیم', child: Text(l10n.indirect)),
+                        ],
+                        onChanged: (value) {
+                          setStateDialog(() {
+                            selectedPurchaseType = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: netWeightController,
+                            decoration: InputDecoration(
+                              labelText: l10n.netWeightRequired,
+                              border: const OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) {
+                              setStateDialog(() {});
+                              _updateFinalPrice();
+                            },
+                          ),
+                          if (netWeight > 0 && selectedUnit.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCB001D).withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFCB001D).withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isKg) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$netWeight kg',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(Icons.arrow_forward, color: const Color(0xFFCB001D), size: 14),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$netTon تن',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFCB001D),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$netWeight $unitDisplay',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: grossWeightController,
+                            decoration: InputDecoration(
+                              labelText: l10n.grossWeightRequired,
+                              border: const OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) {
+                              setStateDialog(() {});
+                              _updateFinalPrice();
+                            },
+                          ),
+                          if (grossWeight > 0 && selectedUnit.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCB001D).withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFCB001D).withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isKg) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$grossWeight kg',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(Icons.arrow_forward, color: const Color(0xFFCB001D), size: 14),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$grossTon تن',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFCB001D),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$grossWeight $unitDisplay',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: unitPriceController,
+                                  decoration: InputDecoration(
+                                    labelText: '${l10n.unitPrice} (${selectedCurrency}) *',
+                                    hintText: 'قیمت هر تن',
+                                    border: const OutlineInputBorder(),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (_) => _updateFinalPrice(),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  value: selectedCurrency,
+                                  decoration: InputDecoration(
+                                    labelText: l10n.currencyPrice,
+                                    border: const OutlineInputBorder(),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(value: 'AFN', child: Text('افغانی')),
+                                    DropdownMenuItem(value: 'USD', child: Text('دلار')),
+                                  ],
+                                  onChanged: (value) {
+                                    setStateDialog(() {
+                                      selectedCurrency = value ?? 'AFN';
+                                      _updateFinalPrice();
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (selectedUnit.isNotEmpty && netWeight > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: Colors.blue.withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 14),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'قیمت بر اساس هر تن محاسبه می‌شود',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: exchangeRateController,
+                        decoration: InputDecoration(
+                          labelText: selectedCurrency == 'USD' 
+                              ? 'نرخ ارز (USD به AFN)' 
+                              : 'نرخ ارز (AFN به USD)',
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         keyboardType: TextInputType.number,
+                        onChanged: (_) => _updateFinalPrice(),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: productController,
+                        decoration: InputDecoration(
+                          labelText: l10n.productPrice,
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (_) => _updateFinalPrice(),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: sellerPaymentController,
+                              enabled: false,
+                              decoration: InputDecoration(
+                                labelText: '${l10n.sellerAmount} (${selectedCurrency})',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedSellerPaymentMethod,
+                              decoration: InputDecoration(
+                                labelText: l10n.sellerPaymentMethod,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'cash', child: Text('نقد')),
+                                DropdownMenuItem(value: 'loan_full', child: Text('قرض کامل')),
+                                DropdownMenuItem(value: 'loan_partial', child: Text('قرض جزئی')),
+                              ],
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  selectedSellerPaymentMethod = value ?? 'cash';
+                                  if (selectedSellerPaymentMethod == 'cash') {
+                                    sellerPaidAmountController.text = sellerPaymentController.text;
+                                  } else {
+                                    sellerPaidAmountController.text = '0';
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (selectedSellerPaymentMethod == 'loan_partial') ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: sellerPaidAmountController,
+                          decoration: InputDecoration(
+                            labelText: l10n.sellerInitialPayment,
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        l10n.sellerLoanNote,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: commissionController,
+                              decoration: InputDecoration(
+                                labelText: l10n.commission,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _updateFinalPrice(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: transferCostController,
+                              decoration: InputDecoration(
+                                labelText: l10n.transferCost,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _updateFinalPrice(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: ghurfedariController,
+                              decoration: InputDecoration(
+                                labelText: l10n.ghurfedari,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _updateFinalPrice(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: barchalaniController,
+                              decoration: InputDecoration(
+                                labelText: l10n.barchalani,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _updateFinalPrice(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: miscellaneousController,
+                              decoration: InputDecoration(
+                                labelText: l10n.miscellaneous,
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _updateFinalPrice(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: finalPriceController,
+                              enabled: false,
+                              decoration: InputDecoration(
+                                labelText: '${l10n.finalTotalPrice} (${selectedCurrency})',
+                                border: const OutlineInputBorder(),
+                                fillColor: const Color(0xFFF5F0EB),
+                                filled: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFCB001D),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: afnEquivalentController,
+                        enabled: false,
+                        decoration: InputDecoration(
+                          labelText: selectedCurrency == 'USD' 
+                              ? 'معادل به افغانی (AFN)' 
+                              : 'معادل به دالر (USD)',
+                          border: const OutlineInputBorder(),
+                          fillColor: const Color(0xFFF5F0EB),
+                          filled: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFCB001D),
+                        ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Text(
-                      l10n.sellerLoanNote,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: commissionController,
-                            decoration: InputDecoration(
-                              labelText: l10n.commission,
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _updateFinalPrice(),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: transferCostController,
-                            decoration: InputDecoration(
-                              labelText: l10n.transferCost,
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _updateFinalPrice(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: ghurfedariController,
-                            decoration: InputDecoration(
-                              labelText: l10n.ghurfedari,
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _updateFinalPrice(),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: barchalaniController,
-                            decoration: InputDecoration(
-                              labelText: l10n.barchalani,
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _updateFinalPrice(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: miscellaneousController,
-                            decoration: InputDecoration(
-                              labelText: l10n.miscellaneous,
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => _updateFinalPrice(),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: finalPriceController,
-                            enabled: false,
-                            decoration: InputDecoration(
-                              labelText: '${l10n.finalTotalPrice} (${selectedCurrency})',
-                              border: const OutlineInputBorder(),
-                              fillColor: const Color(0xFFF5F0EB),
-                              filled: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFCB001D),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: afnEquivalentController,
-                      enabled: false,
-                      decoration: InputDecoration(
-                        labelText: selectedCurrency == 'USD' 
-                            ? 'معادل به افغانی (AFN)' 
-                            : 'معادل به دالر (USD)',
-                        border: const OutlineInputBorder(),
-                        fillColor: const Color(0xFFF5F0EB),
-                        filled: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFCB001D),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (selectedSupplierId == null || nameController.text.isEmpty || selectedPurchaseType == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.fillAllRequiredFields), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+
+                    final sellerPayment = double.tryParse(sellerPaymentController.text) ?? 0;
+                    final sellerPaidAmount = selectedSellerPaymentMethod == 'cash'
+                        ? sellerPayment
+                        : double.tryParse(sellerPaidAmountController.text) ?? 0;
+
+                    if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmount > sellerPayment) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.sellerPaymentExceedsBase), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+
+                    final updatedMaterial = {
+                      'supplier_id': int.parse(selectedSupplierId!),
+                      'name': nameController.text,
+                      'location': locationController.text,
+                      'material_type': materialTypeController.text,
+                      'thickness': thicknessController.text,
+                      'net_weight': netWeightController.text,
+                      'gross_weight': grossWeightController.text,
+                      'date': dateController.text,
+                      'date_en': selectedEnglishDate,
+                      'unit': unitController.text,
+                      'unit_price': unitPriceController.text,
+                      'product': productController.text,
+                      'commission': commissionController.text,
+                      'transfer_cost': transferCostController.text,
+                      'miscellaneous': miscellaneousController.text,
+                      'ghurfedari': ghurfedariController.text,
+                      'barchalani': barchalaniController.text,
+                      'purchase_type': selectedPurchaseType,
+                      'seller_payment': sellerPayment.toStringAsFixed(0),
+                      'seller_payment_method': selectedSellerPaymentMethod,
+                      'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
+                      'currency': selectedCurrency,
+                      'exchange_rate': double.tryParse(exchangeRateController.text) ?? 1,
+                      'final_price': finalPriceController.text,
+                    };
+
+                    final result = await _db.updateRawMaterial(material['id'], updatedMaterial);
+                    
+                    Navigator.pop(context);
+
+                    if (result != -1) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.rawMaterialUpdatedSuccess), backgroundColor: Colors.green),
+                      );
+                      _loadData();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.errorUpdatingRawMaterial), backgroundColor: Colors.red),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCB001D),
+                  ),
+                  child: Text(l10n.update),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (selectedSupplierId == null || nameController.text.isEmpty || selectedPurchaseType == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l10n.fillAllRequiredFields), backgroundColor: Colors.red),
-                    );
-                    return;
-                  }
+          );
+        },
+      ),
+    );
+  }
 
-                  final sellerPayment = double.tryParse(sellerPaymentController.text) ?? 0;
-                  final sellerPaidAmount = selectedSellerPaymentMethod == 'cash'
-                      ? sellerPayment
-                      : double.tryParse(sellerPaidAmountController.text) ?? 0;
-
-                  if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmount > sellerPayment) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l10n.sellerPaymentExceedsBase), backgroundColor: Colors.red),
-                    );
-                    return;
-                  }
-
-                  final updatedMaterial = {
-                    'supplier_id': int.parse(selectedSupplierId!),
-                    'name': nameController.text,
-                    'location': locationController.text,
-                    'material_type': materialTypeController.text,
-                    'thickness': thicknessController.text,
-                    'net_weight': netWeightController.text,
-                    'gross_weight': grossWeightController.text,
-                    'date': dateController.text,
-                    'date_en': selectedEnglishDate,
-                    'unit': unitController.text,
-                    'unit_price': unitPriceController.text,
-                    'product': productController.text,
-                    'commission': commissionController.text,
-                    'transfer_cost': transferCostController.text,
-                    'miscellaneous': miscellaneousController.text,
-                    'ghurfedari': ghurfedariController.text,
-                    'barchalani': barchalaniController.text,
-                    'purchase_type': selectedPurchaseType,
-                    'seller_payment': sellerPayment.toStringAsFixed(0),
-                    'seller_payment_method': selectedSellerPaymentMethod,
-                    'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
-                    'currency': selectedCurrency,
-                    'exchange_rate': double.tryParse(exchangeRateController.text) ?? 1,
-                    'final_price': finalPriceController.text,
-                  };
-
-                  final result = await _db.updateRawMaterial(material['id'], updatedMaterial);
-                  
-                  Navigator.pop(context);
-
-                  if (result != -1) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l10n.rawMaterialUpdatedSuccess), backgroundColor: Colors.green),
-                    );
-                    _loadData();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l10n.errorUpdatingRawMaterial), backgroundColor: Colors.red),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCB001D),
-                ),
-                child: Text(l10n.update),
-              ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
-}
   void _showDeleteDialog(BuildContext context, Map<String, dynamic> material, AppLocalizations l10n) {
     showDialog(
       context: context,
@@ -2417,15 +2900,32 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: () { _showAddDialog(context); },
-                  icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                  label: Text(l10n.addRawMaterial, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCB001D),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  ),
+                Row(
+                  children: [
+                    // Import Excel Button
+                    OutlinedButton.icon(
+                      onPressed: _importExcel,
+                      icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
+                      label: const Text('Import Excel', style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFCB001D)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Add Raw Material Button
+                    ElevatedButton.icon(
+                      onPressed: () { _showAddDialog(context); },
+                      icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                      label: Text(l10n.addRawMaterial, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFCB001D),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

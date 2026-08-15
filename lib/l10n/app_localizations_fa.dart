@@ -750,7 +750,7 @@ Map<String, String> faTranslations = {
 'tableCustomerPhoneLabel': 'تلفن مشتری',
 'tableCustomerAddressLabel': 'آدرس مشتری',
 'tableCustomerCompanyLabel': 'شرکت مشتری',
-'tableGenderLabel': 'جنسیت',
+'tableGenderLabel': 'نوع جنس',
 'tableSizeLabel': 'سایز',
 'tableTotalWeightLabel': 'وزن کل',
 'tableTotalPriceLabel': 'قیمت کل',

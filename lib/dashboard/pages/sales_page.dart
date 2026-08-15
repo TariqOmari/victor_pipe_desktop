@@ -4,6 +4,10 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel;
+import 'dart:io';
+import 'dart:typed_data';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -11,9 +15,9 @@ import '../../l10n/app_localizations.dart';
 
 class SalesPage extends StatefulWidget {
   const SalesPage({super.key});
-
   @override
   State<SalesPage> createState() => _SalesPageState();
+  
 }
 
 class _SalesPageState extends State<SalesPage> {
@@ -43,6 +47,26 @@ class _SalesPageState extends State<SalesPage> {
     return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
   }
 
+  // Format weight for invoice - shows in tons for weight units
+  String _formatWeightForInvoice(String unit, double weight) {
+    if (weight == 0) return '0';
+    if (_isWeightUnit(unit)) {
+      double tons = weight / 1000;
+      return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)}';
+    }
+    return weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1);
+  }
+
+  // Format raw weight - ALWAYS in kg
+  String _formatRawWeightForInvoice(String unit, double weight) {
+    if (weight == 0) return '0';
+    if (_isWeightUnit(unit)) {
+      // Always show raw weight in kg
+      return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)}';
+    }
+    return weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1);
+  }
+
   double _getTotalTons() {
     double totalTons = 0;
     for (var sale in _sales) {
@@ -58,6 +82,513 @@ class _SalesPageState extends State<SalesPage> {
       }
     }
     return totalTons;
+  }
+
+  String _convertPersianToEnglishDigits(String value) {
+    if (value.isEmpty) return value;
+    
+    const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    
+    String result = value;
+    for (int i = 0; i < 10; i++) {
+      result = result.replaceAll(persianDigits[i], englishDigits[i]);
+      result = result.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+    return result;
+  }
+
+  String _getCellValueDirect(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final cell = row[index];
+    if (cell == null) return '';
+    if (cell.value == null) return '';
+    
+    String value;
+    if (cell.value is String) {
+      value = (cell.value as String).trim();
+    } else if (cell.value is num) {
+      num val = cell.value as num;
+      value = val.toString();
+    } else {
+      value = cell.value.toString().trim();
+    }
+    
+    if (value.isNotEmpty) {
+      value = _convertPersianToEnglishDigits(value);
+    }
+    
+    return value;
+  }
+
+  double _parseNumber(String value) {
+    if (value.isEmpty) return 0;
+    String cleaned = value.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    if (cleaned.isEmpty) return 0;
+    try {
+      return double.parse(cleaned);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<void> _importExcel() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFFCB001D)),
+              const SizedBox(height: 16),
+              const Text(
+                'در حال وارد کردن اکسل...',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _pickAndImportExcel();
+      
+      Navigator.pop(context);
+
+      if (result['success']) {
+        _showImportResultDialog(context, result);
+        await _loadData();
+      } else {
+        _showSnackbar(result['message'] ?? 'خطا در وارد کردن فایل', Colors.red);
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showSnackbar('خطا در وارد کردن: $e', Colors.red);
+    }
+  }
+
+  Future<Map<String, dynamic>> _pickAndImportExcel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result == null) {
+        return {'success': false, 'message': 'فایلی انتخاب نشد'};
+      }
+
+      final file = File(result.files.single.path!);
+      final bytes = await file.readAsBytes();
+      
+      try {
+        final excelFile = excel.Excel.decodeBytes(bytes);
+        final sheet = excelFile.tables[excelFile.tables.keys.first];
+        if (sheet == null) {
+          return {'success': false, 'message': 'فایل اکسل معتبر نیست'};
+        }
+        return await _parseExcelSheet(sheet);
+      } catch (e) {
+        return {'success': false, 'message': 'فایل اکسل خراب است یا فرمت آن پشتیبانی نمی‌شود'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'خطا در خواندن فایل: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
+    try {
+      List<Map<String, dynamic>> importedData = [];
+      int successCount = 0;
+      int skippedCount = 0;
+      List<String> errors = [];
+
+      final headersRow = sheet.rows.first;
+      List<String> headers = [];
+      for (var cell in headersRow) {
+        if (cell != null && cell.value != null) {
+          headers.add(cell.value.toString().trim());
+        }
+      }
+
+      print('📋 Headers: $headers');
+
+      int invoiceNumberIndex = -1;
+      int customerNameIndex = -1;
+      int productNameIndex = -1;
+      int unitPriceIndex = -1;
+      int totalWeightIndex = -1;
+      int finalPriceIndex = -1;
+      int dateIndex = -1;
+      int currencyIndex = -1;
+      int paymentMethodIndex = -1;
+      int descriptionIndex = -1;
+      int customerPhoneIndex = -1;
+      int customerAddressIndex = -1;
+      int companyIndex = -1;
+      int genderIndex = -1;
+      int sizeIndex = -1;
+      int thicknessIndex = -1;
+      int weightPerUnitIndex = -1;
+      int unitCountIndex = -1;
+      int unitIndex = -1;
+      int totalPriceIndex = -1;
+      int loadingCostIndex = -1;
+      int transferCostIndex = -1;
+      int clearanceCostIndex = -1;
+      int discountIndex = -1;
+      int saleTypeIndex = -1;
+      int priceRateIndex = -1;
+
+      for (int i = 0; i < headers.length; i++) {
+        String h = headers[i];
+        String hLower = h.toLowerCase();
+        
+        if (hLower.contains('شماره') || hLower.contains('فاکتور') || hLower.contains('invoice')) {
+          invoiceNumberIndex = i;
+        } else if (hLower.contains('مشتری') || hLower.contains('خریدار') || hLower.contains('نام مشتری') || hLower.contains('customer')) {
+          customerNameIndex = i;
+        } else if (hLower.contains('محصول') || hLower.contains('کالا') || hLower.contains('product')) {
+          productNameIndex = i;
+        } else if (hLower.contains('قیمت واحد') || hLower.contains('unit price')) {
+          unitPriceIndex = i;
+        } else if (hLower.contains('وزن کل') || hLower.contains('total weight')) {
+          totalWeightIndex = i;
+        } else if (hLower.contains('قیمت نهایی') || hLower.contains('final price')) {
+          finalPriceIndex = i;
+        } else if (hLower.contains('تاریخ') || hLower.contains('date')) {
+          dateIndex = i;
+        } else if (hLower.contains('ارز') || hLower.contains('واحد پول') || hLower.contains('currency')) {
+          currencyIndex = i;
+        } else if (hLower.contains('پرداخت') || hLower.contains('payment')) {
+          paymentMethodIndex = i;
+        } else if (hLower.contains('توضیحات') || hLower.contains('شرح') || hLower.contains('description')) {
+          descriptionIndex = i;
+        } else if (hLower.contains('تلفن') || hLower.contains('phone')) {
+          customerPhoneIndex = i;
+        } else if (hLower.contains('آدرس') || hLower.contains('address')) {
+          customerAddressIndex = i;
+        } else if (hLower.contains('شرکت') || hLower.contains('company')) {
+          companyIndex = i;
+        } else if (hLower.contains('جنسیت') || hLower.contains('gender')) {
+          genderIndex = i;
+        } else if (hLower.contains('سایز') || hLower.contains('size')) {
+          sizeIndex = i;
+        } else if (hLower.contains('ضخامت') || hLower.contains('thickness')) {
+          thicknessIndex = i;
+        } else if (hLower.contains('وزن واحد') || hLower.contains('weight per unit')) {
+          weightPerUnitIndex = i;
+        } else if (hLower.contains('تعداد') || hLower.contains('unit count')) {
+          unitCountIndex = i;
+        } else if (hLower.contains('واحد') && !hLower.contains('پول')) {
+          unitIndex = i;
+        } else if (hLower.contains('قیمت کل') || hLower.contains('total price')) {
+          totalPriceIndex = i;
+        } else if (hLower.contains('بارگیری') || hLower.contains('loading cost')) {
+          loadingCostIndex = i;
+        } else if (hLower.contains('حمل') || hLower.contains('transfer cost')) {
+          transferCostIndex = i;
+        } else if (hLower.contains('ترخیص') || hLower.contains('clearance cost')) {
+          clearanceCostIndex = i;
+        } else if (hLower.contains('تخفیف') || hLower.contains('discount')) {
+          discountIndex = i;
+        } else if (hLower.contains('نوع') || hLower.contains('sale type')) {
+          saleTypeIndex = i;
+        } else if (hLower.contains('نرخ') || hLower.contains('price rate')) {
+          priceRateIndex = i;
+        }
+      }
+
+      print('📋 InvoiceNumber: $invoiceNumberIndex, Customer: $customerNameIndex, Product: $productNameIndex');
+
+      if (invoiceNumberIndex == -1 || customerNameIndex == -1 || productNameIndex == -1) {
+        return {
+          'success': false,
+          'message': 'فیلدهای مورد نیاز پیدا نشد: شماره فاکتور، مشتری، محصول'
+        };
+      }
+
+      final customers = await _db.getCustomers();
+      final companies = await _db.getCompanies();
+      Map<String, int> customerMap = {};
+      for (var c in customers) {
+        customerMap[c['name']?.toString() ?? ''] = c['id'];
+      }
+      for (var c in companies) {
+        customerMap[c['name']?.toString() ?? ''] = c['id'];
+      }
+
+      for (int i = 1; i < sheet.rows.length; i++) {
+        final row = sheet.rows[i];
+        
+        bool hasData = false;
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty && val != '0' && val != '-' && val != '\$') {
+              hasData = true;
+              break;
+            }
+          }
+        }
+        if (!hasData) continue;
+
+        try {
+          String invoiceNumber = _getCellValueDirect(row, invoiceNumberIndex);
+          String customerName = _getCellValueDirect(row, customerNameIndex);
+          String productName = _getCellValueDirect(row, productNameIndex);
+          
+          String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
+          String totalWeightStr = totalWeightIndex != -1 ? _getCellValueDirect(row, totalWeightIndex) : '0';
+          String finalPriceStr = finalPriceIndex != -1 ? _getCellValueDirect(row, finalPriceIndex) : '0';
+          String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
+          String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'USD';
+          String paymentMethod = paymentMethodIndex != -1 ? _getCellValueDirect(row, paymentMethodIndex) : 'cash';
+          String description = descriptionIndex != -1 ? _getCellValueDirect(row, descriptionIndex) : '';
+          String phone = customerPhoneIndex != -1 ? _getCellValueDirect(row, customerPhoneIndex) : '';
+          String address = customerAddressIndex != -1 ? _getCellValueDirect(row, customerAddressIndex) : '';
+          String company = companyIndex != -1 ? _getCellValueDirect(row, companyIndex) : '';
+          String gender = genderIndex != -1 ? _getCellValueDirect(row, genderIndex) : '';
+          String size = sizeIndex != -1 ? _getCellValueDirect(row, sizeIndex) : '';
+          String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
+          String weightPerUnitStr = weightPerUnitIndex != -1 ? _getCellValueDirect(row, weightPerUnitIndex) : '0';
+          String unitCountStr = unitCountIndex != -1 ? _getCellValueDirect(row, unitCountIndex) : '0';
+          String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
+          String totalPriceStr = totalPriceIndex != -1 ? _getCellValueDirect(row, totalPriceIndex) : '0';
+          String loadingCostStr = loadingCostIndex != -1 ? _getCellValueDirect(row, loadingCostIndex) : '0';
+          String transferCostStr = transferCostIndex != -1 ? _getCellValueDirect(row, transferCostIndex) : '0';
+          String clearanceCostStr = clearanceCostIndex != -1 ? _getCellValueDirect(row, clearanceCostIndex) : '0';
+          String discountStr = discountIndex != -1 ? _getCellValueDirect(row, discountIndex) : '0';
+          String saleType = saleTypeIndex != -1 ? _getCellValueDirect(row, saleTypeIndex) : 'فروش';
+          String priceRateStr = priceRateIndex != -1 ? _getCellValueDirect(row, priceRateIndex) : '1';
+
+          unitPriceStr = unitPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          totalWeightStr = totalWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          finalPriceStr = finalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          totalPriceStr = totalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          loadingCostStr = loadingCostStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          transferCostStr = transferCostStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          clearanceCostStr = clearanceCostStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          discountStr = discountStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          weightPerUnitStr = weightPerUnitStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          unitCountStr = unitCountStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          priceRateStr = priceRateStr.replaceAll(RegExp(r'[$,]'), '').trim();
+
+          print('📝 Row ${i+1}: Invoice="$invoiceNumber", Customer="$customerName", Product="$productName"');
+
+          if (invoiceNumber.isEmpty || customerName.isEmpty || productName.isEmpty) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': فیلدهای مورد نیاز کامل نیستند');
+            continue;
+          }
+
+          final existing = await _db.getSalesInvoiceByNumber(invoiceNumber);
+          if (existing != null) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': شماره فاکتور "' + invoiceNumber + '" تکراری است');
+            continue;
+          }
+
+          double unitPrice = _parseNumber(unitPriceStr);
+          double totalWeight = _parseNumber(totalWeightStr);
+          double finalPrice = _parseNumber(finalPriceStr);
+          double totalPrice = _parseNumber(totalPriceStr);
+          double loadingCost = _parseNumber(loadingCostStr);
+          double transferCost = _parseNumber(transferCostStr);
+          double clearanceCost = _parseNumber(clearanceCostStr);
+          double discount = _parseNumber(discountStr);
+          double weightPerUnit = _parseNumber(weightPerUnitStr);
+          double unitCount = _parseNumber(unitCountStr);
+          double priceRate = _parseNumber(priceRateStr);
+
+          if (finalPrice <= 0 && totalPrice > 0) {
+            finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+          }
+
+          if (totalWeight <= 0 && weightPerUnit > 0 && unitCount > 0) {
+            totalWeight = weightPerUnit * unitCount;
+          }
+
+          double usdEquivalent = 0;
+          double afnEquivalent = 0;
+          String currencyFinal = 'USD';
+          if (currency == 'USD' || currency == 'دلار' || currency == '\$') {
+            usdEquivalent = finalPrice;
+            afnEquivalent = finalPrice * priceRate;
+            currencyFinal = 'USD';
+          } else if (currency == 'AFN' || currency == 'افغانی') {
+            afnEquivalent = finalPrice;
+            usdEquivalent = priceRate > 0 ? finalPrice / priceRate : 0;
+            currencyFinal = 'AFN';
+          } else {
+            usdEquivalent = finalPrice;
+            afnEquivalent = finalPrice * priceRate;
+            currencyFinal = 'USD';
+          }
+
+          if (date.isEmpty) {
+            date = PersianDateConverter.gregorianToJalali(DateTime.now());
+          }
+          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+          String paymentMethodFinal = 'cash';
+          String pLower = paymentMethod.toLowerCase();
+          if (pLower.contains('نقد') || pLower.contains('cash')) {
+            paymentMethodFinal = 'cash';
+          } else if (pLower.contains('قرض کامل') || pLower.contains('full')) {
+            paymentMethodFinal = 'loan_full';
+          } else if (pLower.contains('قرض جزئی') || pLower.contains('partial')) {
+            paymentMethodFinal = 'loan_partial';
+          }
+
+          Map<String, dynamic> sale = {
+            'invoice_number': invoiceNumber,
+            'customer_name': customerName,
+            'customer_phone': phone,
+            'customer_address': address,
+            'customer_company': company,
+            'product_name': productName,
+            'gender': gender,
+            'size': size,
+            'thickness': thickness,
+            'weight': totalWeight > 0 ? totalWeight.toString() : '0',
+            'weight_per_unit': weightPerUnit > 0 ? weightPerUnit.toString() : '0',
+            'unit_count': unitCount > 0 ? unitCount.toString() : '0',
+            'total_weight': totalWeight > 0 ? totalWeight.toString() : '0',
+            'unit': unit.isNotEmpty ? unit : 'کیلوگرم',
+            'unit_price': unitPrice,
+            'total_price': totalPrice > 0 ? totalPrice : finalPrice,
+            'price_rate': priceRate > 0 ? priceRate : 1,
+            'currency': currencyFinal,
+            'usd_equivalent': usdEquivalent,
+            'afn_equivalent': afnEquivalent,
+            'loading_cost': loadingCost,
+            'transfer_cost': transferCost,
+            'clearance_cost': clearanceCost,
+            'discount': discount,
+            'final_price': finalPrice > 0 ? finalPrice : totalPrice,
+            'payment_method': paymentMethodFinal,
+            'loan_type': paymentMethodFinal == 'loan_full' ? 'full' : paymentMethodFinal == 'loan_partial' ? 'partial' : 'cash',
+            'paid_amount': paymentMethodFinal == 'cash' ? finalPrice : 0,
+            'remaining_amount': paymentMethodFinal == 'cash' ? 0 : finalPrice,
+            'description': description,
+            'sale_type': saleType.isNotEmpty ? saleType : 'فروش',
+            'date': date,
+            'date_en': dateEn,
+            'produced_product_id': null,
+          };
+
+          print('📦 Inserting: ${sale['invoice_number']}');
+          
+          int result = await _db.insertSalesInvoice(sale);
+          if (result != -1) {
+            successCount++;
+            importedData.add(sale);
+            print('✅ Row ${i+1} imported!');
+          } else {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': خطا در ذخیره‌سازی');
+          }
+
+        } catch (e) {
+          skippedCount++;
+          errors.add('ردیف ' + (i+1).toString() + ': خطا - ' + e.toString());
+          print('❌ Error: $e');
+        }
+      }
+
+      return {
+        'success': true,
+        'successCount': successCount,
+        'skippedCount': skippedCount,
+        'importedData': importedData,
+        'errors': errors,
+        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+      };
+
+    } catch (e) {
+      print('❌ Error: $e');
+      return {
+        'success': false,
+        'message': 'خطا در پردازش فایل: $e',
+      };
+    }
+  }
+
+  void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('نتیجه وارد کردن'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✅ ${result['successCount']} رکورد با موفقیت وارد شد',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                if (result['skippedCount'] > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '⚠️ ${result['skippedCount']} رکورد نادیده گرفته شد',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (result['errors'] != null && result['errors'].isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'خطاها:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    height: 100,
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: (result['errors'] as List<String>)
+                            .take(5)
+                            .map((error) => Text(
+                                  error,
+                                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                  if ((result['errors'] as List<String>).length > 5)
+                    Text(
+                      'و ${(result['errors'] as List<String>).length - 5} خطای دیگر...',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('باشه'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -160,10 +691,14 @@ class _SalesPageState extends State<SalesPage> {
     final List<Map<String, dynamic>> productOptions = producedProducts.map((product) {
       return {
         'id': product['id'],
-        'name': product['product_name']?.toString() ?? '-',
-        'unit': product['unit']?.toString() ?? 'کیلو',
+        'name': product['production_type']?.toString() ?? '-',
+        'unit': product['unit']?.toString() ?? 'کیلوگرم',
         'thickness': product['thickness']?.toString() ?? '',
-        'loading': product['loading']?.toString() ?? '',
+        'size': product['size']?.toString() ?? '',
+        'length': product['length']?.toString() ?? '',
+        'raw_weight': double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0,
+        'raw_count': int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0,
+        'total_weight': double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0,
       };
     }).toList();
 
@@ -171,6 +706,7 @@ class _SalesPageState extends State<SalesPage> {
     String? selectedProductName = sale['product_name']?.toString();
     String? selectedProductUnit = sale['unit']?.toString();
     String? selectedProductThickness = sale['thickness']?.toString();
+    String? selectedProductSize = sale['size']?.toString();
 
     if (sale['customer_name'] != null) {
       selectedParty = _partyOptions.firstWhere(
@@ -249,9 +785,11 @@ class _SalesPageState extends State<SalesPage> {
               title: Text('${l10n.edit} ${l10n.sale}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
               content: SizedBox(
                 width: 700,
+                height: MediaQuery.of(context).size.height * 0.7,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildSectionTitle('ویرایش فروش', l10n),
                       const SizedBox(height: 8),
@@ -348,10 +886,13 @@ class _SalesPageState extends State<SalesPage> {
                               ? selectedProductName 
                               : null,
                           isExpanded: true,
+                          menuMaxHeight: 200,
                           decoration: InputDecoration(
-                            labelText: l10n.selectProductFromProduction,
+                            labelText: 'انتخاب نوع تولید',
                             border: const OutlineInputBorder(),
                             prefixIcon: const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            isDense: true,
                             suffixIcon: IconButton(
                               icon: const Icon(Icons.refresh, color: Colors.grey, size: 18),
                               onPressed: () async {
@@ -360,16 +901,21 @@ class _SalesPageState extends State<SalesPage> {
                                   productOptions.clear();
                                   productOptions.addAll(updated.map((p) => {
                                     'id': p['id'],
-                                    'name': p['product_name']?.toString() ?? '-',
-                                    'unit': p['unit']?.toString() ?? 'کیلو',
+                                    'name': p['production_type']?.toString() ?? '-',
+                                    'unit': p['unit']?.toString() ?? 'کیلوگرم',
                                     'thickness': p['thickness']?.toString() ?? '',
-                                    'loading': p['loading']?.toString() ?? '',
+                                    'size': p['size']?.toString() ?? '',
+                                    'length': p['length']?.toString() ?? '',
+                                    'raw_weight': double.tryParse(p['raw_weight']?.toString() ?? '0') ?? 0,
+                                    'raw_count': int.tryParse(p['raw_count']?.toString() ?? '0') ?? 0,
+                                    'total_weight': double.tryParse(p['total_weight']?.toString() ?? '0') ?? 0,
                                   }));
                                   if (selectedProductName != null && !productOptions.any((p) => p['name']?.toString() == selectedProductName)) {
                                     selectedProductName = null;
                                     selectedProductId = null;
                                     selectedProductUnit = null;
                                     selectedProductThickness = null;
+                                    selectedProductSize = null;
                                     productController.text = '';
                                   }
                                 });
@@ -377,50 +923,60 @@ class _SalesPageState extends State<SalesPage> {
                             ),
                           ),
                           items: [
-                            DropdownMenuItem<String>(
+                            const DropdownMenuItem<String>(
                               value: null,
-                              child: Text(l10n.selectProduct, style: TextStyle(color: Colors.grey)),
+                              child: Text('انتخاب نوع تولید', style: TextStyle(color: Colors.grey)),
                             ),
                             ...productOptions.map((product) {
                               final name = product['name']?.toString() ?? '-';
                               final unit = product['unit']?.toString() ?? '';
                               final thickness = product['thickness']?.toString() ?? '';
+                              final size = product['size']?.toString() ?? '';
+                              final rawWeight = product['raw_weight'] ?? 0;
+                              final rawCount = product['raw_count'] ?? 0;
+                              
+                              String weightDisplay = '';
+                              if (rawWeight > 0) {
+                                if (_isWeightUnit(unit)) {
+                                  double tons = rawWeight / 1000;
+                                  weightDisplay = '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+                                } else {
+                                  weightDisplay = '$rawWeight $unit';
+                                }
+                              }
+                              
                               return DropdownMenuItem<String>(
                                 value: name,
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D), size: 14),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
                                         name,
-                                        style: const TextStyle(fontSize: 13),
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                    if (unit.isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade200,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(unit, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                                      const SizedBox(height: 2),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 2,
+                                        children: [
+                                          if (size.isNotEmpty) 
+                                            Text('سایز: $size', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (thickness.isNotEmpty) 
+                                            Text('ضخامت: $thickness', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (weightDisplay.isNotEmpty) 
+                                            Text('وزن: $weightDisplay', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (rawCount > 0) 
+                                            Text('تعداد: $rawCount', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (unit.isNotEmpty) 
+                                            Text('($unit)', style: const TextStyle(fontSize: 11, color: Color(0xFFCB001D), fontWeight: FontWeight.w600)),
+                                        ],
                                       ),
                                     ],
-                                    if (thickness.isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade100,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text('${l10n.thicknessShort}: $thickness', style: TextStyle(fontSize: 9, color: Colors.blue.shade700)),
-                                      ),
-                                    ],
-                                  ],
+                                  ),
                                 ),
                               );
                             }).toList(),
@@ -432,7 +988,13 @@ class _SalesPageState extends State<SalesPage> {
                                 selectedProductName = null;
                                 selectedProductUnit = null;
                                 selectedProductThickness = null;
+                                selectedProductSize = null;
                                 productController.text = '';
+                                weightPerUnitController.text = '';
+                                unitCountController.text = '';
+                                totalWeightController.text = '';
+                                thicknessController.text = '';
+                                sizeController.text = '';
                               });
                               return;
                             }
@@ -443,15 +1005,24 @@ class _SalesPageState extends State<SalesPage> {
                             setDialogState(() {
                               selectedProductId = selected['id'] as int?;
                               selectedProductName = value;
-                              selectedProductUnit = selected['unit']?.toString() ?? 'کیلو';
+                              selectedProductUnit = selected['unit']?.toString() ?? 'کیلوگرم';
                               selectedProductThickness = selected['thickness']?.toString() ?? '';
+                              selectedProductSize = selected['size']?.toString() ?? '';
+                              
                               productController.text = value;
-                              if (selectedProductUnit != null && selectedProductUnit!.isNotEmpty) {
-                                unitController.text = selectedProductUnit!;
-                              }
-                              if (selectedProductThickness != null && selectedProductThickness!.isNotEmpty) {
-                                thicknessController.text = selectedProductThickness!;
-                              }
+                              thicknessController.text = selectedProductThickness ?? '';
+                              sizeController.text = selectedProductSize ?? '';
+                              unitController.text = selectedProductUnit ?? '';
+                              
+                              double rawWeight = selected['raw_weight'] ?? 0;
+                              int rawCount = selected['raw_count'] ?? 0;
+                              double totalWeight = selected['total_weight'] ?? 0;
+                              
+                              weightPerUnitController.text = rawWeight > 0 ? rawWeight.toString() : '';
+                              unitCountController.text = rawCount > 0 ? rawCount.toString() : '';
+                              totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+                              
+                              updateTotals();
                             });
                           },
                         )
@@ -461,7 +1032,7 @@ class _SalesPageState extends State<SalesPage> {
                           Expanded(
                             child: _buildTextField(
                               controller: productController,
-                              label: l10n.productName,
+                              label: 'نوع تولید',
                               icon: Icons.inventory_2_outlined,
                               l10n: l10n,
                             ),
@@ -508,7 +1079,7 @@ class _SalesPageState extends State<SalesPage> {
                               children: [
                                 _buildTextField(
                                   controller: weightPerUnitController,
-                                  label: l10n.weightPerUnit,
+                                  label: 'وزن فی خاده (کیلوگرم)',
                                   icon: Icons.scale_outlined,
                                   keyboardType: TextInputType.number,
                                   onChanged: (_) => setDialogState(() {
@@ -585,7 +1156,7 @@ class _SalesPageState extends State<SalesPage> {
                           Expanded(
                             child: _buildTextField(
                               controller: unitCountController,
-                              label: l10n.unitCount,
+                              label: 'تعداد خاده',
                               icon: Icons.numbers,
                               keyboardType: TextInputType.number,
                               onChanged: (_) => setDialogState(updateTotals),
@@ -603,7 +1174,7 @@ class _SalesPageState extends State<SalesPage> {
                               children: [
                                 _buildTextField(
                                   controller: totalWeightController,
-                                  label: l10n.totalWeight,
+                                  label: 'مجموع وزن (تن)',
                                   icon: Icons.monitor_weight_outlined,
                                   keyboardType: TextInputType.number,
                                   readOnly: true,
@@ -1126,10 +1697,14 @@ class _SalesPageState extends State<SalesPage> {
     final List<Map<String, dynamic>> productOptions = producedProducts.map((product) {
       return {
         'id': product['id'],
-        'name': product['product_name']?.toString() ?? '-',
-        'unit': product['unit']?.toString() ?? 'کیلو',
+        'name': product['production_type']?.toString() ?? '-',
+        'unit': product['unit']?.toString() ?? 'کیلوگرم',
         'thickness': product['thickness']?.toString() ?? '',
-        'loading': product['loading']?.toString() ?? '',
+        'size': product['size']?.toString() ?? '',
+        'length': product['length']?.toString() ?? '',
+        'raw_weight': double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0,
+        'raw_count': int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0,
+        'total_weight': double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0,
       };
     }).toList();
 
@@ -1137,7 +1712,7 @@ class _SalesPageState extends State<SalesPage> {
     String? selectedProductName;
     String? selectedProductUnit;
     String? selectedProductThickness;
-    String? selectedProductLoading;
+    String? selectedProductSize;
 
     void updateTotals() {
       double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
@@ -1202,9 +1777,11 @@ class _SalesPageState extends State<SalesPage> {
               title: Text(l10n.addNewSale, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
               content: SizedBox(
                 width: 700,
+                height: MediaQuery.of(context).size.height * 0.7,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildSectionTitle(l10n.salesManagement, l10n),
                       const SizedBox(height: 8),
@@ -1301,10 +1878,13 @@ class _SalesPageState extends State<SalesPage> {
                               ? selectedProductName 
                               : null,
                           isExpanded: true,
+                          menuMaxHeight: 200,
                           decoration: InputDecoration(
-                            labelText: l10n.selectProductFromProduction,
+                            labelText: 'انتخاب نوع تولید',
                             border: const OutlineInputBorder(),
                             prefixIcon: const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            isDense: true,
                             suffixIcon: IconButton(
                               icon: const Icon(Icons.refresh, color: Colors.grey, size: 18),
                               onPressed: () async {
@@ -1313,17 +1893,21 @@ class _SalesPageState extends State<SalesPage> {
                                   productOptions.clear();
                                   productOptions.addAll(updated.map((p) => {
                                     'id': p['id'],
-                                    'name': p['product_name']?.toString() ?? '-',
-                                    'unit': p['unit']?.toString() ?? 'کیلو',
+                                    'name': p['production_type']?.toString() ?? '-',
+                                    'unit': p['unit']?.toString() ?? 'کیلوگرم',
                                     'thickness': p['thickness']?.toString() ?? '',
-                                    'loading': p['loading']?.toString() ?? '',
+                                    'size': p['size']?.toString() ?? '',
+                                    'length': p['length']?.toString() ?? '',
+                                    'raw_weight': double.tryParse(p['raw_weight']?.toString() ?? '0') ?? 0,
+                                    'raw_count': int.tryParse(p['raw_count']?.toString() ?? '0') ?? 0,
+                                    'total_weight': double.tryParse(p['total_weight']?.toString() ?? '0') ?? 0,
                                   }));
                                   if (selectedProductName != null && !productOptions.any((p) => p['name']?.toString() == selectedProductName)) {
                                     selectedProductName = null;
                                     selectedProductId = null;
                                     selectedProductUnit = null;
                                     selectedProductThickness = null;
-                                    selectedProductLoading = null;
+                                    selectedProductSize = null;
                                     productController.text = '';
                                   }
                                 });
@@ -1331,50 +1915,60 @@ class _SalesPageState extends State<SalesPage> {
                             ),
                           ),
                           items: [
-                            DropdownMenuItem<String>(
+                            const DropdownMenuItem<String>(
                               value: null,
-                              child: Text(l10n.selectProduct, style: TextStyle(color: Colors.grey)),
+                              child: Text('انتخاب نوع تولید', style: TextStyle(color: Colors.grey)),
                             ),
                             ...productOptions.map((product) {
                               final name = product['name']?.toString() ?? '-';
                               final unit = product['unit']?.toString() ?? '';
                               final thickness = product['thickness']?.toString() ?? '';
+                              final size = product['size']?.toString() ?? '';
+                              final rawWeight = product['raw_weight'] ?? 0;
+                              final rawCount = product['raw_count'] ?? 0;
+                              
+                              String weightDisplay = '';
+                              if (rawWeight > 0) {
+                                if (_isWeightUnit(unit)) {
+                                  double tons = rawWeight / 1000;
+                                  weightDisplay = '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+                                } else {
+                                  weightDisplay = '$rawWeight $unit';
+                                }
+                              }
+                              
                               return DropdownMenuItem<String>(
                                 value: name,
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D), size: 14),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
                                         name,
-                                        style: const TextStyle(fontSize: 13),
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                    if (unit.isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade200,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(unit, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                                      const SizedBox(height: 2),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 2,
+                                        children: [
+                                          if (size.isNotEmpty) 
+                                            Text('سایز: $size', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (thickness.isNotEmpty) 
+                                            Text('ضخامت: $thickness', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (weightDisplay.isNotEmpty) 
+                                            Text('وزن: $weightDisplay', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (rawCount > 0) 
+                                            Text('تعداد: $rawCount', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                          if (unit.isNotEmpty) 
+                                            Text('($unit)', style: const TextStyle(fontSize: 11, color: Color(0xFFCB001D), fontWeight: FontWeight.w600)),
+                                        ],
                                       ),
                                     ],
-                                    if (thickness.isNotEmpty) ...[
-                                      const SizedBox(width: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade100,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text('${l10n.thicknessShort}: $thickness', style: TextStyle(fontSize: 9, color: Colors.blue.shade700)),
-                                      ),
-                                    ],
-                                  ],
+                                  ),
                                 ),
                               );
                             }).toList(),
@@ -1386,8 +1980,13 @@ class _SalesPageState extends State<SalesPage> {
                                 selectedProductName = null;
                                 selectedProductUnit = null;
                                 selectedProductThickness = null;
-                                selectedProductLoading = null;
+                                selectedProductSize = null;
                                 productController.text = '';
+                                weightPerUnitController.text = '';
+                                unitCountController.text = '';
+                                totalWeightController.text = '';
+                                thicknessController.text = '';
+                                sizeController.text = '';
                               });
                               return;
                             }
@@ -1398,16 +1997,24 @@ class _SalesPageState extends State<SalesPage> {
                             setDialogState(() {
                               selectedProductId = selected['id'] as int?;
                               selectedProductName = value;
-                              selectedProductUnit = selected['unit']?.toString() ?? 'کیلو';
+                              selectedProductUnit = selected['unit']?.toString() ?? 'کیلوگرم';
                               selectedProductThickness = selected['thickness']?.toString() ?? '';
-                              selectedProductLoading = selected['loading']?.toString() ?? '';
+                              selectedProductSize = selected['size']?.toString() ?? '';
+                              
                               productController.text = value;
-                              if (selectedProductUnit != null && selectedProductUnit!.isNotEmpty) {
-                                unitController.text = selectedProductUnit!;
-                              }
-                              if (selectedProductThickness != null && selectedProductThickness!.isNotEmpty) {
-                                thicknessController.text = selectedProductThickness!;
-                              }
+                              thicknessController.text = selectedProductThickness ?? '';
+                              sizeController.text = selectedProductSize ?? '';
+                              unitController.text = selectedProductUnit ?? '';
+                              
+                              double rawWeight = selected['raw_weight'] ?? 0;
+                              int rawCount = selected['raw_count'] ?? 0;
+                              double totalWeight = selected['total_weight'] ?? 0;
+                              
+                              weightPerUnitController.text = rawWeight > 0 ? rawWeight.toString() : '';
+                              unitCountController.text = rawCount > 0 ? rawCount.toString() : '';
+                              totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+                              
+                              updateTotals();
                             });
                           },
                         )
@@ -1417,7 +2024,7 @@ class _SalesPageState extends State<SalesPage> {
                           Expanded(
                             child: _buildTextField(
                               controller: productController,
-                              label: l10n.productName,
+                              label: 'نوع تولید',
                               icon: Icons.inventory_2_outlined,
                               l10n: l10n,
                             ),
@@ -1464,7 +2071,7 @@ class _SalesPageState extends State<SalesPage> {
                               children: [
                                 _buildTextField(
                                   controller: weightPerUnitController,
-                                  label: l10n.weightPerUnit,
+                                  label: 'وزن فی خاده (کیلوگرم)',
                                   icon: Icons.scale_outlined,
                                   keyboardType: TextInputType.number,
                                   onChanged: (_) => setDialogState(() {
@@ -1541,7 +2148,7 @@ class _SalesPageState extends State<SalesPage> {
                           Expanded(
                             child: _buildTextField(
                               controller: unitCountController,
-                              label: l10n.unitCount,
+                              label: 'تعداد خاده',
                               icon: Icons.numbers,
                               keyboardType: TextInputType.number,
                               onChanged: (_) => setDialogState(updateTotals),
@@ -1559,7 +2166,7 @@ class _SalesPageState extends State<SalesPage> {
                               children: [
                                 _buildTextField(
                                   controller: totalWeightController,
-                                  label: l10n.totalWeight,
+                                  label: 'مجموع وزن (تن)',
                                   icon: Icons.monitor_weight_outlined,
                                   keyboardType: TextInputType.number,
                                   readOnly: true,
@@ -2226,279 +2833,773 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   // ============================================
-  // INVOICE MODAL
+  // INVOICE MODAL - NEW STYLE
   // ============================================
-  void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice, AppLocalizations l10n) {
-    String getInvoiceValue(String key, {String defaultValue = '-'}) {
-      return invoice?[key]?.toString() ?? defaultValue;
-    }
+void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice, AppLocalizations l10n) {
+  final isWaybill = invoice['sale_type']?.toString() == 'بارنامه' || invoice['sale_type']?.toString() == 'پیش‌فاکتور';
+  final isSale = invoice['sale_type']?.toString() == 'فروش';
+  
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext dialogContext) {
+      final screenWidth = MediaQuery.of(dialogContext).size.width;
+      final dialogWidth = screenWidth * 0.9;
 
-    String unit = getInvoiceValue('unit');
-    double weightPerUnitRaw = double.tryParse(getInvoiceValue('weight_per_unit')) ?? 0;
-    double unitCount = double.tryParse(getInvoiceValue('unit_count')) ?? 0;
-    double totalWeightRaw = double.tryParse(getInvoiceValue('total_weight')) ?? 0;
-    
-    String displayWeightPerUnit = _formatWeightWithConversion(unit, weightPerUnitRaw);
-    String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
-    double weightValue = double.tryParse(getInvoiceValue('weight')) ?? 0;
-    String displayWeightValue = _formatWeightWithConversion(unit, weightValue);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      return Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
         child: Container(
-          width: 950,
+          width: dialogWidth > 850 ? 850 : dialogWidth,
           constraints: const BoxConstraints(maxHeight: 700),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
+          padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 30.0),
+          decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2), width: 2),
-            borderRadius: BorderRadius.circular(8),
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: SingleChildScrollView(
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 45,
-                        height: 45,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFFCB001D), width: 2),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: Image.asset(
-                            'assets/images/companylogo.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => const Center(child: Text('VP', style: TextStyle(color: Color(0xFFCB001D), fontSize: 16, fontWeight: FontWeight.w900))),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(l10n.companyName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                          const SizedBox(height: 2),
-                          Text(l10n.integratedManagementSystem, style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        ],
-                      ),
-                    ],
+                  Center(
+                    child: Text(
+                      isWaybill ? 'بارنامه' : 'بل ثبت فروش',
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                    ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  const SizedBox(height: 25),
+                  _buildInvoiceUpperSection(invoice, invoiceNumber, l10n),
+                  const SizedBox(height: 25),
+                  _buildInvoiceTableWithData(invoice, l10n),
+                  const SizedBox(height: 20),
+                  if (isSale) _buildSaleFinancialSection(invoice, l10n),
+                  if (isSale) const SizedBox(height: 20),
+                  _buildInvoiceSignatureRow(),
+                  const SizedBox(height: 25),
+                  _buildInvoiceDriverSection(),
+                  const SizedBox(height: 15),
+                  _buildInvoiceCustomerSection(),
+                  const SizedBox(height: 15),
+                  _buildInvoiceLegalTerms(),
+                  const SizedBox(height: 20),
+                  _buildInvoiceOfficeRegistry(),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-                        decoration: BoxDecoration(color: const Color(0xFFCB001D), borderRadius: BorderRadius.circular(4)),
-                        child: const Text('Invoice', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: Text(l10n.close, style: const TextStyle(fontSize: 12)),
                       ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                        child: Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFCB001D), fontSize: 12)),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          Navigator.pop(dialogContext);
+                          await _saveInvoicePdf(invoice, invoiceNumber, l10n);
+                        },
+                        icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.white),
+                        label: Text(l10n.savePdf, style: const TextStyle(fontSize: 12, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
                       ),
-                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Text('${l10n.persianDate}: ${getInvoiceValue('date')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        Text('Date (EN): ${getInvoiceValue('date_en')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        if (getInvoiceValue('loading_time') != '-' && getInvoiceValue('loading_time').isNotEmpty) Text('${l10n.loadingTime}: ${getInvoiceValue('loading_time')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        if (getInvoiceValue('loading_time_en') != '-' && getInvoiceValue('loading_time_en').isNotEmpty) Text('Loading (EN): ${getInvoiceValue('loading_time_en')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        if (invoice?['is_back_returned'] == 1 || invoice?['is_back_returned']?.toString() == '1') ...[
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            decoration: BoxDecoration(color: const Color(0xFFEBF1FF), borderRadius: BorderRadius.circular(4)),
-                            child: Text(l10n.statusReturned, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF034ADE))),
-                          ),
-                          if (getInvoiceValue('back_return_reason') != '-' && getInvoiceValue('back_return_reason').isNotEmpty) Text('${l10n.returnReason}: ${getInvoiceValue('back_return_reason')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                          Text('${l10n.returnDate}: ${getInvoiceValue('back_return_date')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                          Text('Return Date (EN): ${getInvoiceValue('back_return_date_en')}', style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                        ],
-                      ]),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          Navigator.pop(dialogContext);
+                          await _printInvoicePdf(invoice, invoiceNumber, l10n);
+                        },
+                        icon: const Icon(Icons.print, size: 18, color: Colors.white),
+                        label: Text(l10n.print, style: const TextStyle(fontSize: 12, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFCB001D),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
-              Container(height: 2, margin: const EdgeInsets.symmetric(vertical: 8), color: const Color(0xFFCB001D)),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade200, width: 1)),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Row(children: [
-                        const Icon(Icons.business, color: Color(0xFFCB001D), size: 14),
-                        const SizedBox(width: 4),
-                        Text('${l10n.customer}:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
-                        const SizedBox(width: 4),
-                        Expanded(child: Text(getInvoiceValue('supplier_name') != '-' ? getInvoiceValue('supplier_name') : getInvoiceValue('customer_name'), style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
-                      ]),
-                    ),
-                    Expanded(
-                      child: Row(children: [
-                        const Icon(Icons.location_on, color: Color(0xFFCB001D), size: 14),
-                        const SizedBox(width: 4),
-                        Text('${l10n.dischargeLocation}:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
-                        const SizedBox(width: 4),
-                        Expanded(child: Text(getInvoiceValue('location') != '-' ? getInvoiceValue('location') : getInvoiceValue('customer_address'), style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
-                      ]),
-                    ),
-                  ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations l10n) {
+  return Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      border: Border.all(color: Colors.black, width: 1),
+      borderRadius: BorderRadius.circular(8),
+      color: Colors.grey.shade50,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'اطلاعات مالی فروش',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSaleFinancialItem(
+                'قیمت فی خاده (هر تن)',
+                _formatCurrency(invoice['unit_price']),
+                'USD',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildSaleFinancialItem(
+                'قیمت کل',
+                _formatCurrency(invoice['total_price']),
+                invoice['currency']?.toString() ?? 'USD',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSaleFinancialItem(
+                'نرخ ارز',
+                invoice['price_rate']?.toString() ?? '1',
+                '',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildSaleFinancialItem(
+                'معادل به افغانی',
+                _formatCurrency(invoice['afn_equivalent']),
+                'AFN',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSaleFinancialItem(
+                'معادل به دالر',
+                _formatCurrency(invoice['usd_equivalent']),
+                'USD',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildSaleFinancialItem(
+                'قیمت نهایی',
+                _formatCurrency(invoice['final_price']),
+                invoice['currency']?.toString() ?? 'USD',
+                isTotal: true,
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildSaleFinancialItem(String label, String value, String currency, {bool isTotal = false}) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: isTotal ? const Color(0xFFCB001D).withOpacity(0.08) : Colors.white,
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(
+        color: isTotal ? const Color(0xFFCB001D).withOpacity(0.3) : Colors.grey.shade300,
+        width: 1,
+      ),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+            color: isTotal ? const Color(0xFFCB001D) : Colors.grey.shade700,
+          ),
+        ),
+        Row(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
+                color: isTotal ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
+              ),
+            ),
+            if (currency.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Text(
+                currency,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.grey.shade500,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 8),
-              if (getInvoiceValue('payment_method') != '-') ...[
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: const Color(0xFFF1F8FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2))),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${l10n.paymentMethod}: ${getInvoiceValue('payment_method') == 'cash' ? l10n.cash : getInvoiceValue('payment_method') == 'loan_full' ? l10n.fullLoan : getInvoiceValue('payment_method') == 'loan_partial' ? l10n.partialLoan : '-'}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-                    if (getInvoiceValue('payment_method') != 'cash') ...[
-                      const SizedBox(height: 4),
-                      Text('${l10n.loanType}: ${getInvoiceValue('loan_type') == 'full' ? l10n.full : getInvoiceValue('loan_type') == 'partial' ? l10n.partial : '-'}', style: const TextStyle(fontSize: 10)),
-                      Text('${l10n.paidAmount}: ${_formatCurrency(invoice?['paid_amount'])} ${getInvoiceValue('currency')}', style: const TextStyle(fontSize: 10)),
-                      Text('${l10n.remainingAmount}: ${_formatCurrency(invoice?['remaining_amount'])} ${getInvoiceValue('currency')}', style: const TextStyle(fontSize: 10)),
-                    ],
-                  ]),
-                ),
-                const SizedBox(height: 8),
-              ],
-              Flexible(
-                child: Container(
-                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300, width: 1), borderRadius: BorderRadius.circular(4)),
-                  child: Column(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                      decoration: const BoxDecoration(color: Color(0xFFCB001D), borderRadius: BorderRadius.only(topLeft: Radius.circular(4), topRight: Radius.circular(4))),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(children: [
-                          _buildInvoiceHeaderCell(l10n.customerName, 80),
-                          _buildInvoiceHeaderCell(l10n.company, 70),
-                          _buildInvoiceHeaderCell(l10n.product, 90),
-                          _buildInvoiceHeaderCell(l10n.gender, 60),
-                          _buildInvoiceHeaderCell(l10n.size, 60),
-                          _buildInvoiceHeaderCell(l10n.thickness, 60),
-                          _buildInvoiceHeaderCell(l10n.weight, 60),
-                          _buildInvoiceHeaderCell(l10n.weightPerUnit, 70),
-                          _buildInvoiceHeaderCell(l10n.unitCount, 70),
-                          _buildInvoiceHeaderCell(l10n.totalWeight, 70),
-                          _buildInvoiceHeaderCell(l10n.unitPrice, 70),
-                          _buildInvoiceHeaderCell(l10n.totalPrice, 70),
-                          _buildInvoiceHeaderCell(l10n.discount, 60),
-                          _buildInvoiceHeaderCell(l10n.finalPrice, 80),
-                        ]),
-                      ),
+            ],
+          ],
+        ),
+      ],
+    ),
+  );
+}
+  // Invoice helper methods
+  Widget _buildInvoiceUpperSection(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black, width: 1),
+      ),
+      child: Column(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('مشتری', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text('Customer', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      ],
                     ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
+                  ),
+                ),
+                Container(width: 1, height: 30, color: Colors.black),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('مشخصات', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text('Details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Row(
+                      children: [
+                        const Text('اسم', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Expanded(
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                            child: Row(children: [
-                              _buildInvoiceDataCell(getInvoiceValue('customer_name'), 80),
-                              _buildInvoiceDataCell(getInvoiceValue('customer_company'), 70),
-                              _buildInvoiceDataCell(getInvoiceValue('product_name'), 90),
-                              _buildInvoiceDataCell(getInvoiceValue('gender'), 60),
-                              _buildInvoiceDataCell(getInvoiceValue('size'), 60),
-                              _buildInvoiceDataCell(getInvoiceValue('thickness'), 60),
-                              _buildInvoiceDataCell(displayWeightValue, 60),
-                              _buildInvoiceDataCell(displayWeightPerUnit, 70),
-                              _buildInvoiceDataCell(getInvoiceValue('unit_count'), 70),
-                              _buildInvoiceDataCell(displayTotalWeight, 70),
-                              _buildInvoiceDataCell(_formatCurrency(invoice?['unit_price']), 70),
-                              _buildInvoiceDataCell(_formatCurrency(invoice?['total_price']), 70),
-                              _buildInvoiceDataCell(_formatCurrency(invoice?['discount']), 60),
-                              _buildInvoiceDataCell(_formatCurrency(invoice?['final_price']), 80, isBold: true, isRed: true),
-                            ]),
+                            decoration: const BoxDecoration(
+                              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                            ),
+                            child: Text(
+                              invoice['customer_name']?.toString() ?? '-',
+                              style: const TextStyle(fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Container(width: 1, height: 30, color: Colors.black),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Row(
+                      children: [
+                        const Text('شماره', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                            ),
+                            child: Text(
+                              invoiceNumber,
+                              style: const TextStyle(fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Row(
+                      children: [
+                        const Text('تیلفون', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                            ),
+                            child: Text(
+                              invoice['customer_phone']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Container(width: 1, height: 30, color: Colors.black),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Row(
+                      children: [
+                        const Text('ساعت بارگیری', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                            ),
+                            child: Text(
+                              invoice['loading_time']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  decoration: BoxDecoration(
+                    border: Border(right: BorderSide(color: Colors.black, width: 1)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('آدرس', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                          ),
+                          child: Text(
+                            invoice['customer_address']?.toString() ?? invoice['location']?.toString() ?? '',
+                            style: const TextStyle(fontSize: 12),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),
-                    ),
-                  ]),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: const Color(0xFFCB001D).withOpacity(0.04), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.15), width: 1)),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(children: [
-                      _buildInvoiceSummaryItem(l10n.basePrice, _formatCurrency(invoice?['total_price']), ''),
-                      const SizedBox(width: 12),
-                      _buildInvoiceSummaryItem(l10n.loadingCost, _formatCurrency(invoice?['loading_cost']), ''),
-                      const SizedBox(width: 12),
-                      _buildInvoiceSummaryItem(l10n.transferCost, _formatCurrency(invoice?['transfer_cost']), ''),
-                      const SizedBox(width: 12),
-                      _buildInvoiceSummaryItem(l10n.clearanceCost, _formatCurrency(invoice?['clearance_cost']), ''),
-                    ]),
-                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Text(l10n.amountDue, style: const TextStyle(fontSize: 10, color: Color(0xFF888888))),
-                      Text('${_formatCurrency(invoice?['final_price'])} ${getInvoiceValue('currency') != '-' ? getInvoiceValue('currency') : 'USD'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFCB001D))),
-                    ]),
-                  ],
+              Container(width: 1, height: 30, color: Colors.black),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  decoration: BoxDecoration(
+                    border: Border(right: BorderSide(color: Colors.black, width: 1)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('تاریخ میلادی', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                          ),
+                          child: Text(
+                            invoice['date_en']?.toString() ?? '',
+                            style: const TextStyle(fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade300, width: 1))),
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(l10n.signature, style: const TextStyle(fontSize: 9, color: Color(0xFF888888))),
-                  Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: const TextStyle(fontSize: 8, color: Color(0xFF888888))),
-                ]),
+              Container(width: 1, height: 30, color: Colors.black),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  child: Row(
+                    children: [
+                      const Text('تاریخ شمسی', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
+                          ),
+                          child: Text(
+                            invoice['date']?.toString() ?? '',
+                            style: const TextStyle(fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
-              Center(child: Text(l10n.footerText, style: const TextStyle(fontSize: 7, color: Color(0xFF888888)))),
-              const SizedBox(height: 8),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.close, style: const TextStyle(fontSize: 12))),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _generatePdfInvoice(invoice, invoiceNumber, l10n);
-                  },
-                  icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.white),
-                  label: Text(l10n.pdf, style: const TextStyle(fontSize: 12, color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _generatePdfInvoice(invoice, invoiceNumber, l10n);
-                  },
-                  icon: const Icon(Icons.print, size: 18, color: Colors.white),
-                  label: Text(l10n.print, style: const TextStyle(fontSize: 12, color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
-                ),
-              ]),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceTableWithData(Map<String, dynamic> invoice, AppLocalizations l10n) {
+    const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
+    const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
+    
+    String productName = invoice['product_name']?.toString() ?? '-';
+    String size = invoice['size']?.toString() ?? '-';
+    String thickness = invoice['thickness']?.toString() ?? '-';
+    String weightPerUnit = invoice['weight_per_unit']?.toString() ?? '0';
+    String unitCount = invoice['unit_count']?.toString() ?? '0';
+    String totalWeight = invoice['total_weight']?.toString() ?? '0';
+    String unit = invoice['unit']?.toString() ?? 'کیلوگرم';
+    String gender = invoice['gender']?.toString() ?? '-';
+    
+    // وزن فی خاده - ALWAYS in KG
+    String displayWeightPerUnit = _formatRawWeightForInvoice(unit, double.tryParse(weightPerUnit) ?? 0);
+    // مجموع وزن - ALWAYS in TONS
+    String displayTotalWeight = _formatWeightForInvoice(unit, double.tryParse(totalWeight) ?? 0);
+
+    final columnHeaders = [
+      'شماره', 
+      'نوع تولید',
+      'سایز', 
+      'ضخامت\nmm', 
+      'وزن فی\nخاده (kg)', 
+      'تعداد خاده', 
+      'مجموع وزن (ton)', 
+      'نوع آهن', 
+      'تعداد بندل ها'
+    ];
+
+    List<List<String>> tableData = [
+      ['1', productName, size, thickness, displayWeightPerUnit, unitCount, displayTotalWeight, gender, 'تعداد (1 بندل تکمیل) و (0 بندل نا تکمیل)'],
+    ];
+
+    while (tableData.length < 8) {
+      tableData.add(['', '', '', '', '', '', '', '', '']);
+    }
+
+    return Table(
+      border: TableBorder.all(color: Colors.black, width: 1),
+      columnWidths: const {
+        0: FixedColumnWidth(40),
+        1: FixedColumnWidth(70),
+        2: FixedColumnWidth(60),
+        3: FixedColumnWidth(55),
+        4: FixedColumnWidth(65),
+        5: FixedColumnWidth(60),
+        6: FixedColumnWidth(90),
+        7: FixedColumnWidth(65),
+        8: FlexColumnWidth(),
+      },
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: Colors.blue[100]),
+          children: columnHeaders.map((title) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            alignment: Alignment.center,
+            child: Text(title, style: headerFont, textAlign: TextAlign.center),
+          )).toList(),
+        ),
+        ...tableData.map((row) => TableRow(
+          children: row.map((cellValue) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            alignment: Alignment.center,
+            child: Text(cellValue, style: bodyFont, textAlign: TextAlign.center),
+          )).toList(),
+        )),
+        TableRow(
+          decoration: BoxDecoration(color: Colors.blue[100]),
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              alignment: Alignment.center,
+              child: const Text('مجموعه :', style: headerFont),
+            ),
+            ...List.generate(4, (_) => const SizedBox.shrink()),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              alignment: Alignment.center,
+              child: Text(unitCount, style: headerFont),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              alignment: Alignment.center,
+              child: Text(displayTotalWeight, style: headerFont),
+            ),
+            const SizedBox.shrink(),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              alignment: Alignment.center,
+              child: const Text('تعداد (1 بندل تکمیل) و (0 بندل نا تکمیل)', style: headerFont),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceSignatureRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 60.0),
+          child: Column(
+            children: [
+              const Text('امضا مسئول', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Container(width: 140, height: 1.2, color: Colors.black),
             ],
           ),
         ),
+        Transform.rotate(
+          angle: -0.15,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.blue[600]!, width: 2),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              'QUALITY & QUANTITY\nCHECKED',
+              style: TextStyle(
+                color: Colors.blue[600],
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'sans-serif',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceDriverSection() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black),
       ),
+      child: Column(
+        children: [
+          Container(
+            color: Colors.blue[900],
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+            child: const Text(
+              'تسلیم دهی دریور:',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(child: _buildInvoiceInlineInput('اسم :', '')),
+                const SizedBox(width: 15),
+                Expanded(child: _buildInvoiceInlineInput('نمبر پلیت:', '')),
+                const SizedBox(width: 15),
+                Expanded(child: _buildInvoiceInlineInput('امضا/شصت دریور:', '')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceCustomerSection() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black),
+      ),
+      child: Column(
+        children: [
+          Container(
+            color: Colors.blue[900],
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+            child: const Text(
+              'تسلیم دهی مشتری:',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(child: _buildInvoiceInlineInput('اسم :', '')),
+                const SizedBox(width: 15),
+                Expanded(child: _buildInvoiceInlineInput('وظیفه:', '')),
+                const SizedBox(width: 15),
+                Expanded(child: _buildInvoiceInlineInput('مهر و امضا:', '')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceLegalTerms() {
+    const termsStyleEn = TextStyle(fontSize: 10, color: Colors.black87);
+    const termsStyleFa = TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Colors.black87);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: const [
+            Text('Before carry, please check quality & quantity.', style: termsStyleEn, textDirection: TextDirection.ltr),
+            Text('.لطفا قبل از انتقال کیفیت، تعداد ومقدار جنس را چک نمائید', style: termsStyleFa),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: const [
+            Text('Transportation services will provide by carrier company against specified freight.', style: termsStyleEn, textDirection: TextDirection.ltr),
+            Text('.خدمات ترانسپورتی درمقابل کرایه معین توسط شرکت باربری مهیا میگردد', style: termsStyleFa),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: const [
+            Text('Terms & conditions of seller are applicable.', style: termsStyleEn, textDirection: TextDirection.ltr),
+            Text('.مقررات و شرایط فروشنده قابل تطبیق میباشد', style: termsStyleFa),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceOfficeRegistry() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            color: Colors.yellow[600],
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+            child: const Text(
+              'مخصوص ثبت دفاتر:',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(child: _buildInvoiceInlineInput('شماره:', '')),
+                const SizedBox(width: 10),
+                Expanded(child: _buildInvoiceInlineInput('صفحه:', '')),
+                const SizedBox(width: 10),
+                Expanded(child: _buildInvoiceInlineInput('جلد:', '')),
+                const SizedBox(width: 10),
+                Expanded(child: _buildInvoiceInlineInput('مؤرخ:', '    /    /  ')),
+                const SizedBox(width: 10),
+                Expanded(flex: 2, child: _buildInvoiceInlineInput('امضا ثبت کننده:', '')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceInlineInput(String label, String explicitValue) {
+    return Row(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Container(
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.black54, width: 1)),
+            ),
+            child: Text(
+              explicitValue,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   // ============================================
   // PDF GENERATION
   // ============================================
-  Future<void> _generatePdfInvoice(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
+  Future<Uint8List> _generateInvoicePdfBytes(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
     late final pw.Font ttf;
     try {
       final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
@@ -2515,9 +3616,11 @@ class _SalesPageState extends State<SalesPage> {
     double weightPerUnitRaw = double.tryParse(getPdfValue('weight_per_unit')) ?? 0;
     double totalWeightRaw = double.tryParse(getPdfValue('total_weight')) ?? 0;
     
-    String displayWeightPerUnit = _formatWeightWithConversion(unit, weightPerUnitRaw);
-    String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
-
+    // وزن فی خاده - ALWAYS in KG
+    String displayWeightPerUnit = _formatRawWeightForInvoice(unit, weightPerUnitRaw);
+    // مجموع وزن - ALWAYS in TONS
+    String displayTotalWeight = _formatWeightForInvoice(unit, totalWeightRaw);
+    
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -2527,108 +3630,207 @@ class _SalesPageState extends State<SalesPage> {
         build: (context) {
           return pw.Directionality(
             textDirection: pw.TextDirection.rtl,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.red, width: 1.8),
-                    borderRadius: pw.BorderRadius.circular(10),
-                  ),
-                  child: pw.Row(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                        pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
-                        pw.SizedBox(height: 4),
-                        pw.Text(l10n.integratedManagementSystem, style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
-                      ]),
-                      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            child: pw.Container(
+              width: double.infinity,
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300, width: 0.7), borderRadius: pw.BorderRadius.circular(14)),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border(bottom: pw.BorderSide(color: PdfColors.red, width: 2)),
+                      color: PdfColors.white,
+                    ),
+                    child: pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                          pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.black)),
+                          pw.SizedBox(height: 6),
+                          pw.Text(l10n.integratedManagementSystem, style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
+                        ]),
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          decoration: pw.BoxDecoration(color: PdfColors.red, borderRadius: pw.BorderRadius.circular(6)),
+                          padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+                          decoration: pw.BoxDecoration(color: PdfColors.red, borderRadius: pw.BorderRadius.circular(10)),
                           child: pw.Text('Invoice', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
                         ),
-                        pw.SizedBox(height: 6),
-                        pw.Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 11, fontWeight: pw.FontWeight.bold)),
-                        pw.Text('${l10n.persianDate}: ${getPdfValue('date')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        pw.Text('Date (EN): ${getPdfValue('date_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        pw.Text('${l10n.paymentMethod}: ${getPdfValue('payment_method') == 'cash' ? l10n.cash : l10n.loan}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (getPdfValue('payment_method') != 'cash') pw.Text('${l10n.loanType}: ${getPdfValue('loan_type') == 'full' ? l10n.full : l10n.partial}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (getPdfValue('payment_method') != 'cash') pw.Text('${l10n.paidAmount}: ${_formatCurrency(invoice?['paid_amount'])} ${getPdfValue('currency')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (getPdfValue('payment_method') != 'cash') pw.Text('${l10n.remainingAmount}: ${_formatCurrency(invoice?['remaining_amount'])} ${getPdfValue('currency')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (getPdfValue('loading_time') != '-' && getPdfValue('loading_time').isNotEmpty) pw.Text('${l10n.loadingTime}: ${getPdfValue('loading_time')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                        if (getPdfValue('loading_time_en') != '-' && getPdfValue('loading_time_en').isNotEmpty) pw.Text('Loading (EN): ${getPdfValue('loading_time_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                      ]),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                pw.SizedBox(height: 12),
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
-                  child: pw.Row(children: [
-                    pw.Expanded(child: pw.Text('${l10n.customer}: ${getPdfValue('customer_name')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('${l10n.company}: ${getPdfValue('customer_company')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('${l10n.dischargeLocation}: ${getPdfValue('location') != '-' ? getPdfValue('location') : getPdfValue('customer_address')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                  ]),
-                ),
-                pw.SizedBox(height: 16),
-                pw.Table.fromTextArray(
-                  headers: [l10n.customerName, l10n.company, l10n.product, l10n.gender, l10n.size, l10n.thickness, l10n.weight, l10n.weightPerUnit, l10n.unitCount, l10n.totalWeight, l10n.unitPrice, l10n.totalPrice, l10n.discount, l10n.finalPrice],
-                  data: [
-                    [
-                      getPdfValue('customer_name'),
-                      getPdfValue('customer_company'),
-                      getPdfValue('product_name'),
-                      getPdfValue('gender'),
-                      getPdfValue('size'),
-                      getPdfValue('thickness'),
-                      displayTotalWeight,
-                      displayWeightPerUnit,
-                      getPdfValue('unit_count'),
-                      displayTotalWeight,
-                      _formatCurrency(invoice?['unit_price']),
-                      _formatCurrency(invoice?['total_price']),
-                      _formatCurrency(invoice?['discount']),
-                      '${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}',
-                    ],
-                  ],
-                  headerStyle: pw.TextStyle(font: ttf, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                  headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
-                  cellStyle: pw.TextStyle(font: ttf, fontSize: 8),
-                  cellAlignment: pw.Alignment.center,
-                  border: pw.TableBorder.symmetric(outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5), inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
-                ),
-                pw.SizedBox(height: 16),
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                    pw.Text('${l10n.loadingCost}: ${_formatCurrency(invoice?['loading_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('${l10n.transferCost}: ${_formatCurrency(invoice?['transfer_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('${l10n.clearanceCost}: ${_formatCurrency(invoice?['clearance_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                  ]),
-                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                    pw.Text('${l10n.totalPrice}: ${_formatCurrency(invoice?['total_price'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('${l10n.discount}: ${_formatCurrency(invoice?['discount'])}', style: pw.TextStyle(font: ttf, fontSize: 10)),
-                    pw.Text('${l10n.amountDue}: ${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
-                  ]),
-                ]),
-                pw.Spacer(),
-                pw.Divider(color: PdfColors.grey300, thickness: 0.5),
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                  pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                ]),
-              ],
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(14),
+                          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(10)),
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                            children: [
+                              pw.Expanded(child: pw.Text('${l10n.customer}: ${getPdfValue('customer_name')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
+                              pw.SizedBox(width: 12),
+                              pw.Expanded(child: pw.Text('${l10n.company}: ${getPdfValue('customer_company')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
+                              pw.SizedBox(width: 12),
+                              pw.Expanded(child: pw.Text('${l10n.dischargeLocation}: ${getPdfValue('location') != '-' ? getPdfValue('location') : getPdfValue('customer_address')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(height: 18),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(14),
+                          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(10)),
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                                pw.Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                                pw.SizedBox(height: 6),
+                                pw.Text('${l10n.persianDate}: ${getPdfValue('date')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('Date (EN): ${getPdfValue('date_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                              ]),
+                              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                                pw.Text('${l10n.paymentMethod}: ${getPdfValue('payment_method') == 'cash' ? l10n.cash : l10n.loan}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
+                                pw.SizedBox(height: 6),
+                                if (getPdfValue('loading_time') != '-' && getPdfValue('loading_time').isNotEmpty)
+                                  pw.Text('${l10n.loadingTime}: ${getPdfValue('loading_time')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                if (getPdfValue('loading_time_en') != '-' && getPdfValue('loading_time_en').isNotEmpty)
+                                  pw.Text('Loading (EN): ${getPdfValue('loading_time_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                              ]),
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(height: 18),
+                        pw.Container(
+                          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(10)),
+                          child: pw.Table.fromTextArray(
+                            border: pw.TableBorder.symmetric(outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5), inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+                            headerStyle: pw.TextStyle(font: ttf, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                            headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
+                            cellStyle: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.black),
+                            cellAlignment: pw.Alignment.center,
+                            headers: [
+                              l10n.invoiceNumberLabel,
+                              l10n.company,
+                              l10n.product,
+                              l10n.gender,
+                              l10n.size,
+                              l10n.thickness,
+                              'وزن فی خاده (kg)',
+                              l10n.unitCount,
+                              'مجموع وزن (ton)',
+                              l10n.unitPrice,
+                              l10n.totalPrice,
+                              l10n.discount,
+                              l10n.finalPrice,
+                              l10n.paymentMethod,
+                            ],
+                            data: [
+                              [
+                                invoiceNumber,
+                                getPdfValue('customer_company'),
+                                getPdfValue('product_name'),
+                                getPdfValue('gender'),
+                                getPdfValue('size'),
+                                getPdfValue('thickness'),
+                                displayWeightPerUnit,
+                                getPdfValue('unit_count'),
+                                displayTotalWeight,
+                                _formatCurrency(invoice?['unit_price']),
+                                _formatCurrency(invoice?['total_price']),
+                                _formatCurrency(invoice?['discount']),
+                                '${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}',
+                                getPdfValue('payment_method'),
+                              ],
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(height: 18),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(10)),
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                            children: [
+                              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                                pw.Text('${l10n.loadingCost}: ${_formatCurrency(invoice?['loading_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('${l10n.transferCost}: ${_formatCurrency(invoice?['transfer_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('${l10n.clearanceCost}: ${_formatCurrency(invoice?['clearance_cost'])}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                              ]),
+                              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                                pw.Text('${l10n.totalPrice}: ${_formatCurrency(invoice?['total_price'])}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
+                                pw.Text('${l10n.discount}: ${_formatCurrency(invoice?['discount'])}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
+                                pw.SizedBox(height: 6),
+                                pw.Text('${l10n.amountDue}: ${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                              ]),
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(height: 24),
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                              pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                              pw.SizedBox(height: 8),
+                              pw.Container(height: 1, width: 120, color: PdfColors.grey600),
+                            ]),
+                            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                              pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().day.toString().padLeft(2, '0')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                              pw.SizedBox(height: 8),
+                              pw.Container(height: 1, width: 140, color: PdfColors.grey600),
+                            ]),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    return pdf.save();
+  }
+
+  Future<void> _saveInvoicePdf(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
+    try {
+      final bytes = await _generateInvoicePdfBytes(invoice, invoiceNumber, l10n);
+      final filePath = await FilePicker.platform.saveFile(
+        dialogTitle: l10n.savePdf,
+        fileName: 'invoice_${invoiceNumber.replaceAll(' ', '_')}.pdf',
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+
+      if (filePath == null) {
+        return;
+      }
+
+      final file = File(filePath);
+      await file.writeAsBytes(bytes, flush: true);
+      _showSnackbar('${l10n.fileSaved}', Colors.green);
+    } catch (e) {
+      _showSnackbar('${l10n.errorPrintingInvoice}: $e', Colors.red);
+    }
+  }
+
+  Future<void> _printInvoicePdf(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
+    try {
+      final bytes = await _generateInvoicePdfBytes(invoice, invoiceNumber, l10n);
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => bytes,
+        name: 'invoice_${invoiceNumber.replaceAll(' ', '_')}.pdf',
+      );
+    } catch (e) {
+      _showSnackbar('${l10n.errorPrintingInvoice}: $e', Colors.red);
+    }
   }
 
   // ============================================
@@ -2752,7 +3954,27 @@ class _SalesPageState extends State<SalesPage> {
             ]),
           ],
         ),
-        ElevatedButton.icon(onPressed: _showAddSaleDialog, icon: const Icon(Icons.add_circle_outline), label: Text(l10n.addNewSale), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12))),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _importExcel,
+              icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
+              label: const Text('Import Excel', style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFCB001D)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: _showAddSaleDialog,
+              icon: const Icon(Icons.add_circle_outline),
+              label: Text(l10n.addNewSale),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -2871,11 +4093,33 @@ class _SalesPageState extends State<SalesPage> {
                 Expanded(flex: 1, child: Text(_formatCurrency(sale['final_price']), style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFCB001D)))),
                 Expanded(flex: 1, child: _buildReturnStatusCell(sale, l10n)),
                 Expanded(flex: 1, child: Text(sale['date'] ?? '-', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))),
-                Expanded(flex: 1, child: Row(children: [
-                  IconButton(onPressed: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale, l10n), icon: const Icon(Icons.visibility_outlined, color: Colors.blue)),
-                  IconButton(onPressed: () => _showEditSaleDialog(sale), icon: const Icon(Icons.edit_outlined, color: Colors.orange)),
-                  IconButton(onPressed: () => _deleteSale(sale), icon: const Icon(Icons.delete_outline, color: Colors.red))
-                ]))
+                Expanded(flex: 1, child: SizedBox(
+                  width: 104,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () => _showInvoiceModal(context, sale['invoice_number'] ?? '-', sale, l10n),
+                        icon: const Icon(Icons.visibility_outlined, color: Colors.blue),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                      ),
+                      IconButton(
+                        onPressed: () => _showEditSaleDialog(sale),
+                        icon: const Icon(Icons.edit_outlined, color: Colors.orange),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                      ),
+                      IconButton(
+                        onPressed: () => _deleteSale(sale),
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
+                  ),
+                ))
               ])
             )
           );

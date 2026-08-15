@@ -4,6 +4,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel;
+import 'dart:io';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -31,27 +34,416 @@ class _WastesPageState extends State<WastesPage> {
   String _formatWeightWithConversion(double weight) {
     if (weight <= 0) return '0';
     double tons = weight / 1000;
-    
-    // For numbers less than 1 ton, show 3 decimal places
     if (tons < 1) {
       return '${tons.toStringAsFixed(3)} تن';
     }
-    // For numbers 1 ton or more, show 2 decimal places
     return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
   }
 
-  // Format weight for table - always in tons
   String _getDisplayWeight(dynamic weight) {
     final value = double.tryParse(weight?.toString() ?? '0') ?? 0;
     return _formatWeightWithConversion(value);
   }
 
-  // Calculate total weight (weight × quantity) and convert to tons
   String _getTotalWeightDisplay(dynamic weight, dynamic quantity) {
     final w = double.tryParse(weight?.toString() ?? '0') ?? 0;
     final q = double.tryParse(quantity?.toString() ?? '0') ?? 0;
     final total = w * q;
     return _formatWeightWithConversion(total);
+  }
+
+  // ============ PERSIAN DIGIT CONVERSION HELPERS ============
+  String _convertPersianToEnglishDigits(String value) {
+    if (value.isEmpty) return value;
+    
+    const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    
+    String result = value;
+    for (int i = 0; i < 10; i++) {
+      result = result.replaceAll(persianDigits[i], englishDigits[i]);
+      result = result.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+    return result;
+  }
+
+  String _getCellValueDirect(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final cell = row[index];
+    if (cell == null) return '';
+    if (cell.value == null) return '';
+    
+    String value;
+    if (cell.value is String) {
+      value = (cell.value as String).trim();
+    } else if (cell.value is num) {
+      num val = cell.value as num;
+      value = val.toString();
+    } else {
+      value = cell.value.toString().trim();
+    }
+    
+    if (value.isNotEmpty) {
+      value = _convertPersianToEnglishDigits(value);
+    }
+    
+    return value;
+  }
+
+  double _parseNumber(String value) {
+    if (value.isEmpty) return 0;
+    String cleaned = value.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    if (cleaned.isEmpty) return 0;
+    try {
+      return double.parse(cleaned);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // ============ EXCEL IMPORT ============
+  Future<void> _importExcel() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFFCB001D)),
+              const SizedBox(height: 16),
+              const Text(
+                'در حال وارد کردن اکسل...',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _pickAndImportExcel();
+      
+      Navigator.pop(context);
+
+      if (result['success']) {
+        _showImportResultDialog(context, result);
+        await _loadWastes();
+      } else {
+        _showSnackbar(result['message'] ?? 'خطا در وارد کردن فایل', Colors.red);
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showSnackbar('خطا در وارد کردن: $e', Colors.red);
+    }
+  }
+
+  Future<Map<String, dynamic>> _pickAndImportExcel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result == null) {
+        return {'success': false, 'message': 'فایلی انتخاب نشد'};
+      }
+
+      final file = File(result.files.single.path!);
+      final bytes = await file.readAsBytes();
+      
+      try {
+        final excelFile = excel.Excel.decodeBytes(bytes);
+        final sheet = excelFile.tables[excelFile.tables.keys.first];
+        if (sheet == null) {
+          return {'success': false, 'message': 'فایل اکسل معتبر نیست'};
+        }
+        return await _parseExcelSheet(sheet);
+      } catch (e) {
+        return {'success': false, 'message': 'فایل اکسل خراب است یا فرمت آن پشتیبانی نمی‌شود'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'خطا در خواندن فایل: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
+    try {
+      List<Map<String, dynamic>> importedData = [];
+      int successCount = 0;
+      int skippedCount = 0;
+      List<String> errors = [];
+
+      // گرفتن هدرها از ردیف اول
+      final headersRow = sheet.rows.first;
+      List<String> headers = [];
+      for (var cell in headersRow) {
+        if (cell != null && cell.value != null) {
+          headers.add(cell.value.toString().trim());
+        }
+      }
+
+      print('📋 Headers: $headers');
+
+      // پیدا کردن ایندکس فیلدها
+      int invoiceNumberIndex = -1;
+      int dateIndex = -1;
+      int partyDetailsIndex = -1;
+      int wasteTypeIndex = -1;
+      int weightIndex = -1;
+      int quantityIndex = -1;
+      int valueIndex = -1;
+      int currencyIndex = -1;
+      int exchangeRateIndex = -1;
+      int afnEquivalentIndex = -1;
+      int descriptionIndex = -1;
+
+      for (int i = 0; i < headers.length; i++) {
+        String h = headers[i];
+        String hLower = h.toLowerCase();
+        
+        if (hLower.contains('شماره') || hLower.contains('فاکتور') || hLower.contains('invoice')) {
+          invoiceNumberIndex = i;
+        } else if (hLower.contains('تاریخ') || hLower.contains('date')) {
+          dateIndex = i;
+        } else if (hLower.contains('طرف') || hLower.contains('خریدار') || hLower.contains('فروشنده') || hLower.contains('party')) {
+          partyDetailsIndex = i;
+        } else if (hLower.contains('نوع ضایعات') || hLower.contains('ضایعات') || hLower.contains('waste') || hLower.contains('type')) {
+          wasteTypeIndex = i;
+        } else if (hLower.contains('وزن') && !hLower.contains('ناخالص') && !hLower.contains('خالص') || hLower.contains('weight')) {
+          weightIndex = i;
+        } else if (hLower.contains('تعداد') || hLower.contains('quantity') || hLower.contains('quantity')) {
+          quantityIndex = i;
+        } else if (hLower.contains('ارزش') || hLower.contains('مبلغ') || hLower.contains('value') || hLower.contains('amount')) {
+          valueIndex = i;
+        } else if (hLower.contains('ارز') || hLower.contains('واحد پول') || hLower.contains('currency')) {
+          currencyIndex = i;
+        } else if (hLower.contains('نرخ') || hLower.contains('exchange') || hLower.contains('rate')) {
+          exchangeRateIndex = i;
+        } else if (hLower.contains('معادل') || hLower.contains('afn') || hLower.contains('افغانی')) {
+          afnEquivalentIndex = i;
+        } else if (hLower.contains('توضیحات') || hLower.contains('شرح') || hLower.contains('description')) {
+          descriptionIndex = i;
+        }
+      }
+
+      print('📋 InvoiceNumber: $invoiceNumberIndex, Date: $dateIndex, Party: $partyDetailsIndex');
+
+      // چک کردن فیلدهای REQUIRED
+      if (dateIndex == -1) {
+        return {
+          'success': false,
+          'message': 'فیلد مورد نیاز پیدا نشد: تاریخ'
+        };
+      }
+
+      // پردازش ردیف‌ها
+      for (int i = 1; i < sheet.rows.length; i++) {
+        final row = sheet.rows[i];
+        
+        bool hasData = false;
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty && val != '0' && val != '-' && val != '\$') {
+              hasData = true;
+              break;
+            }
+          }
+        }
+        if (!hasData) continue;
+
+        try {
+          String invoiceNumber = invoiceNumberIndex != -1 ? _getCellValueDirect(row, invoiceNumberIndex) : '';
+          String date = _getCellValueDirect(row, dateIndex);
+          String partyDetails = partyDetailsIndex != -1 ? _getCellValueDirect(row, partyDetailsIndex) : '';
+          String wasteType = wasteTypeIndex != -1 ? _getCellValueDirect(row, wasteTypeIndex) : '';
+          String weightStr = weightIndex != -1 ? _getCellValueDirect(row, weightIndex) : '0';
+          String quantityStr = quantityIndex != -1 ? _getCellValueDirect(row, quantityIndex) : '0';
+          String valueStr = valueIndex != -1 ? _getCellValueDirect(row, valueIndex) : '0';
+          String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'USD';
+          String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValueDirect(row, exchangeRateIndex) : '1';
+          String afnEquivalentStr = afnEquivalentIndex != -1 ? _getCellValueDirect(row, afnEquivalentIndex) : '0';
+          String description = descriptionIndex != -1 ? _getCellValueDirect(row, descriptionIndex) : '';
+
+          // پاک کردن علامت‌های اضافی
+          weightStr = weightStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          quantityStr = quantityStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          valueStr = valueStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          exchangeRateStr = exchangeRateStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          afnEquivalentStr = afnEquivalentStr.replaceAll(RegExp(r'[$,]'), '').trim();
+
+          print('📝 Row ${i+1}: Invoice="$invoiceNumber", Date="$date", Party="$partyDetails"');
+
+          if (date.isEmpty) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': تاریخ الزامی است');
+            continue;
+          }
+
+          // اگر شماره فاکتور خالی بود، تولید کن
+          if (invoiceNumber.isEmpty) {
+            final nextNumber = await _db.getNextWasteInvoiceNumber();
+            invoiceNumber = nextNumber.toString().padLeft(5, '0');
+          }
+
+          // چک کردن تکراری بودن شماره فاکتور
+          final existing = await _db.getWasteRecords();
+          bool duplicate = existing.any((e) => e['invoice_number'] == invoiceNumber);
+          if (duplicate) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': شماره فاکتور "' + invoiceNumber + '" تکراری است');
+            continue;
+          }
+
+          double weight = _parseNumber(weightStr);
+          double quantity = _parseNumber(quantityStr);
+          double value = _parseNumber(valueStr);
+          double exchangeRate = _parseNumber(exchangeRateStr);
+          double afnEquivalent = _parseNumber(afnEquivalentStr);
+
+          // اگر معادل افغانی محاسبه نشده بود
+          String currencyFinal = currency == 'AFN' || currency == 'افغانی' ? 'AFN' : 'USD';
+          if (afnEquivalent <= 0 && value > 0) {
+            if (currencyFinal == 'USD') {
+              afnEquivalent = value * exchangeRate;
+            } else {
+              afnEquivalent = value;
+            }
+          }
+
+          // تاریخ
+          if (date.isEmpty) {
+            date = PersianDateConverter.gregorianToJalali(DateTime.now());
+          }
+          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+          // ساخت داده
+          Map<String, dynamic> waste = {
+            'invoice_number': invoiceNumber,
+            'date': date,
+            'date_en': dateEn,
+            'party_details': partyDetails,
+            'waste_type': wasteType,
+            'weight': weight,
+            'quantity': quantity > 0 ? quantity : 1,
+            'value': value,
+            'currency': currencyFinal,
+            'exchange_rate': exchangeRate > 0 ? exchangeRate : 1,
+            'afn_equivalent': afnEquivalent > 0 ? afnEquivalent : (value * exchangeRate),
+            'description': description,
+          };
+
+          print('📦 Inserting: ${waste['invoice_number']}');
+          
+          int result = await _db.insertWasteRecord(waste);
+          if (result != -1) {
+            successCount++;
+            importedData.add(waste);
+            print('✅ Row ${i+1} imported!');
+          } else {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': خطا در ذخیره‌سازی');
+          }
+
+        } catch (e) {
+          skippedCount++;
+          errors.add('ردیف ' + (i+1).toString() + ': خطا - ' + e.toString());
+          print('❌ Error: $e');
+        }
+      }
+
+      return {
+        'success': true,
+        'successCount': successCount,
+        'skippedCount': skippedCount,
+        'importedData': importedData,
+        'errors': errors,
+        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+      };
+
+    } catch (e) {
+      print('❌ Error: $e');
+      return {
+        'success': false,
+        'message': 'خطا در پردازش فایل: $e',
+      };
+    }
+  }
+
+  void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('نتیجه وارد کردن'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✅ ${result['successCount']} رکورد با موفقیت وارد شد',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                if (result['skippedCount'] > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '⚠️ ${result['skippedCount']} رکورد نادیده گرفته شد',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (result['errors'] != null && result['errors'].isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'خطاها:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    height: 100,
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: (result['errors'] as List<String>)
+                            .take(5)
+                            .map((error) => Text(
+                                  error,
+                                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                  if ((result['errors'] as List<String>).length > 5)
+                    Text(
+                      'و ${(result['errors'] as List<String>).length - 5} خطای دیگر...',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('باشه'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -97,6 +489,9 @@ class _WastesPageState extends State<WastesPage> {
     }
   }
 
+  // ============================================
+  // WASTE DIALOG - EXISTING CODE
+  // ============================================
   Future<void> _showWasteDialog({Map<String, dynamic>? waste}) async {
     final l10n = AppLocalizations.of(context)!;
     final dateController = TextEditingController(text: waste?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate());
@@ -117,10 +512,8 @@ class _WastesPageState extends State<WastesPage> {
       final rate = double.tryParse(priceRateController.text) ?? 1;
       
       if (selectedCurrency == 'AFN') {
-        // AFN selected: value / rate = USD equivalent
         equivalentController.text = value > 0 && rate > 0 ? (value / rate).toStringAsFixed(2) : '';
       } else {
-        // USD selected: value * rate = AFN equivalent
         equivalentController.text = value > 0 && rate > 0 ? (value * rate).toStringAsFixed(0) : '';
       }
     }
@@ -605,6 +998,8 @@ class _WastesPageState extends State<WastesPage> {
     return await pdf.save();
   }
 
+  // ==================== UI BUILDERS ====================
+
   Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -630,15 +1025,30 @@ class _WastesPageState extends State<WastesPage> {
             ),
           ],
         ),
-        ElevatedButton.icon(
-          onPressed: () => _showWasteDialog(),
-          icon: const Icon(Icons.add_circle_outline),
-          label: Text(l10n.addWasteRecord),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFCB001D),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _importExcel,
+              icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
+              label: const Text('Import Excel', style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFCB001D)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: () => _showWasteDialog(),
+              icon: const Icon(Icons.add_circle_outline),
+              label: Text(l10n.addWasteRecord),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              ),
+            ),
+          ],
         ),
       ],
     );

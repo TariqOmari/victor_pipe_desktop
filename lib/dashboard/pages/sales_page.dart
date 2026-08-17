@@ -3302,141 +3302,124 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
   }
 
   Widget _buildInvoiceTableWithData(Map<String, dynamic> invoice, AppLocalizations l10n) {
-    const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
-    const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
-    
-    String productName = invoice['product_name']?.toString() ?? '-';
-    String size = invoice['size']?.toString() ?? '-';
-    String thickness = invoice['thickness']?.toString() ?? '-';
-    String weightPerUnit = invoice['weight_per_unit']?.toString() ?? '0';
-    String unitCount = invoice['unit_count']?.toString() ?? '0';
-    String totalWeight = invoice['total_weight']?.toString() ?? '0';
-    String unit = invoice['unit']?.toString() ?? 'کیلوگرم';
-    String gender = invoice['gender']?.toString() ?? '-';
-    
-    // وزن فی خاده - ALWAYS in KG
-    String displayWeightPerUnit = _formatRawWeightForInvoice(unit, double.tryParse(weightPerUnit) ?? 0);
-    // مجموع وزن - ALWAYS in TONS
-    String displayTotalWeight = _formatWeightForInvoice(unit, double.tryParse(totalWeight) ?? 0);
+  const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
+  const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
+  
+  String productName = invoice['product_name']?.toString() ?? '-';
+  String size = invoice['size']?.toString() ?? '-';
+  String thickness = invoice['thickness']?.toString() ?? '-';
+  String weightPerUnit = invoice['weight_per_unit']?.toString() ?? '0';
+  String unitCount = invoice['unit_count']?.toString() ?? '0';
+  String totalWeight = invoice['total_weight']?.toString() ?? '0';
+  String unit = invoice['unit']?.toString() ?? 'کیلوگرم';
+  String gender = invoice['gender']?.toString() ?? '-';
+  
+  String displayWeightPerUnit = _formatRawWeightForInvoice(unit, double.tryParse(weightPerUnit) ?? 0);
+  String displayTotalWeight = _formatWeightForInvoice(unit, double.tryParse(totalWeight) ?? 0);
 
-    final columnHeaders = [
-      'شماره', 
-      'نوع تولید',
-      'سایز', 
-      'ضخامت\nmm', 
-      'وزن فی\nخاده (kg)', 
-      'تعداد خاده', 
-      'مجموع وزن (ton)', 
-      'نوع آهن', 
-      'تعداد بندل ها'
-    ];
+  final columnHeaders = [
+    'شماره', 
+    'نوع تولید',
+    'سایز', 
+    'ضخامت\nmm', 
+    'وزن فی\nخاده (kg)', 
+    'تعداد خاده', 
+    'مجموع وزن (ton)',
+  ];
 
-    List<List<String>> tableData = [
-      ['1', productName, size, thickness, displayWeightPerUnit, unitCount, displayTotalWeight, gender, 'تعداد (1 بندل تکمیل) و (0 بندل نا تکمیل)'],
-    ];
+  List<List<String>> tableData = [
+    ['1', productName, size, thickness, displayWeightPerUnit, unitCount, displayTotalWeight],
+  ];
 
-    while (tableData.length < 8) {
-      tableData.add(['', '', '', '', '', '', '', '', '']);
-    }
+  while (tableData.length < 10) {
+    tableData.add(['', '', '', '', '', '', '']);
+  }
 
-    return Table(
-      border: TableBorder.all(color: Colors.black, width: 1),
-      columnWidths: const {
-        0: FixedColumnWidth(40),
-        1: FixedColumnWidth(70),
-        2: FixedColumnWidth(60),
-        3: FixedColumnWidth(55),
-        4: FixedColumnWidth(65),
-        5: FixedColumnWidth(60),
-        6: FixedColumnWidth(90),
-        7: FixedColumnWidth(65),
-        8: FlexColumnWidth(),
-      },
-      children: [
-        TableRow(
-          decoration: BoxDecoration(color: Colors.blue[100]),
-          children: columnHeaders.map((title) => Container(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+  return Table(
+    border: TableBorder.all(color: Colors.black, width: 1),
+    columnWidths: const {
+      0: FixedColumnWidth(40),
+      1: FixedColumnWidth(90),
+      2: FixedColumnWidth(70),
+      3: FixedColumnWidth(65),
+      4: FixedColumnWidth(75),
+      5: FixedColumnWidth(70),
+      6: FixedColumnWidth(100),
+    },
+    children: [
+      TableRow(
+        decoration: BoxDecoration(color: Colors.blue[100]),
+        children: columnHeaders.map((title) => Container(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+          alignment: Alignment.center,
+          child: Text(title, style: headerFont, textAlign: TextAlign.center),
+        )).toList(),
+      ),
+      ...tableData.map((row) => TableRow(
+        children: row.map((cellValue) => Container(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          alignment: Alignment.center,
+          child: Text(cellValue, style: bodyFont, textAlign: TextAlign.center),
+        )).toList(),
+      )),
+      TableRow(
+        decoration: BoxDecoration(color: Colors.blue[100]),
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
             alignment: Alignment.center,
-            child: Text(title, style: headerFont, textAlign: TextAlign.center),
-          )).toList(),
-        ),
-        ...tableData.map((row) => TableRow(
-          children: row.map((cellValue) => Container(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: const Text('مجموعه :', style: headerFont),
+          ),
+          ...List.generate(2, (_) => const SizedBox.shrink()),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
             alignment: Alignment.center,
-            child: Text(cellValue, style: bodyFont, textAlign: TextAlign.center),
-          )).toList(),
-        )),
-        TableRow(
-          decoration: BoxDecoration(color: Colors.blue[100]),
+            child: Text(displayTotalWeight, style: headerFont),
+          ),
+          const SizedBox.shrink(),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            alignment: Alignment.center,
+            child: Text(unitCount, style: headerFont),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            alignment: Alignment.center,
+            child: Text(displayTotalWeight, style: headerFont),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+ Widget _buildInvoiceSignatureRow() {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(right: 60.0),
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: const Text('مجموعه :', style: headerFont),
-            ),
-            ...List.generate(4, (_) => const SizedBox.shrink()),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: Text(unitCount, style: headerFont),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: Text(displayTotalWeight, style: headerFont),
-            ),
-            const SizedBox.shrink(),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: const Text('تعداد (1 بندل تکمیل) و (0 بندل نا تکمیل)', style: headerFont),
-            ),
+            const Text('امضا مسئول', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Container(width: 140, height: 1.2, color: Colors.black),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildInvoiceSignatureRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 60.0),
-          child: Column(
-            children: [
-              const Text('امضا مسئول', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Container(width: 140, height: 1.2, color: Colors.black),
-            ],
-          ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(left: 60.0),
+        child: Column(
+          children: [
+            const Text('امضا', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Container(width: 140, height: 1.2, color: Colors.black),
+          ],
         ),
-        Transform.rotate(
-          angle: -0.15,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.blue[600]!, width: 2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              'QUALITY & QUANTITY\nCHECKED',
-              style: TextStyle(
-                color: Colors.blue[600],
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'sans-serif',
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
+      ),
+    ],
+  );
+}
   Widget _buildInvoiceDriverSection() {
     return Container(
       decoration: BoxDecoration(

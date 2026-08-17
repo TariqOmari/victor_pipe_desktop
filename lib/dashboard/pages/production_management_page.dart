@@ -930,14 +930,34 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
   Widget _buildHeaderCell(String text, double width) {
     return SizedBox(
       width: width,
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 9, color: Color(0xFF1A1A2E)), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+      child: Text(
+        text, 
+        style: const TextStyle(
+          fontWeight: FontWeight.bold, 
+          fontSize: 9, 
+          color: Color(0xFF1A1A2E)
+        ), 
+        textAlign: TextAlign.center, 
+        maxLines: 2, 
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 
   Widget _buildDataCell(String text, double width, {bool isBold = false, bool isRed = false}) {
     return SizedBox(
       width: width,
-      child: Text(text, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: isRed ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E), fontSize: 9), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+      child: Text(
+        text, 
+        style: TextStyle(
+          fontWeight: isBold ? FontWeight.bold : FontWeight.normal, 
+          color: isRed ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E), 
+          fontSize: 9
+        ), 
+        textAlign: TextAlign.center, 
+        maxLines: 2, 
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 
@@ -968,14 +988,23 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 12),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600)),
+          Icon(icon, color: color, size: 10),
+          const SizedBox(width: 2),
+          Text(
+            label, 
+            style: TextStyle(
+              color: color, 
+              fontSize: 8, 
+              fontWeight: FontWeight.w600
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -991,7 +1020,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     
     if (isSold && availableStock <= 0) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.grey.withOpacity(0.12),
           borderRadius: BorderRadius.circular(10),
@@ -1000,16 +1029,17 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
         child: Text(
           'فروخته شده',
           style: const TextStyle(
-            fontSize: 8,
+            fontSize: 7,
             fontWeight: FontWeight.w600,
             color: Colors.grey,
           ),
+          overflow: TextOverflow.ellipsis,
         ),
       );
     }
     
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       decoration: BoxDecoration(
         color: availableStock > 0 ? Colors.green.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
         borderRadius: BorderRadius.circular(10),
@@ -1025,471 +1055,472 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
           Icon(
             availableStock > 0 ? Icons.check_circle : Icons.warning_amber_rounded, 
             color: availableStock > 0 ? Colors.green : Colors.orange, 
-            size: 10
+            size: 8
           ),
           const SizedBox(width: 2),
           Text(
             availableStock > 0 ? '$stockDisplay موجود' : 'موجودی: $stockDisplay',
             style: TextStyle(
-              fontSize: 8,
+              fontSize: 7,
               fontWeight: FontWeight.w600,
               color: availableStock > 0 ? Colors.green : Colors.orange,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
   }
 
-void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String, dynamic>? product}) {
-  final isEditing = product != null;
-  
-  // Field controllers
-  final productionTypeController = TextEditingController(text: product?['production_type']?.toString() ?? '');
-  final sizeController = TextEditingController(text: product?['size']?.toString() ?? '');
-  final thicknessController = TextEditingController(text: product?['thickness']?.toString() ?? '');
-  final lengthController = TextEditingController(text: product?['length']?.toString() ?? '');
-  final rawCountController = TextEditingController(text: product?['raw_count']?.toString() ?? '');
-  final rawWeightController = TextEditingController(text: product?['raw_weight']?.toString() ?? '');
-  final totalWeightController = TextEditingController(text: product?['total_weight']?.toString() ?? '0');
-  final dateController = TextEditingController(text: product?['production_date']?.toString() ?? '');
-  final descriptionController = TextEditingController(text: product?['description']?.toString() ?? '');
+  void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String, dynamic>? product}) {
+    final isEditing = product != null;
+    
+    // Field controllers
+    final productionTypeController = TextEditingController(text: product?['production_type']?.toString() ?? '');
+    final sizeController = TextEditingController(text: product?['size']?.toString() ?? '');
+    final thicknessController = TextEditingController(text: product?['thickness']?.toString() ?? '');
+    final lengthController = TextEditingController(text: product?['length']?.toString() ?? '');
+    final rawCountController = TextEditingController(text: product?['raw_count']?.toString() ?? '');
+    final rawWeightController = TextEditingController(text: product?['raw_weight']?.toString() ?? '');
+    final totalWeightController = TextEditingController(text: product?['total_weight']?.toString() ?? '0');
+    final dateController = TextEditingController(text: product?['production_date']?.toString() ?? '');
+    final descriptionController = TextEditingController(text: product?['description']?.toString() ?? '');
 
-  String? selectedEnglishDate = product?['production_date_en']?.toString();
-  String? selectedUnit = product?['unit']?.toString() ?? 'متر';
-  String? selectedStatus = product?['status']?.toString() ?? 'در حال تولید';
+    String? selectedEnglishDate = product?['production_date_en']?.toString();
+    String? selectedUnit = product?['unit']?.toString() ?? 'متر';
+    String? selectedStatus = product?['status']?.toString() ?? 'در حال تولید';
 
-  void _calculateTotalWeight() {
-    final rawCount = int.tryParse(rawCountController.text) ?? 0;
-    final rawWeight = double.tryParse(rawWeightController.text) ?? 0;
-    final total = rawCount * rawWeight;
-    totalWeightController.text = total > 0 ? total.toStringAsFixed(2) : '0';
-  }
+    void _calculateTotalWeight() {
+      final rawCount = int.tryParse(rawCountController.text) ?? 0;
+      final rawWeight = double.tryParse(rawWeightController.text) ?? 0;
+      final total = rawCount * rawWeight;
+      totalWeightController.text = total > 0 ? total.toStringAsFixed(2) : '0';
+    }
 
-  showDialog(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setDialogState) {
-        double rawWeight = double.tryParse(rawWeightController.text) ?? 0;
-        int rawCount = int.tryParse(rawCountController.text) ?? 0;
-        double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
-        
-        // Check if unit is weight-based
-        bool isWeightUnit = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg' || 
-                           selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton';
-        
-        // Convert total weight to tons if it's in kg
-        String totalWeightDisplay;
-        String totalWeightInTons;
-        String rawWeightDisplay;
-        
-        if (isWeightUnit) {
-          // Raw weight always in kg
-          rawWeightDisplay = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
-          // Total weight in tons
-          double tons = totalWeight / 1000;
-          totalWeightInTons = tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
-          totalWeightDisplay = '$totalWeightInTons تن';
-        } else {
-          rawWeightDisplay = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $selectedUnit';
-          totalWeightDisplay = '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1)} $selectedUnit';
-          totalWeightInTons = totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1);
-        }
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          double rawWeight = double.tryParse(rawWeightController.text) ?? 0;
+          int rawCount = int.tryParse(rawCountController.text) ?? 0;
+          double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+          
+          // Check if unit is weight-based
+          bool isWeightUnit = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg' || 
+                             selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton';
+          
+          // Convert total weight to tons if it's in kg
+          String totalWeightDisplay;
+          String totalWeightInTons;
+          String rawWeightDisplay;
+          
+          if (isWeightUnit) {
+            // Raw weight always in kg
+            rawWeightDisplay = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
+            // Total weight in tons
+            double tons = totalWeight / 1000;
+            totalWeightInTons = tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
+            totalWeightDisplay = '$totalWeightInTons تن';
+          } else {
+            rawWeightDisplay = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $selectedUnit';
+            totalWeightDisplay = '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1)} $selectedUnit';
+            totalWeightInTons = totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1);
+          }
 
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text(isEditing ? l10n.editProductionRecord : l10n.addProductionRecord),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            content: SizedBox(
-              width: 600,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 1. نوع تولید (FIRST FIELD - Required)
-                    TextField(
-                      controller: productionTypeController,
-                      decoration: InputDecoration(
-                        labelText: 'نوع تولید *',
-                        border: const OutlineInputBorder(), 
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 2. سایز
-                    TextField(
-                      controller: sizeController,
-                      decoration: InputDecoration(
-                        labelText: 'سایز',
-                        border: const OutlineInputBorder(), 
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 3. ضخامت & 4. طول - Row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: thicknessController,
-                            decoration: InputDecoration(
-                              labelText: 'ضخامت',
-                              border: const OutlineInputBorder(), 
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: lengthController,
-                            decoration: InputDecoration(
-                              labelText: 'طول',
-                              border: const OutlineInputBorder(), 
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 5. تعداد خاده & 6. وزن فی خاده - Row (Required)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: rawCountController,
-                            decoration: InputDecoration(
-                              labelText: 'تعداد خاده *',
-                              border: const OutlineInputBorder(), 
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => setDialogState(() {
-                              _calculateTotalWeight();
-                              setDialogState(() {});
-                            }),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: rawWeightController,
-                            decoration: InputDecoration(
-                              labelText: 'وزن فی خاده * (کیلوگرم)', 
-                              border: const OutlineInputBorder(), 
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              helperText: 'همیشه بر حسب کیلوگرم وارد کنید',
-                              helperStyle: const TextStyle(fontSize: 9, color: Colors.grey),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (_) => setDialogState(() {
-                              _calculateTotalWeight();
-                              setDialogState(() {});
-                            }),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 7. مجموع وزن (Auto-calculated, Read-only) - Show in TONS
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCB001D).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: const Color(0xFFCB001D).withOpacity(0.2),
-                          width: 1,
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: Text(isEditing ? l10n.editProductionRecord : l10n.addProductionRecord),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              content: SizedBox(
+                width: 600,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 1. نوع تولید (FIRST FIELD - Required)
+                      TextField(
+                        controller: productionTypeController,
+                        decoration: InputDecoration(
+                          labelText: 'نوع تولید *',
+                          border: const OutlineInputBorder(), 
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 8),
+                      
+                      // 2. سایز
+                      TextField(
+                        controller: sizeController,
+                        decoration: InputDecoration(
+                          labelText: 'سایز',
+                          border: const OutlineInputBorder(), 
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // 3. ضخامت & 4. طول - Row
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.calculate, color: Color(0xFFCB001D), size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'مجموع وزن',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1A1A2E),
-                                ),
+                          Expanded(
+                            child: TextField(
+                              controller: thicknessController,
+                              decoration: InputDecoration(
+                                labelText: 'ضخامت',
+                                border: const OutlineInputBorder(), 
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
-                              const Spacer(),
-                              if (totalWeight > 0 && isWeightUnit) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCB001D).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    totalWeightDisplay,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFFCB001D),
-                                    ),
-                                  ),
-                                ),
-                              ] else if (totalWeight > 0) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCB001D).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    totalWeightDisplay,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFFCB001D),
-                                    ),
-                                  ),
-                                ),
-                              ] else ...[
-                                const Text(
-                                  '0',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          if (totalWeight > 0 && isWeightUnit) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: Colors.grey.withOpacity(0.3),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '$totalWeight kg',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCB001D).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: const Color(0xFFCB001D).withOpacity(0.3),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '$totalWeightInTons تن',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFFCB001D),
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
-                          ],
-                          const SizedBox(height: 4),
-                          Text(
-                            'محاسبه خودکار: تعداد خاده × وزن فی خاده',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.grey.shade600,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: lengthController,
+                              decoration: InputDecoration(
+                                labelText: 'طول',
+                                border: const OutlineInputBorder(), 
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 8. واحد & 9. تاریخ - Row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            decoration: InputDecoration(
-                              labelText: 'واحد *', 
-                              border: const OutlineInputBorder(), 
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const SizedBox(height: 8),
+                      
+                      // 5. تعداد خاده & 6. وزن فی خاده - Row (Required)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: rawCountController,
+                              decoration: InputDecoration(
+                                labelText: 'تعداد خاده *',
+                                border: const OutlineInputBorder(), 
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(() {
+                                _calculateTotalWeight();
+                                setDialogState(() {});
+                              }),
                             ),
-                            value: selectedUnit,
-                            items: const [
-                              DropdownMenuItem(value: 'متر', child: Text('متر')),
-                              DropdownMenuItem(value: 'عدد', child: Text('عدد')),
-                              DropdownMenuItem(value: 'کیلوگرم', child: Text('کیلوگرم')),
-                              DropdownMenuItem(value: 'تن', child: Text('تن')),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: rawWeightController,
+                              decoration: InputDecoration(
+                                labelText: 'وزن فی خاده * (کیلوگرم)', 
+                                border: const OutlineInputBorder(), 
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                helperText: 'همیشه بر حسب کیلوگرم وارد کنید',
+                                helperStyle: const TextStyle(fontSize: 9, color: Colors.grey),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setDialogState(() {
+                                _calculateTotalWeight();
+                                setDialogState(() {});
+                              }),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // 7. مجموع وزن (Auto-calculated, Read-only) - Show in TONS
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCB001D).withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.calculate, color: Color(0xFFCB001D), size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'مجموع وزن',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF1A1A2E),
+                                  ),
+                                ),
+                                const Spacer(),
+                                if (totalWeight > 0 && isWeightUnit) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCB001D).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      totalWeightDisplay,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFCB001D),
+                                      ),
+                                    ),
+                                  ),
+                                ] else if (totalWeight > 0) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCB001D).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      totalWeightDisplay,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFCB001D),
+                                      ),
+                                    ),
+                                  ),
+                                ] else ...[
+                                  const Text(
+                                    '0',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (totalWeight > 0 && isWeightUnit) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: Colors.grey.withOpacity(0.3),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '$totalWeight kg',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCB001D).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: const Color(0xFFCB001D).withOpacity(0.3),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '$totalWeightInTons تن',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFFCB001D),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
-                            onChanged: (value) => setDialogState(() {
-                              selectedUnit = value;
-                              _calculateTotalWeight();
-                              setDialogState(() {});
-                            }),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: dateController,
-                            decoration: InputDecoration(
-                              labelText: 'تاریخ *', 
-                              border: const OutlineInputBorder(), 
-                              suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18), 
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            const SizedBox(height: 4),
+                            Text(
+                              'محاسبه خودکار: تعداد خاده × وزن فی خاده',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
-                            readOnly: true,
-                            onTap: () async {
-                              DateTime? picked = await showDatePicker(
-                                context: context, 
-                                initialDate: DateTime.now(), 
-                                firstDate: DateTime(2020), 
-                                lastDate: DateTime(2030)
-                              );
-                              if (picked != null) {
-                                final persianDate = PersianDateConverter.gregorianToJalali(picked);
-                                final englishDate = PersianDateConverter.getEnglishDate(picked);
-                                setDialogState(() {
-                                  dateController.text = persianDate;
-                                  selectedEnglishDate = englishDate;
-                                });
-                              }
-                            },
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 10. وضعیت
-                    DropdownButtonFormField<String>(
-                      decoration: InputDecoration(
-                        labelText: 'وضعیت', 
-                        border: const OutlineInputBorder(), 
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
-                      value: selectedStatus,
-                      items: const [
-                        DropdownMenuItem(value: 'در حال تولید', child: Text('در حال تولید')),
-                        DropdownMenuItem(value: 'تکمیل شده', child: Text('تکمیل شده')),
-                        DropdownMenuItem(value: 'در انتظار', child: Text('در انتظار')),
-                      ],
-                      onChanged: (value) => setDialogState(() => selectedStatus = value),
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // 11. توضیحات
-                    TextField(
-                      controller: descriptionController, 
-                      maxLines: 2, 
-                      decoration: InputDecoration(
-                        labelText: 'توضیحات', 
-                        border: const OutlineInputBorder(), 
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const SizedBox(height: 8),
+                      
+                      // 8. واحد & 9. تاریخ - Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              decoration: InputDecoration(
+                                labelText: 'واحد *', 
+                                border: const OutlineInputBorder(), 
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              value: selectedUnit,
+                              items: const [
+                                DropdownMenuItem(value: 'متر', child: Text('متر')),
+                                DropdownMenuItem(value: 'عدد', child: Text('عدد')),
+                                DropdownMenuItem(value: 'کیلوگرم', child: Text('کیلوگرم')),
+                                DropdownMenuItem(value: 'تن', child: Text('تن')),
+                              ],
+                              onChanged: (value) => setDialogState(() {
+                                selectedUnit = value;
+                                _calculateTotalWeight();
+                                setDialogState(() {});
+                              }),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: dateController,
+                              decoration: InputDecoration(
+                                labelText: 'تاریخ *', 
+                                border: const OutlineInputBorder(), 
+                                suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18), 
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                              readOnly: true,
+                              onTap: () async {
+                                DateTime? picked = await showDatePicker(
+                                  context: context, 
+                                  initialDate: DateTime.now(), 
+                                  firstDate: DateTime(2020), 
+                                  lastDate: DateTime(2030)
+                                );
+                                if (picked != null) {
+                                  final persianDate = PersianDateConverter.gregorianToJalali(picked);
+                                  final englishDate = PersianDateConverter.getEnglishDate(picked);
+                                  setDialogState(() {
+                                    dateController.text = persianDate;
+                                    selectedEnglishDate = englishDate;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      
+                      // 10. وضعیت
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'وضعیت', 
+                          border: const OutlineInputBorder(), 
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        value: selectedStatus,
+                        items: const [
+                          DropdownMenuItem(value: 'در حال تولید', child: Text('در حال تولید')),
+                          DropdownMenuItem(value: 'تکمیل شده', child: Text('تکمیل شده')),
+                          DropdownMenuItem(value: 'در انتظار', child: Text('در انتظار')),
+                        ],
+                        onChanged: (value) => setDialogState(() => selectedStatus = value),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // 11. توضیحات
+                      TextField(
+                        controller: descriptionController, 
+                        maxLines: 2, 
+                        decoration: InputDecoration(
+                          labelText: 'توضیحات', 
+                          border: const OutlineInputBorder(), 
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888)))
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Validate required fields
+                    if (productionTypeController.text.isEmpty || 
+                        rawCountController.text.isEmpty || 
+                        selectedUnit == null || 
+                        dateController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('لطفاً تمام فیلدهای الزامی (*) را پر کنید'), 
+                          backgroundColor: Colors.red
+                        )
+                      );
+                      return;
+                    }
+
+                    final rawCount = int.tryParse(rawCountController.text) ?? 0;
+                    final rawWeight = double.tryParse(rawWeightController.text) ?? 0;
+                    final totalWeight = rawCount * rawWeight;
+
+                    final payload = {
+                      'production_type': productionTypeController.text,
+                      'size': sizeController.text,
+                      'thickness': thicknessController.text,
+                      'length': lengthController.text,
+                      'raw_count': rawCount,
+                      'raw_weight': rawWeight,
+                      'total_weight': totalWeight.toDouble(),
+                      'unit': selectedUnit,
+                      'production_date': dateController.text,
+                      'production_date_en': selectedEnglishDate ?? '',
+                      'status': selectedStatus ?? 'در حال تولید',
+                      'description': descriptionController.text,
+                      'remaining_stock': totalWeight.toDouble(),
+                    };
+
+                    Navigator.pop(context);
+                    final result = isEditing 
+                      ? await _db.updateProducedProduct(product!['id'], payload) 
+                      : await _db.insertProducedProduct(payload);
+                    
+                    if (!mounted) return;
+                    if (result != -1) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(isEditing ? l10n.productUpdatedSuccess : l10n.productAddedSuccess), 
+                          backgroundColor: Colors.green
+                        )
+                      );
+                      _loadData();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(l10n.errorSavingProduct), 
+                          backgroundColor: Colors.red
+                        )
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D)),
+                  child: Text(isEditing ? l10n.update : l10n.save),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context), 
-                child: Text(l10n.cancel, style: const TextStyle(color: Color(0xFF888888)))
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  // Validate required fields
-                  if (productionTypeController.text.isEmpty || 
-                      rawCountController.text.isEmpty || 
-                      selectedUnit == null || 
-                      dateController.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('لطفاً تمام فیلدهای الزامی (*) را پر کنید'), 
-                        backgroundColor: Colors.red
-                      )
-                    );
-                    return;
-                  }
-
-                  final rawCount = int.tryParse(rawCountController.text) ?? 0;
-                  final rawWeight = double.tryParse(rawWeightController.text) ?? 0;
-                  final totalWeight = rawCount * rawWeight;
-
-                  final payload = {
-                    'production_type': productionTypeController.text,
-                    'size': sizeController.text,
-                    'thickness': thicknessController.text,
-                    'length': lengthController.text,
-                    'raw_count': rawCount,
-                    'raw_weight': rawWeight,
-                    'total_weight': totalWeight.toDouble(),
-                    'unit': selectedUnit,
-                    'production_date': dateController.text,
-                    'production_date_en': selectedEnglishDate ?? '',
-                    'status': selectedStatus ?? 'در حال تولید',
-                    'description': descriptionController.text,
-                    'remaining_stock': totalWeight.toDouble(),
-                  };
-
-                  Navigator.pop(context);
-                  final result = isEditing 
-                    ? await _db.updateProducedProduct(product!['id'], payload) 
-                    : await _db.insertProducedProduct(payload);
-                  
-                  if (!mounted) return;
-                  if (result != -1) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(isEditing ? l10n.productUpdatedSuccess : l10n.productAddedSuccess), 
-                        backgroundColor: Colors.green
-                      )
-                    );
-                    _loadData();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(l10n.errorSavingProduct), 
-                        backgroundColor: Colors.red
-                      )
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D)),
-                child: Text(isEditing ? l10n.update : l10n.save),
-              ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
-}
+          );
+        },
+      ),
+    );
+  }
 
   void _showDeleteDialog(BuildContext context, Map<String, dynamic> product, AppLocalizations l10n) {
     showDialog(
@@ -1576,30 +1607,30 @@ void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String
                                 ),
                                 child: LayoutBuilder(
                                   builder: (context, constraints) {
-                                    final totalWidth = constraints.maxWidth - 60;
+                                    // Fixed column widths - adjusted to prevent overflow
                                     final columnWidths = {
-                                      'checkbox': 40.0,
-                                      'id': totalWidth * 0.035,
-                                      'type': totalWidth * 0.09,
-                                      'size': totalWidth * 0.05,
-                                      'thickness': totalWidth * 0.05,
-                                      'length': totalWidth * 0.05,
-                                      'rawCount': totalWidth * 0.05,
-                                      'rawWeight': totalWidth * 0.055,
-                                      'totalWeight': totalWidth * 0.07,
-                                      'unit': totalWidth * 0.045,
-                                      'date': totalWidth * 0.075,
-                                      'status': totalWidth * 0.055,
-                                      'saleStatus': totalWidth * 0.07,
-                                      'actions': totalWidth * 0.055,
+                                      'checkbox': 32.0,
+                                      'id': 35.0,
+                                      'type': 90.0,
+                                      'size': 45.0,
+                                      'thickness': 45.0,
+                                      'length': 45.0,
+                                      'rawCount': 50.0,
+                                      'rawWeight': 65.0,
+                                      'totalWeight': 70.0,
+                                      'unit': 40.0,
+                                      'date': 80.0,
+                                      'status': 65.0,
+                                      'saleStatus': 70.0,
+                                      'actions': 60.0,
                                     };
 
-                                    double totalColumnsWidth = columnWidths.values.reduce((a, b) => a + b) + 60;
+                                    double totalColumnsWidth = columnWidths.values.reduce((a, b) => a + b) + 40;
 
                                     return SingleChildScrollView(
                                       scrollDirection: Axis.horizontal,
                                       child: SizedBox(
-                                        width: totalColumnsWidth,
+                                        width: totalColumnsWidth > constraints.maxWidth ? totalColumnsWidth : constraints.maxWidth,
                                         child: SingleChildScrollView(
                                           scrollDirection: Axis.vertical,
                                           child: Column(
@@ -1607,7 +1638,7 @@ void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String
                                             children: [
                                               // HEADER ROW
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                                 decoration: BoxDecoration(
                                                   color: const Color(0xFFCB001D).withOpacity(0.05),
                                                   border: const Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
@@ -1653,7 +1684,6 @@ void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String
                                                 // For rawWeight: ALWAYS show in kg (no conversion)
                                                 String displayRawWeight;
                                                 if (_isWeightUnit(unit)) {
-                                                  // Show raw weight in kg always
                                                   displayRawWeight = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
                                                 } else {
                                                   displayRawWeight = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $unit';
@@ -1675,7 +1705,7 @@ void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String
                                                 String displayUnit = _isWeightUnit(unit) ? 'تن' : unit;
 
                                                 return Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                   decoration: BoxDecoration(
                                                     color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
                                                     border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
@@ -1711,36 +1741,71 @@ void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String
                                                           children: [
                                                             Text(
                                                               product['production_date']?.toString() ?? '-',
-                                                              style: const TextStyle(fontSize: 9, color: Color(0xFF1A1A2E)),
+                                                              style: const TextStyle(fontSize: 8, color: Color(0xFF1A1A2E)),
                                                               textAlign: TextAlign.center,
+                                                              overflow: TextOverflow.ellipsis,
                                                             ),
                                                             Text(
                                                               product['production_date_en']?.toString() ?? '-',
-                                                              style: const TextStyle(fontSize: 7, color: Colors.grey),
+                                                              style: const TextStyle(fontSize: 6, color: Colors.grey),
                                                               textAlign: TextAlign.center,
+                                                              overflow: TextOverflow.ellipsis,
                                                             ),
                                                           ],
                                                         ),
                                                       ),
 
-                                                      SizedBox(width: columnWidths['status']!, child: _buildStatusChip(product['status']?.toString(), l10n)),
-                                                      SizedBox(width: columnWidths['saleStatus']!, child: _buildSoldStatusChip(product, l10n)),
+                                                      // STATUS COLUMN
+                                                      SizedBox(
+                                                        width: columnWidths['status']!,
+                                                        child: Center(
+                                                          child: _buildStatusChip(product['status']?.toString(), l10n),
+                                                        ),
+                                                      ),
+                                                      
+                                                      // SALE STATUS COLUMN
+                                                      SizedBox(
+                                                        width: columnWidths['saleStatus']!,
+                                                        child: Center(
+                                                          child: _buildSoldStatusChip(product, l10n),
+                                                        ),
+                                                      ),
+                                                      
+                                                      // ACTIONS COLUMN
                                                       SizedBox(
                                                         width: columnWidths['actions']!,
                                                         child: Row(
                                                           mainAxisAlignment: MainAxisAlignment.center,
+                                                          crossAxisAlignment: CrossAxisAlignment.center,
                                                           children: [
-                                                            IconButton(
-                                                              icon: const Icon(Icons.edit_outlined, color: Color(0xFFCB001D), size: 16),
-                                                              padding: EdgeInsets.zero,
-                                                              constraints: const BoxConstraints(),
-                                                              onPressed: () => _showProductDialog(context, l10n, product: product),
+                                                            Container(
+                                                              width: 24,
+                                                              height: 24,
+                                                              decoration: BoxDecoration(
+                                                                color: const Color(0xFFCB001D).withOpacity(0.1),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                              ),
+                                                              child: IconButton(
+                                                                icon: const Icon(Icons.edit_outlined, color: Color(0xFFCB001D), size: 13),
+                                                                padding: EdgeInsets.zero,
+                                                                constraints: const BoxConstraints(),
+                                                                onPressed: () => _showProductDialog(context, l10n, product: product),
+                                                              ),
                                                             ),
-                                                            IconButton(
-                                                              icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 16),
-                                                              padding: EdgeInsets.zero,
-                                                              constraints: const BoxConstraints(),
-                                                              onPressed: () => _showDeleteDialog(context, product, l10n),
+                                                            const SizedBox(width: 2),
+                                                            Container(
+                                                              width: 24,
+                                                              height: 24,
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.red.withOpacity(0.1),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                              ),
+                                                              child: IconButton(
+                                                                icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 13),
+                                                                padding: EdgeInsets.zero,
+                                                                constraints: const BoxConstraints(),
+                                                                onPressed: () => _showDeleteDialog(context, product, l10n),
+                                                              ),
                                                             ),
                                                           ],
                                                         ),

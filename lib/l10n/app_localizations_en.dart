@@ -927,5 +927,40 @@
   'totalLabel': 'Total:',
   'itemsCountLabel': 'Items:',
   'productionSummaryByUnit': 'Summary by Unit',
+
+
+
+// Add to enTranslations map
+
+// ============ INCOMES PAGE ============
+'incomesManagement': 'Income Management',
+'incomesManagementSubtitle': 'Calculate gross and net profit (Sales & Services separately)',
+'productSales': 'Product Sales',
+'serviceSales': 'Service Sales',
+'rawMaterialCost': 'Raw Material Cost',
+'grossProfitLabel': 'Gross Profit',
+'netProfitLabel': 'Net Profit',
+'dailyExpensesLabel': 'Daily Expenses',
+'profitMargin': 'Profit Margin',
+'netProfitMargin': 'Net Profit Margin',
+'totalCost': 'Total Cost',
+'beforeExpenses': 'Before Expenses',
+'monthlyProfitLossReport': 'Monthly Profit & Loss Report',
+'month': 'Month',
+'year': 'Year',
+'dailyExpensesDetails': 'Daily Expenses Details',
+'expenseBreakdown': 'Expense Breakdown by Category',
+'registrationNumber': 'Registration #',
+'percentage': 'Percentage',
+'noSalesThisMonth': 'No sales recorded this month',
+'noServicesThisMonth': 'No services recorded this month',
+'noExpensesThisMonth': 'No expenses recorded this month',
+'productNameShort': 'Product',
+'amount': 'Amount',
+'profit': 'Profit',
+'generating': 'Generating...',
+'pdfReport': 'PDF Report',
+
+  
 };
 

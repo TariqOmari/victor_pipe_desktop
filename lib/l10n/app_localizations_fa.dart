@@ -1055,4 +1055,40 @@ Map<String, String> faTranslations = {
 
 'sale': 'فروش',
 
+
+
+// Add to faTranslations map
+
+// ============ INCOMES PAGE ============
+'incomesManagement': 'مدیریت عواید',
+'incomesManagementSubtitle': 'محاسبه سود ناخالص و خالص (فروش و خدمات جداگانه)',
+'productSales': 'فروش محصولات',
+'serviceSales': 'فروش خدمات',
+'rawMaterialCost': 'هزینه مواد خام',
+'grossProfitLabel': 'سود ناخالص',
+'netProfitLabel': 'سود خالص',
+'dailyExpensesLabel': 'مصارف روزمره',
+'profitMargin': 'حاشیه سود',
+'netProfitMargin': 'حاشیه سود خالص',
+'totalCost': 'قیمت تمام شده',
+'beforeExpenses': 'قبل از کسر مصارف',
+'monthlyProfitLossReport': 'گزارش سود و زیان ماهانه',
+'month': 'ماه',
+'year': 'سال',
+'dailyExpensesDetails': 'تفصیل مصارف روزمره',
+'expenseBreakdown': 'تفکیک مصارف بر اساس دسته‌بندی',
+'registrationNumber': 'شماره ثبت',
+'percentage': 'درصد',
+'noSalesThisMonth': 'هیچ فروشی در این ماه ثبت نشده است',
+'noServicesThisMonth': 'هیچ فروش خدماتی در این ماه ثبت نشده است',
+'noExpensesThisMonth': 'هیچ هزینه‌ای در این ماه ثبت نشده است',
+'productNameShort': 'محصول',
+'amount': 'مبلغ',
+'profit': 'سود',
+'generating': 'در حال تولید...',
+'pdfReport': 'گزارش PDF',
+
+
+
+
 };

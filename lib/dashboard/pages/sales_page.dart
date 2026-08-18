@@ -8,6 +8,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as excel;
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -33,6 +35,7 @@ class _SalesPageState extends State<SalesPage> {
   String _searchQuery = '';
   String _selectedFilter = 'همه';
   final TextEditingController _searchController = TextEditingController();
+  final GlobalKey _invoicePreviewKey = GlobalKey();
 
   bool _isWeightUnit(String unit) {
     return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
@@ -275,7 +278,7 @@ class _SalesPageState extends State<SalesPage> {
           customerAddressIndex = i;
         } else if (hLower.contains('شرکت') || hLower.contains('company')) {
           companyIndex = i;
-        } else if (hLower.contains('جنسیت') || hLower.contains('gender')) {
+        } else if (hLower.contains('نوغ') || hLower.contains('gender')) {
           genderIndex = i;
         } else if (hLower.contains('سایز') || hLower.contains('size')) {
           sizeIndex = i;
@@ -2870,22 +2873,30 @@ void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, d
                     ),
                   ),
                   const SizedBox(height: 25),
-                  _buildInvoiceUpperSection(invoice, invoiceNumber, l10n),
-                  const SizedBox(height: 25),
-                  _buildInvoiceTableWithData(invoice, l10n),
-                  const SizedBox(height: 20),
-                  if (isSale) _buildSaleFinancialSection(invoice, l10n),
-                  if (isSale) const SizedBox(height: 20),
-                  _buildInvoiceSignatureRow(),
-                  const SizedBox(height: 25),
-                  _buildInvoiceDriverSection(),
-                  const SizedBox(height: 15),
-                  _buildInvoiceCustomerSection(),
-                  const SizedBox(height: 15),
-                  _buildInvoiceLegalTerms(),
-                  const SizedBox(height: 20),
-                  _buildInvoiceOfficeRegistry(),
-                  const SizedBox(height: 16),
+                  RepaintBoundary(
+                    key: _invoicePreviewKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildInvoiceUpperSection(invoice, invoiceNumber, l10n),
+                        const SizedBox(height: 25),
+                        _buildInvoiceTableWithData(invoice, l10n),
+                        const SizedBox(height: 20),
+                        if (isSale) _buildSaleFinancialSection(invoice, l10n),
+                        if (isSale) const SizedBox(height: 20),
+                        _buildInvoiceSignatureRow(),
+                        const SizedBox(height: 25),
+                        _buildInvoiceDriverSection(),
+                        const SizedBox(height: 15),
+                        _buildInvoiceCustomerSection(),
+                        const SizedBox(height: 15),
+                        _buildInvoiceLegalTerms(),
+                        const SizedBox(height: 20),
+                        _buildInvoiceOfficeRegistry(),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -2896,8 +2907,8 @@ void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, d
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () async {
-                          Navigator.pop(dialogContext);
                           await _saveInvoicePdf(invoice, invoiceNumber, l10n);
+                          Navigator.pop(dialogContext);
                         },
                         icon: const Icon(Icons.picture_as_pdf, size: 18, color: Colors.white),
                         label: Text(l10n.savePdf, style: const TextStyle(fontSize: 12, color: Colors.white)),
@@ -2909,8 +2920,8 @@ void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, d
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () async {
-                          Navigator.pop(dialogContext);
                           await _printInvoicePdf(invoice, invoiceNumber, l10n);
+                          Navigator.pop(dialogContext);
                         },
                         icon: const Icon(Icons.print, size: 18, color: Colors.white),
                         label: Text(l10n.print, style: const TextStyle(fontSize: 12, color: Colors.white)),
@@ -3595,6 +3606,9 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
       return invoice?[key]?.toString() ?? defaultValue;
     }
 
+    final bool isWaybill = invoice['sale_type']?.toString() == 'بارنامه' || invoice['sale_type']?.toString() == 'پیش\u200cفاکتور';
+    final String headerTitle = isWaybill ? 'بارنامه' : 'بل ثبت فروش';
+
     String unit = getPdfValue('unit');
     double weightPerUnitRaw = double.tryParse(getPdfValue('weight_per_unit')) ?? 0;
     double totalWeightRaw = double.tryParse(getPdfValue('total_weight')) ?? 0;
@@ -3637,7 +3651,7 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
                         pw.Container(
                           padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 18),
                           decoration: pw.BoxDecoration(color: PdfColors.red, borderRadius: pw.BorderRadius.circular(10)),
-                          child: pw.Text('Invoice', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                          child: pw.Text(headerTitle, style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
                         ),
                       ],
                     ),
@@ -3784,7 +3798,36 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
 
   Future<void> _saveInvoicePdf(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
     try {
-      final bytes = await _generateInvoicePdfBytes(invoice, invoiceNumber, l10n);
+      Uint8List? bytes;
+
+      // Try capturing the rendered preview as an image and embed into PDF
+      try {
+        if (_invoicePreviewKey.currentContext != null) {
+          final boundary = _invoicePreviewKey.currentContext!.findRenderObject() as RenderRepaintBoundary?;
+          if (boundary != null) {
+            final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+            final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (byteData != null) {
+              final pngBytes = byteData.buffer.asUint8List();
+              final pdf = pw.Document();
+              final pwImage = pw.MemoryImage(pngBytes);
+              pdf.addPage(
+                pw.Page(
+                  pageFormat: PdfPageFormat.a4,
+                  build: (context) => pw.Center(child: pw.Image(pwImage, fit: pw.BoxFit.contain)),
+                ),
+              );
+              bytes = await pdf.save();
+            }
+          }
+        }
+      } catch (e) {
+        bytes = null;
+      }
+
+      // Fallback to template PDF generation if capture failed
+      bytes ??= await _generateInvoicePdfBytes(invoice, invoiceNumber, l10n);
+
       final filePath = await FilePicker.platform.saveFile(
         dialogTitle: l10n.savePdf,
         fileName: 'invoice_${invoiceNumber.replaceAll(' ', '_')}.pdf',
@@ -3806,9 +3849,38 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
 
   Future<void> _printInvoicePdf(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
     try {
-      final bytes = await _generateInvoicePdfBytes(invoice, invoiceNumber, l10n);
+      Uint8List? bytes;
+
+      // Try capturing the rendered preview as an image and embed into PDF
+      try {
+        if (_invoicePreviewKey.currentContext != null) {
+          final boundary = _invoicePreviewKey.currentContext!.findRenderObject() as RenderRepaintBoundary?;
+          if (boundary != null) {
+            final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+            final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (byteData != null) {
+              final pngBytes = byteData.buffer.asUint8List();
+              final pdf = pw.Document();
+              final pwImage = pw.MemoryImage(pngBytes);
+              pdf.addPage(
+                pw.Page(
+                  pageFormat: PdfPageFormat.a4,
+                  build: (context) => pw.Center(child: pw.Image(pwImage, fit: pw.BoxFit.contain)),
+                ),
+              );
+              bytes = await pdf.save();
+            }
+          }
+        }
+      } catch (e) {
+        bytes = null;
+      }
+
+      // Fallback to template PDF generation if capture failed
+      bytes ??= await _generateInvoicePdfBytes(invoice, invoiceNumber, l10n);
+
       await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => bytes,
+        onLayout: (PdfPageFormat format) async => bytes!,
         name: 'invoice_${invoiceNumber.replaceAll(' ', '_')}.pdf',
       );
     } catch (e) {

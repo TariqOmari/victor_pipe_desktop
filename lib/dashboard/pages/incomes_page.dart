@@ -1,4 +1,4 @@
-// lib/screens/pages/incomes_page.dart - Updated version with separate cards
+// lib/screens/pages/incomes_page.dart - Updated with internationalization
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import '../../database/database_helper.dart';
 import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class IncomesPage extends StatefulWidget {
   const IncomesPage({super.key});
@@ -32,7 +33,7 @@ class _IncomesPageState extends State<IncomesPage>
 
   // Calculated
   double _totalSales = 0;
-  double _totalServices = 0;  // NEW: Separate service total
+  double _totalServices = 0;
   double _totalRawMaterialCost = 0;
   double _grossProfit = 0;
   double _profitMargin = 0;
@@ -436,255 +437,255 @@ class _IncomesPageState extends State<IncomesPage>
       setState(() => _isGeneratingPDF = false);
     } catch (e) {
       setState(() => _isGeneratingPDF = false);
-      _showSnackbar('خطا در تولید گزارش: $e', Colors.red);
+      final l10n = AppLocalizations.of(context)!;
+      _showSnackbar('${l10n.error}: $e', Colors.red);
     }
   }
 
-Future<Uint8List> _buildPDF() async {
-  // Load font
-  pw.Font ttf;
-  try {
-    final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
-    ttf = pw.Font.ttf(fontData);
-  } catch (_) {
-    ttf = pw.Font.helvetica();
-  }
-
-  // Load logo image
-  pw.MemoryImage? logoImage;
-  try {
-    final logoData = await rootBundle.load('assets/images/companylogo.png');
-    logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
-  } catch (e) {
-    print('Error loading logo: $e');
-    // Logo will be null, we'll use text fallback
-  }
-
-  final filteredSales = _getFilteredSales();
-  final filteredServices = _getFilteredServices();
-  final filteredExpenses = _getFilteredExpenses();
-  
-  final monthName = _persianMonths[_selectedMonth - 1];
-  final currencySymbol = _selectedCurrency == 'USD' ? '\$' : '؋';
-  
-  // Calculate expense breakdown
-  Map<String, double> expenseByCategory = {};
-  for (var expense in filteredExpenses) {
-    final category = expense['category']?.toString() ?? 'متفرقه';
-    final price = (expense['price'] is int)
-        ? (expense['price'] as int).toDouble()
-        : double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
+  Future<Uint8List> _buildPDF() async {
+    final l10n = AppLocalizations.of(context)!;
     
-    double convertedPrice = price;
-    if (expense['currency'] == 'دالر' && _selectedCurrency == 'AFN') {
-      final rate = double.tryParse(expense['exchangeRate']?.toString() ?? '1') ?? 1;
-      convertedPrice = price * rate;
-    } else if (expense['currency'] == 'افغانی' && _selectedCurrency == 'USD') {
-      final rate = double.tryParse(expense['exchangeRate']?.toString() ?? '1') ?? 1;
-      convertedPrice = rate > 0 ? price / rate : 0;
+    // Load font
+    pw.Font ttf;
+    try {
+      final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
+      ttf = pw.Font.ttf(fontData);
+    } catch (_) {
+      ttf = pw.Font.helvetica();
     }
+
+    // Load logo image
+    pw.MemoryImage? logoImage;
+    try {
+      final logoData = await rootBundle.load('assets/images/companylogo.png');
+      logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
+    } catch (e) {
+      print('Error loading logo: $e');
+    }
+
+    final filteredSales = _getFilteredSales();
+    final filteredServices = _getFilteredServices();
+    final filteredExpenses = _getFilteredExpenses();
     
-    expenseByCategory[category] = (expenseByCategory[category] ?? 0) + convertedPrice;
-  }
+    final monthName = _persianMonths[_selectedMonth - 1];
+    final currencySymbol = _selectedCurrency == 'USD' ? '\$' : '؋';
+    
+    // Calculate expense breakdown
+    Map<String, double> expenseByCategory = {};
+    for (var expense in filteredExpenses) {
+      final category = expense['category']?.toString() ?? l10n.miscellaneous;
+      final price = (expense['price'] is int)
+          ? (expense['price'] as int).toDouble()
+          : double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
+      
+      double convertedPrice = price;
+      if (expense['currency'] == 'دالر' && _selectedCurrency == 'AFN') {
+        final rate = double.tryParse(expense['exchangeRate']?.toString() ?? '1') ?? 1;
+        convertedPrice = price * rate;
+      } else if (expense['currency'] == 'افغانی' && _selectedCurrency == 'USD') {
+        final rate = double.tryParse(expense['exchangeRate']?.toString() ?? '1') ?? 1;
+        convertedPrice = rate > 0 ? price / rate : 0;
+      }
+      
+      expenseByCategory[category] = (expenseByCategory[category] ?? 0) + convertedPrice;
+    }
 
-  final totalIncome = _totalSales + _totalServices;
+    final totalIncome = _totalSales + _totalServices;
 
-  final pdf = pw.Document();
+    final pdf = pw.Document();
 
-  pdf.addPage(
-    pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(20),
-      build: (context) {
-        return pw.Directionality(
-          textDirection: pw.TextDirection.rtl,
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // ========== HEADER WITH LOGO ==========
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: const PdfColor.fromInt(0xFFCB001D), width: 2),
-                  borderRadius: pw.BorderRadius.circular(12),
-                ),
-                child: pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          'شرکت ویکتورپایپ',
-                          style: pw.TextStyle(
-                            font: ttf,
-                            fontSize: 22,
-                            fontWeight: pw.FontWeight.bold,
-                            color: const PdfColor.fromInt(0xFFCB001D),
-                          ),
-                        ),
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'سیستم مدیریت یکپارچه',
-                          style: pw.TextStyle(
-                            font: ttf,
-                            fontSize: 11,
-                            color: PdfColors.grey700,
-                          ),
-                        ),
-                        pw.SizedBox(height: 6),
-                        pw.Text(
-                          'گزارش سود و زیان ماهانه',
-                          style: pw.TextStyle(
-                            font: ttf,
-                            fontSize: 13,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        pw.Text(
-                          'ماه $monthName سال $_selectedYear',
-                          style: pw.TextStyle(
-                            font: ttf,
-                            fontSize: 12,
-                            color: PdfColors.grey700,
-                          ),
-                        ),
-                      ],
-                    ),
-                    // LOGO HERE - Using the actual logo image
-                    if (logoImage != null)
-                      pw.Container(
-                        width: 80,
-                        height: 80,
-                        decoration: pw.BoxDecoration(
-                          borderRadius: pw.BorderRadius.circular(8),
-                          border: pw.Border.all(color: PdfColors.grey300, width: 1),
-                        ),
-                        child: pw.Image(
-                          logoImage!,
-                          width: 80,
-                          height: 80,
-                          fit: pw.BoxFit.contain,
-                        ),
-                      )
-                    else
-                      // Fallback text if logo can't be loaded
-                      pw.Container(
-                        width: 80,
-                        height: 80,
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.grey100,
-                          borderRadius: pw.BorderRadius.circular(8),
-                          border: pw.Border.all(color: PdfColors.grey300, width: 1),
-                        ),
-                        child: pw.Center(
-                          child: pw.Text(
-                            'VP',
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(20),
+        build: (context) {
+          return pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // ========== HEADER WITH LOGO ==========
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: const PdfColor.fromInt(0xFFCB001D), width: 2),
+                    borderRadius: pw.BorderRadius.circular(12),
+                  ),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            l10n.companyName,
                             style: pw.TextStyle(
                               font: ttf,
-                              fontSize: 30,
+                              fontSize: 22,
                               fontWeight: pw.FontWeight.bold,
                               color: const PdfColor.fromInt(0xFFCB001D),
                             ),
                           ),
-                        ),
+                          pw.SizedBox(height: 4),
+                          pw.Text(
+                            l10n.integratedSystem,
+                            style: pw.TextStyle(
+                              font: ttf,
+                              fontSize: 11,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                          pw.SizedBox(height: 6),
+                          pw.Text(
+                            l10n.monthlyProfitLossReport,
+                            style: pw.TextStyle(
+                              font: ttf,
+                              fontSize: 13,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.Text(
+                            '${l10n.month} $monthName ${l10n.year} $_selectedYear',
+                            style: pw.TextStyle(
+                              font: ttf,
+                              fontSize: 12,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                        ],
                       ),
-                  ],
+                      if (logoImage != null)
+                        pw.Container(
+                          width: 80,
+                          height: 80,
+                          decoration: pw.BoxDecoration(
+                            borderRadius: pw.BorderRadius.circular(8),
+                            border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                          ),
+                          child: pw.Image(
+                            logoImage!,
+                            width: 80,
+                            height: 80,
+                            fit: pw.BoxFit.contain,
+                          ),
+                        )
+                      else
+                        pw.Container(
+                          width: 80,
+                          height: 80,
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.grey100,
+                            borderRadius: pw.BorderRadius.circular(8),
+                            border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                          ),
+                          child: pw.Center(
+                            child: pw.Text(
+                              'VP',
+                              style: pw.TextStyle(
+                                font: ttf,
+                                fontSize: 30,
+                                fontWeight: pw.FontWeight.bold,
+                                color: const PdfColor.fromInt(0xFFCB001D),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              
-              pw.SizedBox(height: 16),
+                
+                pw.SizedBox(height: 16),
 
-              // ========== SUMMARY CARDS ==========
-              pw.Container(
-                padding: const pw.EdgeInsets.all(12),
-                decoration: pw.BoxDecoration(
-                  color: PdfColors.grey50,
-                  borderRadius: pw.BorderRadius.circular(8),
-                  border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                // ========== SUMMARY CARDS ==========
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey50,
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildSummaryItem(ttf, l10n.productSales, _formatCurrency(_totalSales), PdfColors.blue),
+                      _buildSummaryItem(ttf, l10n.serviceSales, _formatCurrency(_totalServices), PdfColors.green),
+                      _buildSummaryItem(ttf, l10n.rawMaterialCost, _formatCurrency(_totalRawMaterialCost), PdfColors.orange),
+                      _buildSummaryItem(ttf, l10n.grossProfitLabel, _formatCurrency(_grossProfit), _grossProfit >= 0 ? PdfColors.green : PdfColors.red),
+                      _buildSummaryItem(ttf, l10n.dailyExpensesLabel, _formatCurrency(_totalExpenses), PdfColors.purple),
+                      _buildSummaryItem(ttf, l10n.netProfitLabel, _formatCurrency(_netProfit), _netProfit >= 0 ? PdfColors.green : PdfColors.red),
+                    ],
+                  ),
                 ),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildSummaryItem(ttf, 'فروش ', _formatCurrency(_totalSales), PdfColors.blue),
-                    _buildSummaryItem(ttf, 'خدمات', _formatCurrency(_totalServices), PdfColors.green),
-                    _buildSummaryItem(ttf, 'هزینه مواد خام', _formatCurrency(_totalRawMaterialCost), PdfColors.orange),
-                    _buildSummaryItem(ttf, 'سود ناخالص', _formatCurrency(_grossProfit), _grossProfit >= 0 ? PdfColors.green : PdfColors.red),
-                    _buildSummaryItem(ttf, 'مصارف روزانه', _formatCurrency(_totalExpenses), PdfColors.purple),
-                    _buildSummaryItem(ttf, 'سود خالص', _formatCurrency(_netProfit), _netProfit >= 0 ? PdfColors.green : PdfColors.red),
-                  ],
-                ),
-              ),
-              
-              pw.SizedBox(height: 16),
+                
+                pw.SizedBox(height: 16),
 
-              // ========== SALES TABLE ==========
-              pw.Text(
-                '📦 فروش ',
-                style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 8),
-              _buildSalesTablePDF(ttf, filteredSales, currencySymbol),
-              
-              pw.SizedBox(height: 12),
-              
-              // ========== SERVICES TABLE ==========
-              pw.Text(
-                '🔧 فروش خدمات',
-                style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 8),
-              _buildServicesTablePDF(ttf, filteredServices, currencySymbol),
-              
-              pw.SizedBox(height: 12),
-              
-              // ========== EXPENSES TABLE ==========
-              pw.Text(
-                '🧾 تفصیل مصارف روزانه',
-                style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 8),
-              _buildPDFExpensesTable(ttf, filteredExpenses, currencySymbol),
-              
-              pw.SizedBox(height: 12),
-              
-              // ========== EXPENSE BREAKDOWN ==========
-              if (expenseByCategory.isNotEmpty) ...[
+                // ========== SALES TABLE ==========
                 pw.Text(
-                  '📈 تفکیک مصارف بر اساس دسته‌بندی',
+                  '📦 ${l10n.productSales}',
                   style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
                 ),
                 pw.SizedBox(height: 8),
-                _buildExpenseBreakdown(ttf, expenseByCategory, currencySymbol),
-              ],
-              
-              pw.Spacer(),
-              
-              // ========== FOOTER ==========
-              pw.Divider(color: PdfColors.grey300, thickness: 0.5),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
+                _buildSalesTablePDF(ttf, filteredSales, currencySymbol),
+                
+                pw.SizedBox(height: 12),
+                
+                // ========== SERVICES TABLE ==========
+                pw.Text(
+                  '🔧 ${l10n.serviceSales}',
+                  style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 8),
+                _buildServicesTablePDF(ttf, filteredServices, currencySymbol),
+                
+                pw.SizedBox(height: 12),
+                
+                // ========== EXPENSES TABLE ==========
+                pw.Text(
+                  '🧾 ${l10n.dailyExpensesDetails}',
+                  style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 8),
+                _buildPDFExpensesTable(ttf, filteredExpenses, currencySymbol),
+                
+                pw.SizedBox(height: 12),
+                
+                // ========== EXPENSE BREAKDOWN ==========
+                if (expenseByCategory.isNotEmpty) ...[
                   pw.Text(
-                    'تاریخ چاپ: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}',
-                    style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey700),
+                    '📈 ${l10n.expenseBreakdown}',
+                    style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
                   ),
-                  pw.Text(
-                    'شرکت ویکتورپایپ © ${DateTime.now().year}',
-                    style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey500),
-                  ),
+                  pw.SizedBox(height: 8),
+                  _buildExpenseBreakdown(ttf, expenseByCategory, currencySymbol),
                 ],
-              ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
+                
+                pw.Spacer(),
+                
+                // ========== FOOTER ==========
+                pw.Divider(color: PdfColors.grey300, thickness: 0.5),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      '${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}',
+                      style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey700),
+                    ),
+                    pw.Text(
+                      '${l10n.companyName} © ${DateTime.now().year}',
+                      style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey500),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
 
-  return await pdf.save();
-}
+    return await pdf.save();
+  }
 
   pw.Widget _buildSummaryItem(pw.Font font, String label, String value, PdfColor color) {
     return pw.Column(
@@ -708,6 +709,8 @@ Future<Uint8List> _buildPDF() async {
   }
 
   pw.Widget _buildSalesTablePDF(pw.Font font, List<Map<String, dynamic>> sales, String currencySymbol) {
+    final l10n = AppLocalizations.of(context)!;
+    
     if (sales.isEmpty) {
       return pw.Container(
         padding: const pw.EdgeInsets.all(16),
@@ -717,7 +720,7 @@ Future<Uint8List> _buildPDF() async {
         ),
         child: pw.Center(
           child: pw.Text(
-            'هیچ فروش یی در این ماه ثبت نشده است',
+            l10n.noSalesThisMonth,
             style: pw.TextStyle(font: font, fontSize: 11, color: PdfColors.grey700),
           ),
         ),
@@ -736,7 +739,7 @@ Future<Uint8List> _buildPDF() async {
     }
 
     return pw.Table.fromTextArray(
-      headers: ['شماره', 'مشتری', 'محصول', 'مبلغ'],
+      headers: [l10n.invoiceNumber, l10n.customerName, l10n.productNameShort, l10n.amount],
       data: tableData,
       headerStyle: pw.TextStyle(
         font: font,
@@ -761,6 +764,8 @@ Future<Uint8List> _buildPDF() async {
   }
 
   pw.Widget _buildServicesTablePDF(pw.Font font, List<Map<String, dynamic>> services, String currencySymbol) {
+    final l10n = AppLocalizations.of(context)!;
+    
     if (services.isEmpty) {
       return pw.Container(
         padding: const pw.EdgeInsets.all(16),
@@ -770,7 +775,7 @@ Future<Uint8List> _buildPDF() async {
         ),
         child: pw.Center(
           child: pw.Text(
-            'هیچ فروش خدماتی در این ماه ثبت نشده است',
+            l10n.noServicesThisMonth,
             style: pw.TextStyle(font: font, fontSize: 11, color: PdfColors.grey700),
           ),
         ),
@@ -789,7 +794,7 @@ Future<Uint8List> _buildPDF() async {
     }
 
     return pw.Table.fromTextArray(
-      headers: ['شماره', 'مشتری', 'خدمت', 'مبلغ'],
+      headers: [l10n.invoiceNumber, l10n.customerName, l10n.serviceTypeLabel2, l10n.amount],
       data: tableData,
       headerStyle: pw.TextStyle(
         font: font,
@@ -814,6 +819,8 @@ Future<Uint8List> _buildPDF() async {
   }
 
   pw.Widget _buildPDFExpensesTable(pw.Font font, List<Map<String, dynamic>> expenses, String currencySymbol) {
+    final l10n = AppLocalizations.of(context)!;
+    
     if (expenses.isEmpty) {
       return pw.Container(
         padding: const pw.EdgeInsets.all(16),
@@ -823,7 +830,7 @@ Future<Uint8List> _buildPDF() async {
         ),
         child: pw.Center(
           child: pw.Text(
-            'هیچ هزینه‌ای در این ماه ثبت نشده است',
+            l10n.noExpensesThisMonth,
             style: pw.TextStyle(font: font, fontSize: 11, color: PdfColors.grey700),
           ),
         ),
@@ -855,7 +862,7 @@ Future<Uint8List> _buildPDF() async {
     }
 
     return pw.Table.fromTextArray(
-      headers: ['شماره', 'تاریخ', 'دسته', 'شرح', 'مبلغ'],
+      headers: [l10n.registrationNumber, l10n.date, l10n.category, l10n.description, l10n.amount],
       data: tableData,
       headerStyle: pw.TextStyle(
         font: font,
@@ -881,6 +888,8 @@ Future<Uint8List> _buildPDF() async {
   }
 
   pw.Widget _buildExpenseBreakdown(pw.Font font, Map<String, double> expenses, String currencySymbol) {
+    final l10n = AppLocalizations.of(context)!;
+    
     List<List<String>> tableData = [];
     double total = 0;
     
@@ -896,13 +905,13 @@ Future<Uint8List> _buildPDF() async {
     }
     
     tableData.add([
-      'مجموع کل',
+      l10n.totalLabel,
       '${_formatNumber(total)} $currencySymbol',
       '100%',
     ]);
 
     return pw.Table.fromTextArray(
-      headers: ['دسته‌بندی', 'مبلغ', 'درصد'],
+      headers: [l10n.category, l10n.amount, l10n.percentage],
       data: tableData,
       headerStyle: pw.TextStyle(
         font: font,
@@ -931,6 +940,7 @@ Future<Uint8List> _buildPDF() async {
   Widget build(BuildContext context) {
     final languageProvider = Provider.of<LanguageProvider>(context);
     final isEnglish = languageProvider.isEnglish;
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -941,18 +951,18 @@ Future<Uint8List> _buildPDF() async {
             : Column(
                 crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                 children: [
-                  _buildHeader(),
+                  _buildHeader(l10n),
                   const SizedBox(height: 16),
-                  _buildFilterRow(),
+                  _buildFilterRow(l10n),
                   const SizedBox(height: 16),
-                  _buildTabBar(),
+                  _buildTabBar(l10n),
                   const SizedBox(height: 16),
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
                       children: [
-                        _buildGrossProfitView(),
-                        _buildNetProfitView(),
+                        _buildGrossProfitView(l10n),
+                        _buildNetProfitView(l10n),
                       ],
                     ),
                   ),
@@ -962,7 +972,7 @@ Future<Uint8List> _buildPDF() async {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -981,16 +991,16 @@ Future<Uint8List> _buildPDF() async {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'مدیریت عواید',
-                  style: TextStyle(
+                Text(
+                  l10n.incomesManagement,
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF1A1A1A),
                   ),
                 ),
                 Text(
-                  'محاسبه سود ناخالص و خالص (فروش  و خدمات جداگانه)',
+                  l10n.incomesManagementSubtitle,
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey.shade600,
@@ -1015,7 +1025,7 @@ Future<Uint8List> _buildPDF() async {
                     )
                   : const Icon(Icons.picture_as_pdf, color: Colors.white, size: 18),
               label: Text(
-                _isGeneratingPDF ? 'در حال تولید...' : 'گزارش PDF',
+                _isGeneratingPDF ? l10n.generating : l10n.pdfReport,
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
               style: ElevatedButton.styleFrom(
@@ -1028,7 +1038,7 @@ Future<Uint8List> _buildPDF() async {
             ElevatedButton.icon(
               onPressed: _loadData,
               icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-              label: const Text('تازه سازی', style: TextStyle(color: Colors.white, fontSize: 12)),
+              label: Text(l10n.refresh, style: const TextStyle(color: Colors.white, fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFCB001D),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1041,7 +1051,7 @@ Future<Uint8List> _buildPDF() async {
     );
   }
 
-  Widget _buildFilterRow() {
+  Widget _buildFilterRow(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1134,7 +1144,7 @@ Future<Uint8List> _buildPDF() async {
                 const Icon(Icons.calendar_today, size: 14, color: Color(0xFFCB001D)),
                 const SizedBox(width: 6),
                 Text(
-                  '${_getFilteredSales().length} فروش | ${_getFilteredServices().length} خدمات | ${_getFilteredExpenses().length} هزینه',
+                  '${_getFilteredSales().length} ${l10n.sales} | ${_getFilteredServices().length} ${l10n.services} | ${_getFilteredExpenses().length} ${l10n.expenses}',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFCB001D)),
                 ),
               ],
@@ -1168,7 +1178,7 @@ Future<Uint8List> _buildPDF() async {
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(AppLocalizations l10n) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1192,15 +1202,15 @@ Future<Uint8List> _buildPDF() async {
         unselectedLabelColor: Colors.grey.shade600,
         labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
         unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-        tabs: const [
-          Tab(text: '💰 سود ناخالص'),
-          Tab(text: '📊 سود خالص'),
+        tabs: [
+          Tab(text: '💰 ${l10n.grossProfitLabel}'),
+          Tab(text: '📊 ${l10n.netProfitLabel}'),
         ],
       ),
     );
   }
 
-  Widget _buildGrossProfitView() {
+  Widget _buildGrossProfitView(AppLocalizations l10n) {
     final totalIncome = _totalSales + _totalServices;
     final isProfit = _grossProfit >= 0;
     final profitColor = isProfit ? Colors.green.shade700 : Colors.red.shade700;
@@ -1212,47 +1222,47 @@ Future<Uint8List> _buildPDF() async {
           children: [
             // Sales Card
             _buildIncomeCard(
-              title: 'فروش ',
+              title: l10n.productSales,
               amount: _totalSales,
               icon: Icons.shopping_bag_outlined,
               color: Colors.blue.shade700,
-              subtitle: '${_getFilteredSales().length} فاکتور',
+              subtitle: '${_getFilteredSales().length} ${l10n.invoices}',
             ),
             const SizedBox(width: 12),
             // Services Card
             _buildIncomeCard(
-              title: 'فروش خدمات',
+              title: l10n.serviceSales,
               amount: _totalServices,
               icon: Icons.design_services_outlined,
               color: Colors.green.shade700,
-              subtitle: '${_getFilteredServices().length} فاکتور',
+              subtitle: '${_getFilteredServices().length} ${l10n.invoices}',
             ),
             const SizedBox(width: 12),
             // Raw Material Cost
             _buildIncomeCard(
-              title: 'هزینه مواد خام',
+              title: l10n.rawMaterialCost,
               amount: _totalRawMaterialCost,
               icon: Icons.warehouse_outlined,
               color: Colors.orange.shade700,
-              subtitle: 'قیمت تمام شده',
+              subtitle: l10n.totalCost,
             ),
             const SizedBox(width: 12),
             // Gross Profit
             _buildIncomeCard(
-              title: 'سود ناخالص',
+              title: l10n.grossProfitLabel,
               amount: _grossProfit,
               icon: Icons.account_balance_rounded,
               color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-              subtitle: '${_profitMargin.toStringAsFixed(1)}% حاشیه سود',
+              subtitle: '${_profitMargin.toStringAsFixed(1)}% ${l10n.profitMargin}',
             ),
           ],
         ),
         const SizedBox(height: 12),
         _buildProfitSummary(isProfit, profitColor, _grossProfit, _profitMargin,
-            totalIncome, _totalRawMaterialCost, 'سود ناخالص', 'هزینه مواد خام'),
+            totalIncome, _totalRawMaterialCost, l10n.grossProfitLabel, l10n.rawMaterialCost, l10n),
         const SizedBox(height: 12),
         Expanded(
-          child: _buildSalesTable(),
+          child: _buildSalesTable(l10n),
         ),
       ],
     );
@@ -1325,7 +1335,7 @@ Future<Uint8List> _buildPDF() async {
     );
   }
 
-  Widget _buildNetProfitView() {
+  Widget _buildNetProfitView(AppLocalizations l10n) {
     final totalIncome = _totalSales + _totalServices;
     final isProfit = _netProfit >= 0;
     final profitColor = isProfit ? Colors.green.shade700 : Colors.red.shade700;
@@ -1335,91 +1345,43 @@ Future<Uint8List> _buildPDF() async {
         Row(
           children: [
             _buildIncomeCard(
-              title: 'سود ناخالص',
+              title: l10n.grossProfitLabel,
               amount: _grossProfit,
               icon: Icons.trending_up_rounded,
               color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-              subtitle: 'قبل از کسر مصارف',
+              subtitle: l10n.beforeExpenses,
             ),
             const SizedBox(width: 12),
             _buildIncomeCard(
-              title: 'مصارف روزانه',
+              title: l10n.dailyExpensesLabel,
               amount: _totalExpenses,
               icon: Icons.account_balance_wallet_outlined,
               color: Colors.orange.shade700,
-              subtitle: '${_getFilteredExpenses().length} مورد',
+              subtitle: '${_getFilteredExpenses().length} ${l10n.items}',
             ),
             const SizedBox(width: 12),
             _buildIncomeCard(
-              title: 'سود خالص',
+              title: l10n.netProfitLabel,
               amount: _netProfit,
               icon: Icons.account_balance_rounded,
               color: _netProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-              subtitle: '${_netProfitMargin.toStringAsFixed(1)}% حاشیه سود خالص',
+              subtitle: '${_netProfitMargin.toStringAsFixed(1)}% ${l10n.netProfitMargin}',
             ),
           ],
         ),
         const SizedBox(height: 12),
         _buildProfitSummary(isProfit, profitColor, _netProfit, _netProfitMargin,
-            totalIncome, _totalExpenses, 'سود خالص', 'مصارف روزانه'),
+            totalIncome, _totalExpenses, l10n.netProfitLabel, l10n.dailyExpensesLabel, l10n),
         const SizedBox(height: 12),
         Expanded(
-          child: _buildExpensesTable(),
+          child: _buildExpensesTable(l10n),
         ),
       ],
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color, String subtitle) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(
-            color: color.withOpacity(0.15),
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                  const SizedBox(height: 2),
-                  Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildProfitSummary(bool isProfit, Color profitColor, double profit,
-      double margin, double total, double cost, String profitLabel, String costLabel) {
+      double margin, double total, double cost, String profitLabel, String costLabel, AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1466,7 +1428,7 @@ Future<Uint8List> _buildPDF() async {
                 ),
                 child: Row(
                   children: [
-                    const Text('حاشیه سود: ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    Text('${l10n.profitMargin}: ', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     Text(
                       '${margin.toStringAsFixed(1)}%',
                       style: TextStyle(
@@ -1554,7 +1516,7 @@ Future<Uint8List> _buildPDF() async {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text('سود: ${_formatCurrency(profit)}', style: TextStyle(fontSize: 10, color: profitColor)),
+                  Text('${l10n.profit}: ${_formatCurrency(profit)}', style: TextStyle(fontSize: 10, color: profitColor)),
                 ],
               ),
             ],
@@ -1565,7 +1527,7 @@ Future<Uint8List> _buildPDF() async {
   }
 
   // ============ SALES TABLE (Combined Sales + Services) ============
-  Widget _buildSalesTable() {
+  Widget _buildSalesTable(AppLocalizations l10n) {
     final filteredSales = _getFilteredSales();
     final filteredServices = _getFilteredServices();
 
@@ -1616,7 +1578,7 @@ Future<Uint8List> _buildPDF() async {
           ),
           Expanded(
             child: paged.isEmpty
-                ? const Center(child: Text('هیچ فروش یا خدماتی یافت نشد', style: TextStyle(color: Colors.grey)))
+                ? Center(child: Text(l10n.noInvoicesFound, style: const TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: paged.length,
                     itemBuilder: (context, index) {
@@ -1641,7 +1603,7 @@ Future<Uint8List> _buildPDF() async {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  isService ? 'خدمات' : 'فروش',
+                                  isService ? l10n.services : l10n.sale,
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
@@ -1671,14 +1633,14 @@ Future<Uint8List> _buildPDF() async {
                     },
                   ),
           ),
-          _buildPagination(combinedItems.length, totalPages),
+          _buildPagination(combinedItems.length, totalPages, l10n),
         ],
       ),
     );
   }
 
   // ============ EXPENSES TABLE ============
-  Widget _buildExpensesTable() {
+  Widget _buildExpensesTable(AppLocalizations l10n) {
     final filteredExpenses = _getFilteredExpenses();
     final totalPages = (filteredExpenses.length / _rowsPerPage).ceil();
     final start = (_currentPage * _rowsPerPage).clamp(0, filteredExpenses.length);
@@ -1720,7 +1682,7 @@ Future<Uint8List> _buildPDF() async {
           ),
           Expanded(
             child: paged.isEmpty
-                ? const Center(child: Text('هیچ هزینه‌ای یافت نشد', style: TextStyle(color: Colors.grey)))
+                ? Center(child: Text(l10n.noExpensesFound, style: const TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: paged.length,
                     itemBuilder: (context, index) {
@@ -1749,13 +1711,13 @@ Future<Uint8List> _buildPDF() async {
                     },
                   ),
           ),
-          _buildPagination(filteredExpenses.length, totalPages),
+          _buildPagination(filteredExpenses.length, totalPages, l10n),
         ],
       ),
     );
   }
 
-  Widget _buildPagination(int totalItems, int totalPages) {
+  Widget _buildPagination(int totalItems, int totalPages, AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -1771,7 +1733,7 @@ Future<Uint8List> _buildPDF() async {
         children: [
           Row(
             children: [
-              Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text('${l10n.page} ${_currentPage + 1} ${l10n.pageOf} ${totalPages == 0 ? 1 : totalPages}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(width: 8),
               IconButton(
                 onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
@@ -1785,7 +1747,7 @@ Future<Uint8List> _buildPDF() async {
           ),
           Row(
             children: [
-              Text('$totalItems مورد', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text('$totalItems ${l10n.items}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6),

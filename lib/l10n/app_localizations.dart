@@ -981,6 +981,41 @@ String get errorUpdatingRawMaterial => _get('errorUpdatingRawMaterial');
   String get totalItems => _get('totalItems');
   String get totalTons => _get('totalTons');
 
+
+  // ✅ KEEP ONLY ONE DECLARATION (in the INCOMES PAGE section)
+// ============ INCOMES PAGE ============
+String get incomesManagement => _get('incomesManagement');
+String get incomesManagementSubtitle => _get('incomesManagementSubtitle');
+String get productSales => _get('productSales');
+String get serviceSales => _get('serviceSales');
+String get rawMaterialCost => _get('rawMaterialCost');
+String get grossProfitLabel => _get('grossProfitLabel');
+String get netProfitLabel => _get('netProfitLabel');
+String get dailyExpensesLabel => _get('dailyExpensesLabel');
+String get profitMargin => _get('profitMargin');
+String get netProfitMargin => _get('netProfitMargin');
+String get totalCost => _get('totalCost');
+String get beforeExpenses => _get('beforeExpenses');
+String get monthlyProfitLossReport => _get('monthlyProfitLossReport');
+String get month => _get('month');
+String get year => _get('year');
+String get dailyExpensesDetails => _get('dailyExpensesDetails');
+String get expenseBreakdown => _get('expenseBreakdown');
+String get registrationNumber => _get('registrationNumber');
+String get percentage => _get('percentage');
+String get noSalesThisMonth => _get('noSalesThisMonth');
+String get noServicesThisMonth => _get('noServicesThisMonth');
+String get noExpensesThisMonth => _get('noExpensesThisMonth');
+String get productNameShort => _get('productNameShort');
+String get amount => _get('amount');
+String get profit => _get('profit');
+String get generating => _get('generating');
+String get pdfReport => _get('pdfReport');
+
+// ✅ KEEP THESE (they are already declared elsewhere in the file)
+// String get sales => _get('sales');  // ALREADY EXISTS in SIDEBAR section
+// String get services => _get('services');  // ALREADY EXISTS in SIDEBAR section
+
   
 
 

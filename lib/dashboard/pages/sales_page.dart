@@ -2828,18 +2828,18 @@ void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, d
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Center(
-                    child: Text(
-                      isWaybill ? 'بارنامه' : 'بل ثبت فروش',
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-                    ),
-                  ),
-                  const SizedBox(height: 25),
                   RepaintBoundary(
                     key: _invoicePreviewKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        Center(
+                          child: Text(
+                            isWaybill ? 'بارنامه' : 'بل ثبت فروش',
+                            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                          ),
+                        ),
+                        const SizedBox(height: 25),
                         _buildInvoiceUpperSection(invoice, invoiceNumber, l10n),
                         const SizedBox(height: 25),
                         _buildInvoiceTableWithData(invoice, l10n),
@@ -3367,24 +3367,15 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
 }
 
  Widget _buildInvoiceSignatureRow() {
+  // Only keep the responsible signature on the right side.
   return Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    mainAxisAlignment: MainAxisAlignment.end,
     children: [
       Padding(
         padding: const EdgeInsets.only(right: 60.0),
         child: Column(
           children: [
             const Text('امضا مسئول', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Container(width: 140, height: 1.2, color: Colors.black),
-          ],
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(left: 60.0),
-        child: Column(
-          children: [
-            const Text('امضا', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Container(width: 140, height: 1.2, color: Colors.black),
           ],
@@ -3730,15 +3721,12 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
                         ),
                         pw.SizedBox(height: 24),
                         pw.Row(
-                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment: pw.MainAxisAlignment.end,
                           children: [
-                            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                              pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                              pw.SizedBox(height: 8),
-                              pw.Container(height: 1, width: 120, color: PdfColors.grey600),
-                            ]),
                             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                               pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().day.toString().padLeft(2, '0')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                              pw.SizedBox(height: 8),
+                              pw.Text('امضا مسئول', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                               pw.SizedBox(height: 8),
                               pw.Container(height: 1, width: 140, color: PdfColors.grey600),
                             ]),

@@ -1659,1050 +1659,1012 @@ class _SalesPageState extends State<SalesPage> {
   // ============================================
   // ADD SALE DIALOG
   // ============================================
-  Future<void> _showAddSaleDialog() async {
-    final l10n = AppLocalizations.of(context)!;
-    final customerNameController = TextEditingController();
-    final phoneController = TextEditingController();
-    final addressController = TextEditingController();
-    final companyController = TextEditingController();
-    final productController = TextEditingController();
-    final genderController = TextEditingController();
-    final sizeController = TextEditingController();
-    final thicknessController = TextEditingController();
-    final weightPerUnitController = TextEditingController();
-    final unitCountController = TextEditingController();
-    final totalWeightController = TextEditingController();
-    final timeController = TextEditingController(text: _formatTimeOfDay(TimeOfDay.now()));
-    final unitController = TextEditingController(text: 'کیلو');
-    final unitPriceController = TextEditingController();
-    final totalPriceController = TextEditingController();
-    final finalPriceController = TextEditingController();
-    final priceRateController = TextEditingController(text: '1');
-    final loadingController = TextEditingController();
-    final transferController = TextEditingController();
-    final clearanceController = TextEditingController();
-    final discountController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final equivalentController = TextEditingController();
-    final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
-    final paidAmountController = TextEditingController();
+Future<void> _showAddSaleDialog() async {
+  final l10n = AppLocalizations.of(context)!;
+  final customerNameController = TextEditingController();
+  final phoneController = TextEditingController();
+  final addressController = TextEditingController();
+  final companyController = TextEditingController();
+  final productController = TextEditingController();
+  final genderController = TextEditingController();
+  final sizeController = TextEditingController();
+  final thicknessController = TextEditingController();
+  final weightPerUnitController = TextEditingController();
+  final unitCountController = TextEditingController();
+  final totalWeightController = TextEditingController();
+  final timeController = TextEditingController(text: _formatTimeOfDay(TimeOfDay.now()));
+  final unitController = TextEditingController(text: 'کیلوگرم');
+  final unitPriceController = TextEditingController();
+  final totalPriceController = TextEditingController();
+  final finalPriceController = TextEditingController();
+  final priceRateController = TextEditingController(text: '1');
+  final loadingController = TextEditingController();
+  final transferController = TextEditingController();
+  final clearanceController = TextEditingController();
+  final discountController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final equivalentController = TextEditingController();
+  final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
+  final paidAmountController = TextEditingController();
+  
+  final invoiceNumberController = TextEditingController();
+  
+  String selectedPaymentMethod = 'cash';
+  String selectedCurrency = 'USD';
+  String selectedType = 'فروش';
+  Map<String, dynamic>? selectedParty;
+  String selectedEnglishDate = PersianDateConverter.getEnglishDate(DateTime.now());
+  String selectedEnglishTime = _formatTimeOfDay(TimeOfDay.now());
+
+  final List<Map<String, dynamic>> producedProducts = await _db.getProducedProducts();
+  final List<Map<String, dynamic>> productOptions = producedProducts.map((product) {
+    return {
+      'id': product['id'],
+      'name': product['production_type']?.toString() ?? '-',
+      'unit': product['unit']?.toString() ?? 'کیلوگرم',
+      'thickness': product['thickness']?.toString() ?? '',
+      'size': product['size']?.toString() ?? '',
+      'length': product['length']?.toString() ?? '',
+      'raw_weight': double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0,
+      'raw_count': int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0,
+      'total_weight': double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0,
+    };
+  }).toList();
+
+  int? selectedProductId;
+  String? selectedProductName;
+  String? selectedProductUnit;
+  String? selectedProductThickness;
+  String? selectedProductSize;
+
+  void updateTotals() {
+    double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
+    String currentUnit = unitController.text;
     
-    final invoiceNumberController = TextEditingController();
+    double weightPerUnitInTons = weightPerUnit;
+    bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
+    if (isKg) {
+      weightPerUnitInTons = weightPerUnit / 1000;
+    }
     
-    String selectedPaymentMethod = 'cash';
-    String selectedCurrency = 'USD';
-    String selectedType = 'فروش';
-    Map<String, dynamic>? selectedParty;
-    String selectedEnglishDate = PersianDateConverter.getEnglishDate(DateTime.now());
-    String selectedEnglishTime = _formatTimeOfDay(TimeOfDay.now());
+    double unitCount = double.tryParse(unitCountController.text) ?? 0;
+    double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+    double priceRate = double.tryParse(priceRateController.text) ?? 1;
+    double loadingCost = double.tryParse(loadingController.text) ?? 0;
+    double transferCost = double.tryParse(transferController.text) ?? 0;
+    double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+    double discount = double.tryParse(discountController.text) ?? 0;
+    
+    double totalWeight = weightPerUnit * unitCount;
+    double totalWeightInTons = weightPerUnitInTons * unitCount;
+    double totalPrice = totalWeightInTons * unitPrice;
 
-    final List<Map<String, dynamic>> producedProducts = await _db.getProducedProducts();
-    final List<Map<String, dynamic>> productOptions = producedProducts.map((product) {
-      return {
-        'id': product['id'],
-        'name': product['production_type']?.toString() ?? '-',
-        'unit': product['unit']?.toString() ?? 'کیلوگرم',
-        'thickness': product['thickness']?.toString() ?? '',
-        'size': product['size']?.toString() ?? '',
-        'length': product['length']?.toString() ?? '',
-        'raw_weight': double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0,
-        'raw_count': int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0,
-        'total_weight': double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0,
-      };
-    }).toList();
+    totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+    totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
 
-    int? selectedProductId;
-    String? selectedProductName;
-    String? selectedProductUnit;
-    String? selectedProductThickness;
-    String? selectedProductSize;
-
-    void updateTotals() {
-      double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
-      String currentUnit = unitController.text;
-      
-      double weightPerUnitInTons = weightPerUnit;
-      bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
-      if (isKg) {
-        weightPerUnitInTons = weightPerUnit / 1000;
-      }
-      
-      double unitCount = double.tryParse(unitCountController.text) ?? 0;
-      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      double priceRate = double.tryParse(priceRateController.text) ?? 1;
-      double loadingCost = double.tryParse(loadingController.text) ?? 0;
-      double transferCost = double.tryParse(transferController.text) ?? 0;
-      double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-      double discount = double.tryParse(discountController.text) ?? 0;
-      
-      double totalWeight = weightPerUnit * unitCount;
-      double totalWeightInTons = weightPerUnitInTons * unitCount;
-      double totalPrice = totalWeightInTons * unitPrice;
-
-      totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
-      totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
-
-      if (selectedCurrency == 'USD') {
-        equivalentController.text = totalPrice > 0 ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) : '';
-      } else {
-        equivalentController.text = totalPrice > 0 ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(2) : '';
-      }
-
-      double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-      finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
+    if (selectedCurrency == 'USD') {
+      equivalentController.text = totalPrice > 0 ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) : '';
+    } else {
+      equivalentController.text = totalPrice > 0 ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(2) : '';
     }
 
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
-          double unitCount = double.tryParse(unitCountController.text) ?? 0;
-          String currentUnit = unitController.text;
-          bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
-          
-          double weightPerUnitInTons = isKg ? weightPerUnit / 1000 : weightPerUnit;
-          double totalWeight = weightPerUnit * unitCount;
-          double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
+    double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+    finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
+  }
 
-          double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-          String pricePerTonHint = '';
-          if (currentUnit.isNotEmpty && weightPerUnit > 0 && unitPrice > 0) {
-            double weightPerUnitInTonsCalc = isKg ? weightPerUnit / 1000 : weightPerUnit;
-            if (weightPerUnitInTonsCalc > 0) {
-              pricePerTonHint = 'قیمت هر تن: ${unitPrice.toStringAsFixed(0)}';
-            }
+  await showDialog(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
+        double unitCount = double.tryParse(unitCountController.text) ?? 0;
+        String currentUnit = unitController.text;
+        bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
+        
+        double weightPerUnitInTons = isKg ? weightPerUnit / 1000 : weightPerUnit;
+        double totalWeight = weightPerUnit * unitCount;
+        double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
+
+        double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+        String pricePerTonHint = '';
+        if (currentUnit.isNotEmpty && weightPerUnit > 0 && unitPrice > 0) {
+          double weightPerUnitInTonsCalc = isKg ? weightPerUnit / 1000 : weightPerUnit;
+          if (weightPerUnitInTonsCalc > 0) {
+            pricePerTonHint = 'قیمت هر تن: ${unitPrice.toStringAsFixed(0)}';
           }
+        }
 
-          return Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              title: Text(l10n.addNewSale, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
-              content: SizedBox(
-                width: 700,
-                height: MediaQuery.of(context).size.height * 0.7,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSectionTitle(l10n.salesManagement, l10n),
-                      const SizedBox(height: 8),
-                      _buildTextField(
-                        controller: invoiceNumberController,
-                        label: l10n.invoiceNumberLabel,
-                        icon: Icons.numbers,
-                        l10n: l10n,
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text(l10n.addNewSale, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
+            content: SizedBox(
+              width: 700,
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSectionTitle(l10n.salesManagement, l10n),
+                    const SizedBox(height: 8),
+                    _buildTextField(
+                      controller: invoiceNumberController,
+                      label: l10n.invoiceNumberLabel,
+                      icon: Icons.numbers,
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      value: selectedParty,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.selectCustomerCompany,
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.history_rounded, color: Color(0xFFCB001D)),
+                          tooltip: l10n.viewCustomerHistory,
+                          onPressed: selectedParty == null
+                              ? null
+                              : () => _showPartyTransactionHistory(selectedParty),
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<Map<String, dynamic>>(
-                        value: selectedParty,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: l10n.selectCustomerCompany,
-                          border: const OutlineInputBorder(),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.history_rounded, color: Color(0xFFCB001D)),
-                            tooltip: l10n.viewCustomerHistory,
-                            onPressed: selectedParty == null
-                                ? null
-                                : () => _showPartyTransactionHistory(selectedParty),
+                      items: _partyOptions.map((option) {
+                        return DropdownMenuItem<Map<String, dynamic>>(
+                          value: option,
+                          child: Text('${option['name']} (${option['source'] == 'company' ? l10n.company : l10n.customer})'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          selectedParty = value;
+                          customerNameController.text = value['name']?.toString() ?? '';
+                          phoneController.text = value['phone']?.toString() ?? '';
+                          addressController.text = value['address']?.toString() ?? '';
+                          companyController.text = value['company']?.toString() ?? '';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: customerNameController,
+                            label: l10n.customerName,
+                            icon: Icons.person_outline,
+                            l10n: l10n,
                           ),
                         ),
-                        items: _partyOptions.map((option) {
-                          return DropdownMenuItem<Map<String, dynamic>>(
-                            value: option,
-                            child: Text('${option['name']} (${option['source'] == 'company' ? l10n.company : l10n.customer})'),
-                          );
-                        }).toList(),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: companyController,
+                            label: l10n.companyName,
+                            icon: Icons.business_outlined,
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: phoneController,
+                            label: l10n.phoneNumber,
+                            icon: Icons.phone_outlined,
+                            keyboardType: TextInputType.phone,
+                            l10n: l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: addressController,
+                            label: l10n.address,
+                            icon: Icons.location_on_outlined,
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle(l10n.productDetails, l10n),
+                    const SizedBox(height: 8),
+                    
+                    // ========== FIXED DROPDOWN - SIMPLE ONLY NAME ==========
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: DropdownButtonFormField<String>(
+                        value: selectedProductName != null && productOptions.any((p) => p['name']?.toString() == selectedProductName) 
+                            ? selectedProductName 
+                            : null,
+                        isExpanded: true,
+                        menuMaxHeight: 200,
+                        decoration: InputDecoration(
+                          labelText: 'انتخاب نوع تولید',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.refresh, color: Colors.grey, size: 18),
+                            onPressed: () async {
+                              final updated = await _db.getProducedProducts();
+                              setDialogState(() {
+                                productOptions.clear();
+                                productOptions.addAll(updated.map((p) => {
+                                  'id': p['id'],
+                                  'name': p['production_type']?.toString() ?? '-',
+                                  'unit': p['unit']?.toString() ?? 'کیلوگرم',
+                                  'thickness': p['thickness']?.toString() ?? '',
+                                  'size': p['size']?.toString() ?? '',
+                                  'length': p['length']?.toString() ?? '',
+                                  'raw_weight': double.tryParse(p['raw_weight']?.toString() ?? '0') ?? 0,
+                                  'raw_count': int.tryParse(p['raw_count']?.toString() ?? '0') ?? 0,
+                                  'total_weight': double.tryParse(p['total_weight']?.toString() ?? '0') ?? 0,
+                                }));
+                                if (selectedProductName != null && !productOptions.any((p) => p['name']?.toString() == selectedProductName)) {
+                                  selectedProductName = null;
+                                  selectedProductId = null;
+                                  selectedProductUnit = null;
+                                  selectedProductThickness = null;
+                                  selectedProductSize = null;
+                                  productController.text = '';
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('انتخاب نوع تولید', style: TextStyle(color: Colors.grey)),
+                          ),
+                          ...productOptions.map((product) {
+                            final name = product['name']?.toString() ?? '-';
+                            
+                            // ONLY THE NAME - NOTHING ELSE
+                            return DropdownMenuItem<String>(
+                              value: name,
+                              child: Text(
+                                name,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
+                              ),
+                            );
+                          }).toList(),
+                        ],
                         onChanged: (value) {
-                          if (value == null) return;
+                          if (value == null) {
+                            setDialogState(() {
+                              selectedProductId = null;
+                              selectedProductName = null;
+                              selectedProductUnit = null;
+                              selectedProductThickness = null;
+                              selectedProductSize = null;
+                              productController.text = '';
+                              weightPerUnitController.text = '';
+                              unitCountController.text = '';
+                              totalWeightController.text = '';
+                              thicknessController.text = '';
+                              sizeController.text = '';
+                            });
+                            return;
+                          }
+                          final selected = productOptions.firstWhere(
+                            (p) => p['name']?.toString() == value,
+                            orElse: () => {},
+                          );
                           setDialogState(() {
-                            selectedParty = value;
-                            customerNameController.text = value['name']?.toString() ?? '';
-                            phoneController.text = value['phone']?.toString() ?? '';
-                            addressController.text = value['address']?.toString() ?? '';
-                            companyController.text = value['company']?.toString() ?? '';
+                            selectedProductId = selected['id'] as int?;
+                            selectedProductName = value;
+                            selectedProductUnit = selected['unit']?.toString() ?? 'کیلوگرم';
+                            selectedProductThickness = selected['thickness']?.toString() ?? '';
+                            selectedProductSize = selected['size']?.toString() ?? '';
+                            
+                            productController.text = value;
+                            thicknessController.text = selectedProductThickness ?? '';
+                            sizeController.text = selectedProductSize ?? '';
+                            unitController.text = selectedProductUnit ?? '';
+                            
+                            double rawWeight = selected['raw_weight'] ?? 0;
+                            int rawCount = selected['raw_count'] ?? 0;
+                            double totalWeight = selected['total_weight'] ?? 0;
+                            
+                            weightPerUnitController.text = rawWeight > 0 ? rawWeight.toString() : '';
+                            unitCountController.text = rawCount > 0 ? rawCount.toString() : '';
+                            totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+                            
+                            updateTotals();
                           });
                         },
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: customerNameController,
-                              label: l10n.customerName,
-                              icon: Icons.person_outline,
-                              l10n: l10n,
-                            ),
+                      )
+                    ),
+                    // ========== END FIXED DROPDOWN ==========
+                    
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: productController,
+                            label: 'نوع تولید',
+                            icon: Icons.inventory_2_outlined,
+                            l10n: l10n,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: companyController,
-                              label: l10n.companyName,
-                              icon: Icons.business_outlined,
-                              l10n: l10n,
-                            ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: genderController,
+                            label: l10n.gender,
+                            icon: Icons.category_outlined,
+                            l10n: l10n,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: phoneController,
-                              label: l10n.phoneNumber,
-                              icon: Icons.phone_outlined,
-                              keyboardType: TextInputType.phone,
-                              l10n: l10n,
-                            ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: sizeController,
+                            label: l10n.size,
+                            icon: Icons.straighten,
+                            l10n: l10n,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: addressController,
-                              label: l10n.address,
-                              icon: Icons.location_on_outlined,
-                              l10n: l10n,
-                            ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: thicknessController,
+                            label: l10n.thickness,
+                            icon: Icons.height,
+                            l10n: l10n,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildSectionTitle(l10n.productDetails, l10n),
-                      const SizedBox(height: 8),
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: DropdownButtonFormField<String>(
-                          value: selectedProductName != null && productOptions.any((p) => p['name']?.toString() == selectedProductName) 
-                              ? selectedProductName 
-                              : null,
-                          isExpanded: true,
-                          menuMaxHeight: 200,
-                          decoration: InputDecoration(
-                            labelText: 'انتخاب نوع تولید',
-                            border: const OutlineInputBorder(),
-                            prefixIcon: const Icon(Icons.inventory_2_outlined, color: Color(0xFFCB001D)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            isDense: true,
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.refresh, color: Colors.grey, size: 18),
-                              onPressed: () async {
-                                final updated = await _db.getProducedProducts();
-                                setDialogState(() {
-                                  productOptions.clear();
-                                  productOptions.addAll(updated.map((p) => {
-                                    'id': p['id'],
-                                    'name': p['production_type']?.toString() ?? '-',
-                                    'unit': p['unit']?.toString() ?? 'کیلوگرم',
-                                    'thickness': p['thickness']?.toString() ?? '',
-                                    'size': p['size']?.toString() ?? '',
-                                    'length': p['length']?.toString() ?? '',
-                                    'raw_weight': double.tryParse(p['raw_weight']?.toString() ?? '0') ?? 0,
-                                    'raw_count': int.tryParse(p['raw_count']?.toString() ?? '0') ?? 0,
-                                    'total_weight': double.tryParse(p['total_weight']?.toString() ?? '0') ?? 0,
-                                  }));
-                                  if (selectedProductName != null && !productOptions.any((p) => p['name']?.toString() == selectedProductName)) {
-                                    selectedProductName = null;
-                                    selectedProductId = null;
-                                    selectedProductUnit = null;
-                                    selectedProductThickness = null;
-                                    selectedProductSize = null;
-                                    productController.text = '';
-                                  }
-                                });
-                              },
-                            ),
-                          ),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('انتخاب نوع تولید', style: TextStyle(color: Colors.grey)),
-                            ),
-                            ...productOptions.map((product) {
-                              final name = product['name']?.toString() ?? '-';
-                              final unit = product['unit']?.toString() ?? '';
-                              final thickness = product['thickness']?.toString() ?? '';
-                              final size = product['size']?.toString() ?? '';
-                              final rawWeight = product['raw_weight'] ?? 0;
-                              final rawCount = product['raw_count'] ?? 0;
-                              
-                              String weightDisplay = '';
-                              if (rawWeight > 0) {
-                                if (_isWeightUnit(unit)) {
-                                  double tons = rawWeight / 1000;
-                                  weightDisplay = '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
-                                } else {
-                                  weightDisplay = '$rawWeight $unit';
-                                }
-                              }
-                              
-                              return DropdownMenuItem<String>(
-                                value: name,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        name,
-                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 2,
-                                        children: [
-                                          if (size.isNotEmpty) 
-                                            Text('سایز: $size', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                          if (thickness.isNotEmpty) 
-                                            Text('ضخامت: $thickness', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                          if (weightDisplay.isNotEmpty) 
-                                            Text('وزن: $weightDisplay', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                          if (rawCount > 0) 
-                                            Text('تعداد: $rawCount', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                          if (unit.isNotEmpty) 
-                                            Text('($unit)', style: const TextStyle(fontSize: 11, color: Color(0xFFCB001D), fontWeight: FontWeight.w600)),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) {
-                              setDialogState(() {
-                                selectedProductId = null;
-                                selectedProductName = null;
-                                selectedProductUnit = null;
-                                selectedProductThickness = null;
-                                selectedProductSize = null;
-                                productController.text = '';
-                                weightPerUnitController.text = '';
-                                unitCountController.text = '';
-                                totalWeightController.text = '';
-                                thicknessController.text = '';
-                                sizeController.text = '';
-                              });
-                              return;
-                            }
-                            final selected = productOptions.firstWhere(
-                              (p) => p['name']?.toString() == value,
-                              orElse: () => {},
-                            );
-                            setDialogState(() {
-                              selectedProductId = selected['id'] as int?;
-                              selectedProductName = value;
-                              selectedProductUnit = selected['unit']?.toString() ?? 'کیلوگرم';
-                              selectedProductThickness = selected['thickness']?.toString() ?? '';
-                              selectedProductSize = selected['size']?.toString() ?? '';
-                              
-                              productController.text = value;
-                              thicknessController.text = selectedProductThickness ?? '';
-                              sizeController.text = selectedProductSize ?? '';
-                              unitController.text = selectedProductUnit ?? '';
-                              
-                              double rawWeight = selected['raw_weight'] ?? 0;
-                              int rawCount = selected['raw_count'] ?? 0;
-                              double totalWeight = selected['total_weight'] ?? 0;
-                              
-                              weightPerUnitController.text = rawWeight > 0 ? rawWeight.toString() : '';
-                              unitCountController.text = rawCount > 0 ? rawCount.toString() : '';
-                              totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
-                              
-                              updateTotals();
-                            });
-                          },
-                        )
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: productController,
-                              label: 'نوع تولید',
-                              icon: Icons.inventory_2_outlined,
-                              l10n: l10n,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: genderController,
-                              label: l10n.gender,
-                              icon: Icons.category_outlined,
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: sizeController,
-                              label: l10n.size,
-                              icon: Icons.straighten,
-                              l10n: l10n,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: thicknessController,
-                              label: l10n.thickness,
-                              icon: Icons.height,
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildTextField(
-                                  controller: weightPerUnitController,
-                                  label: 'وزن فی خاده (کیلوگرم)',
-                                  icon: Icons.scale_outlined,
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (_) => setDialogState(() {
-                                    updateTotals();
-                                    setDialogState(() {});
-                                  }),
-                                  l10n: l10n,
-                                ),
-                                if (weightPerUnit > 0 && isKg)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCB001D).withOpacity(0.06),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D).withOpacity(0.1),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D).withOpacity(0.2),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              '$weightPerUnit kg',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1A1A2E),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFCB001D).withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D).withOpacity(0.3),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              '${weightPerUnitInTons.toStringAsFixed(weightPerUnitInTons % 1 == 0 ? 0 : 2)} تن',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFFCB001D),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: unitCountController,
-                              label: 'تعداد خاده',
-                              icon: Icons.numbers,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildTextField(
-                                  controller: totalWeightController,
-                                  label: 'مجموع وزن (تن)',
-                                  icon: Icons.monitor_weight_outlined,
-                                  keyboardType: TextInputType.number,
-                                  readOnly: true,
-                                  l10n: l10n,
-                                ),
-                                if (totalWeight > 0 && isKg)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCB001D).withOpacity(0.06),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D).withOpacity(0.1),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D).withOpacity(0.2),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              '$totalWeight kg',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1A1A2E),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFCB001D).withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D).withOpacity(0.3),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2)} تن',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFFCB001D),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: unitController,
-                              label: l10n.unit,
-                              icon: Icons.scale,
-                              readOnly: true,
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildSectionTitle(l10n.financialInfo, l10n),
-                      const SizedBox(height: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: unitPriceController,
-                                  label: '${l10n.unitPricePerKg} (قیمت هر تن)',
-                                  icon: Icons.attach_money_outlined,
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (_) => setDialogState(updateTotals),
-                                  l10n: l10n,
-                                ),
+                              _buildTextField(
+                                controller: weightPerUnitController,
+                                label: 'وزن فی خاده (کیلوگرم)',
+                                icon: Icons.scale_outlined,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setDialogState(() {
+                                  updateTotals();
+                                  setDialogState(() {});
+                                }),
+                                l10n: l10n,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: unitController,
-                                  label: l10n.unit,
-                                  icon: Icons.widgets_outlined,
-                                  readOnly: true,
-                                  l10n: l10n,
+                              if (weightPerUnit > 0 && isKg)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCB001D).withOpacity(0.06),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xFFCB001D).withOpacity(0.1),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: const Color(0xFFCB001D).withOpacity(0.2),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '$weightPerUnit kg',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF1A1A2E),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFCB001D).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: const Color(0xFFCB001D).withOpacity(0.3),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${weightPerUnitInTons.toStringAsFixed(weightPerUnitInTons % 1 == 0 ? 0 : 2)} تن',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFFCB001D),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
-                          if (currentUnit.isNotEmpty && weightPerUnit > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.06),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: Colors.blue.withOpacity(0.1),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 14),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'قیمت بر اساس هر تن محاسبه می‌شود',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.blue.shade700,
-                                        fontWeight: FontWeight.w500,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: unitCountController,
+                            label: 'تعداد خاده',
+                            icon: Icons.numbers,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateTotals),
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTextField(
+                                controller: totalWeightController,
+                                label: 'مجموع وزن (تن)',
+                                icon: Icons.monitor_weight_outlined,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                                l10n: l10n,
+                              ),
+                              if (totalWeight > 0 && isKg)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFCB001D).withOpacity(0.06),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xFFCB001D).withOpacity(0.1),
+                                        width: 1,
                                       ),
                                     ),
-                                    if (pricePerTonHint.isNotEmpty) ...[
-                                      const SizedBox(width: 12),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFCB001D).withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: const Color(0xFFCB001D).withOpacity(0.2),
-                                            width: 1,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: const Color(0xFFCB001D).withOpacity(0.2),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '$totalWeight kg',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF1A1A2E),
+                                            ),
                                           ),
                                         ),
-                                        child: Text(
-                                          pricePerTonHint,
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFFCB001D),
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFCB001D).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: const Color(0xFFCB001D).withOpacity(0.3),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2)} تن',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFFCB001D),
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ],
+                                      ],
+                                    ),
+                                  ),
                                 ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: unitController,
+                            label: l10n.unit,
+                            icon: Icons.scale,
+                            readOnly: true,
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle(l10n.financialInfo, l10n),
+                    const SizedBox(height: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: unitPriceController,
+                                label: '${l10n.unitPricePerKg} (قیمت هر تن)',
+                                icon: Icons.attach_money_outlined,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setDialogState(updateTotals),
+                                l10n: l10n,
                               ),
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: totalPriceController,
-                              label: l10n.totalPrice,
-                              icon: Icons.receipt_long_outlined,
-                              keyboardType: TextInputType.number,
-                              readOnly: true,
-                              l10n: l10n,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: unitController,
+                                label: l10n.unit,
+                                icon: Icons.widgets_outlined,
+                                readOnly: true,
+                                l10n: l10n,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: priceRateController,
-                              label: selectedCurrency == 'USD' 
-                                  ? 'نرخ ارز (USD به AFN) *' 
-                                  : 'نرخ ارز (AFN به USD) *',
-                              icon: Icons.currency_exchange,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: equivalentController,
-                        label: selectedCurrency == 'USD' 
-                            ? 'معادل به افغانی (AFN)' 
-                            : 'معادل به دالر (USD)',
-                        icon: Icons.currency_exchange,
-                        readOnly: true,
-                        l10n: l10n,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: loadingController,
-                              label: l10n.loadingCost,
-                              icon: Icons.local_shipping_outlined,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                              l10n: l10n,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: transferController,
-                              label: l10n.transferCost,
-                              icon: Icons.drive_eta_outlined,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: clearanceController,
-                              label: l10n.clearanceCost,
-                              icon: Icons.fact_check_outlined,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                              l10n: l10n,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: discountController,
-                              label: l10n.discount,
-                              icon: Icons.discount_outlined,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: finalPriceController,
-                              label: l10n.finalPrice,
-                              icon: Icons.payments_outlined,
-                              keyboardType: TextInputType.number,
-                              readOnly: true,
-                              l10n: l10n,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: dateController,
-                              label: l10n.persianDate,
-                              icon: Icons.date_range_outlined,
-                              readOnly: true,
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2030),
-                                );
-                                if (picked != null) {
-                                  setDialogState(() {
-                                    dateController.text = PersianDateConverter.gregorianToJalali(picked);
-                                    selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
-                                  });
-                                }
-                              },
-                              l10n: l10n,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: timeController,
-                              label: l10n.loadingTime,
-                              icon: Icons.access_time_outlined,
-                              readOnly: true,
-                              onTap: () async {
-                                final picked = await showTimePicker(
-                                  context: context,
-                                  initialTime: TimeOfDay.now(),
-                                );
-                                if (picked != null) {
-                                  setDialogState(() {
-                                    timeController.text = _formatTimeOfDay(picked);
-                                    selectedEnglishTime = _formatTimeOfDay(picked);
-                                  });
-                                }
-                              },
-                              l10n: l10n,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: selectedCurrency,
-                        decoration: InputDecoration(labelText: l10n.finalCurrency, border: const OutlineInputBorder()),
-                        items: const [
-                          DropdownMenuItem(value: 'USD', child: Text('USD')),
-                          DropdownMenuItem(value: 'AFN', child: Text('AFN')),
-                        ],
-                        onChanged: (value) => setDialogState(() {
-                          selectedCurrency = value ?? 'USD';
-                          updateTotals();
-                        }),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: selectedType,
-                        decoration: InputDecoration(labelText: l10n.transactionType, border: const OutlineInputBorder()),
-                        items: [
-                          DropdownMenuItem(value: 'فروش', child: Text(l10n.sale)),
-                          DropdownMenuItem(value: 'پیش‌فاکتور', child: Text(l10n.proformaInvoice)),
-                        ],
-                        onChanged: (value) => setDialogState(() => selectedType = value ?? 'فروش'),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: selectedPaymentMethod,
-                        decoration: InputDecoration(labelText: l10n.paymentMethod, border: const OutlineInputBorder()),
-                        items: [
-                          DropdownMenuItem(value: 'cash', child: Text(l10n.cash)),
-                          DropdownMenuItem(value: 'loan_full', child: Text(l10n.fullLoan)),
-                          DropdownMenuItem(value: 'loan_partial', child: Text(l10n.partialLoan)),
-                        ],
-                        onChanged: (value) => setDialogState(() => selectedPaymentMethod = value ?? 'cash'),
-                      ),
-                      if (selectedPaymentMethod == 'loan_partial') const SizedBox(height: 12),
-                      if (selectedPaymentMethod == 'loan_partial')
-                        _buildTextField(
-                          controller: paidAmountController,
-                          label: l10n.initialPaymentAmount,
-                          icon: Icons.payments_outlined,
-                          keyboardType: TextInputType.number,
-                          l10n: l10n,
+                          ],
                         ),
-                      const SizedBox(height: 12),
+                        if (currentUnit.isNotEmpty && weightPerUnit > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 14),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'قیمت بر اساس هر تن محاسبه می‌شود',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.blue.shade700,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  if (pricePerTonHint.isNotEmpty) ...[
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFCB001D).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: const Color(0xFFCB001D).withOpacity(0.2),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        pricePerTonHint,
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFCB001D),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: totalPriceController,
+                            label: l10n.totalPrice,
+                            icon: Icons.receipt_long_outlined,
+                            keyboardType: TextInputType.number,
+                            readOnly: true,
+                            l10n: l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: priceRateController,
+                            label: selectedCurrency == 'USD' 
+                                ? 'نرخ ارز (USD به AFN) *' 
+                                : 'نرخ ارز (AFN به USD) *',
+                            icon: Icons.currency_exchange,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateTotals),
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: equivalentController,
+                      label: selectedCurrency == 'USD' 
+                          ? 'معادل به افغانی (AFN)' 
+                          : 'معادل به دالر (USD)',
+                      icon: Icons.currency_exchange,
+                      readOnly: true,
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: loadingController,
+                            label: l10n.loadingCost,
+                            icon: Icons.local_shipping_outlined,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateTotals),
+                            l10n: l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: transferController,
+                            label: l10n.transferCost,
+                            icon: Icons.drive_eta_outlined,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateTotals),
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: clearanceController,
+                            label: l10n.clearanceCost,
+                            icon: Icons.fact_check_outlined,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateTotals),
+                            l10n: l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: discountController,
+                            label: l10n.discount,
+                            icon: Icons.discount_outlined,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setDialogState(updateTotals),
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: finalPriceController,
+                            label: l10n.finalPrice,
+                            icon: Icons.payments_outlined,
+                            keyboardType: TextInputType.number,
+                            readOnly: true,
+                            l10n: l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: dateController,
+                            label: l10n.persianDate,
+                            icon: Icons.date_range_outlined,
+                            readOnly: true,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  dateController.text = PersianDateConverter.gregorianToJalali(picked);
+                                  selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
+                                });
+                              }
+                            },
+                            l10n: l10n,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: timeController,
+                            label: l10n.loadingTime,
+                            icon: Icons.access_time_outlined,
+                            readOnly: true,
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.now(),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  timeController.text = _formatTimeOfDay(picked);
+                                  selectedEnglishTime = _formatTimeOfDay(picked);
+                                });
+                              }
+                            },
+                            l10n: l10n,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: selectedCurrency,
+                      decoration: InputDecoration(labelText: l10n.finalCurrency, border: const OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'USD', child: Text('USD')),
+                        DropdownMenuItem(value: 'AFN', child: Text('AFN')),
+                      ],
+                      onChanged: (value) => setDialogState(() {
+                        selectedCurrency = value ?? 'USD';
+                        updateTotals();
+                      }),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: selectedType,
+                      decoration: InputDecoration(labelText: l10n.transactionType, border: const OutlineInputBorder()),
+                      items: [
+                        DropdownMenuItem(value: 'فروش', child: Text(l10n.sale)),
+                        DropdownMenuItem(value: 'پیش‌فاکتور', child: Text(l10n.proformaInvoice)),
+                      ],
+                      onChanged: (value) => setDialogState(() => selectedType = value ?? 'فروش'),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: selectedPaymentMethod,
+                      decoration: InputDecoration(labelText: l10n.paymentMethod, border: const OutlineInputBorder()),
+                      items: [
+                        DropdownMenuItem(value: 'cash', child: Text(l10n.cash)),
+                        DropdownMenuItem(value: 'loan_full', child: Text(l10n.fullLoan)),
+                        DropdownMenuItem(value: 'loan_partial', child: Text(l10n.partialLoan)),
+                      ],
+                      onChanged: (value) => setDialogState(() => selectedPaymentMethod = value ?? 'cash'),
+                    ),
+                    if (selectedPaymentMethod == 'loan_partial') const SizedBox(height: 12),
+                    if (selectedPaymentMethod == 'loan_partial')
                       _buildTextField(
-                        controller: descriptionController,
-                        label: l10n.description,
-                        icon: Icons.notes_outlined,
-                        maxLines: 2,
+                        controller: paidAmountController,
+                        label: l10n.initialPaymentAmount,
+                        icon: Icons.payments_outlined,
+                        keyboardType: TextInputType.number,
                         l10n: l10n,
                       ),
-                    ],
-                  ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: descriptionController,
+                      label: l10n.description,
+                      icon: Icons.notes_outlined,
+                      maxLines: 2,
+                      l10n: l10n,
+                    ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
-                ElevatedButton(
-                  onPressed: () async {
-                    final invoiceNumber = invoiceNumberController.text.trim();
-                    final customerName = customerNameController.text.trim();
-                    final phone = phoneController.text.trim();
-                    final address = addressController.text.trim();
-                    final company = companyController.text.trim();
-                    final product = productController.text.trim();
-                    
-                    if (invoiceNumber.isEmpty) {
-                      _showSnackbar('شماره فاکتور الزامی است', Colors.red);
-                      return;
-                    }
-                    
-                    if (customerName.isEmpty || product.isEmpty) {
-                      _showSnackbar(l10n.customerAndProductRequired, Colors.red);
-                      return;
-                    }
-                    
-                    final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-                    final totalPrice = double.tryParse(totalPriceController.text) ?? 0;
-                    final discount = double.tryParse(discountController.text) ?? 0;
-                    final loadingCost = double.tryParse(loadingController.text) ?? 0;
-                    final transferCost = double.tryParse(transferController.text) ?? 0;
-                    final clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-                    final priceRate = double.tryParse(priceRateController.text) ?? 1;
-                    final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
-                    final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
+              ElevatedButton(
+                onPressed: () async {
+                  final invoiceNumber = invoiceNumberController.text.trim();
+                  final customerName = customerNameController.text.trim();
+                  final phone = phoneController.text.trim();
+                  final address = addressController.text.trim();
+                  final company = companyController.text.trim();
+                  final product = productController.text.trim();
+                  
+                  if (invoiceNumber.isEmpty) {
+                    _showSnackbar('شماره فاکتور الزامی است', Colors.red);
+                    return;
+                  }
+                  
+                  if (customerName.isEmpty || product.isEmpty) {
+                    _showSnackbar(l10n.customerAndProductRequired, Colors.red);
+                    return;
+                  }
+                  
+                  final unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+                  final totalPrice = double.tryParse(totalPriceController.text) ?? 0;
+                  final discount = double.tryParse(discountController.text) ?? 0;
+                  final loadingCost = double.tryParse(loadingController.text) ?? 0;
+                  final transferCost = double.tryParse(transferController.text) ?? 0;
+                  final clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+                  final priceRate = double.tryParse(priceRateController.text) ?? 1;
+                  final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+                  final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
 
-                    final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-                    final currencyType = selectedCurrency;
-                    final usdEquivalent = currencyType == 'USD' ? finalPrice : (priceRate <= 0 ? finalPrice : finalPrice / priceRate);
-                    final afnEquivalent = currencyType == 'AFN' ? finalPrice : (finalPrice * (priceRate <= 0 ? 1 : priceRate));
-                    final remainingAmount = selectedPaymentMethod == 'cash'
-                        ? 0
-                        : (finalPrice - paidAmount) < 0
-                            ? 0
-                            : finalPrice - paidAmount;
+                  final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+                  final currencyType = selectedCurrency;
+                  final usdEquivalent = currencyType == 'USD' ? finalPrice : (priceRate <= 0 ? finalPrice : finalPrice / priceRate);
+                  final afnEquivalent = currencyType == 'AFN' ? finalPrice : (finalPrice * (priceRate <= 0 ? 1 : priceRate));
+                  final remainingAmount = selectedPaymentMethod == 'cash'
+                      ? 0
+                      : (finalPrice - paidAmount) < 0
+                          ? 0
+                          : finalPrice - paidAmount;
+                  
+                  final existingInvoice = await _db.getSalesInvoiceByNumber(invoiceNumber);
+                  if (existingInvoice != null) {
+                    _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
+                    return;
+                  }
+                  
+                  final payload = {
+                    'invoice_number': invoiceNumber,
+                    'customer_name': customerName,
+                    'customer_phone': phone,
+                    'customer_address': address,
+                    'customer_company': company,
+                    'product_name': product,
+                    'gender': genderController.text.trim(),
+                    'size': sizeController.text.trim(),
+                    'thickness': thicknessController.text.trim(),
+                    'weight': totalWeightController.text.trim(),
+                    'weight_per_unit': weightPerUnitController.text.trim(),
+                    'unit_count': unitCountController.text.trim(),
+                    'total_weight': totalWeightController.text.trim(),
+                    'unit': unitController.text.trim(),
+                    'unit_price': unitPrice,
+                    'total_price': totalPrice,
+                    'price_rate': priceRate,
+                    'currency': currencyType,
+                    'usd_equivalent': usdEquivalent,
+                    'afn_equivalent': afnEquivalent,
+                    'loading_cost': loadingCost,
+                    'transfer_cost': transferCost,
+                    'clearance_cost': clearanceCost,
+                    'discount': discount,
+                    'loading_time': timeController.text.trim(),
+                    'loading_time_en': selectedEnglishTime,
+                    'final_price': finalPrice,
+                    'payment_method': selectedPaymentMethod,
+                    'loan_type': selectedPaymentMethod == 'loan_full' ? 'full' : selectedPaymentMethod == 'loan_partial' ? 'partial' : 'cash',
+                    'paid_amount': selectedPaymentMethod == 'cash' ? finalPrice : paidAmount,
+                    'remaining_amount': remainingAmount,
+                    'description': descriptionController.text.trim(),
+                    'sale_type': selectedType,
+                    'date': dateController.text.trim(),
+                    'date_en': selectedEnglishDate,
+                    'produced_product_id': selectedProductId,
+                  };
+                  
+                  final id = await _db.insertSalesInvoice(payload);
+                  if (id == -1) {
+                    _showSnackbar(l10n.errorAddingSale, Colors.red);
+                    return;
+                  }
+
+                  if (selectedProductId != null && totalWeight > 0) {
+                    final unit = unitController.text.trim();
+                    final stockDeducted = await _db.deductProductStock(
+                      selectedProductId!, 
+                      totalWeight, 
+                      unit
+                    );
                     
-                    final existingInvoice = await _db.getSalesInvoiceByNumber(invoiceNumber);
-                    if (existingInvoice != null) {
-                      _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
+                    if (!stockDeducted) {
+                      _showSnackbar('⚠️ موجودی کافی نیست!', Colors.red);
+                      await _db.deleteSalesInvoice(id);
                       return;
                     }
-                    
-                    final payload = {
+                  }
+
+                  if (selectedPaymentMethod != 'cash') {
+                    final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
+                    final totalAmount = finalPrice;
+                    final remaining = (totalAmount - paidAmount) < 0 ? 0 : (totalAmount - paidAmount);
+                    final loanPayload = {
+                      'sale_invoice_id': id,
                       'invoice_number': invoiceNumber,
                       'customer_name': customerName,
-                      'customer_phone': phone,
-                      'customer_address': address,
                       'customer_company': company,
-                      'product_name': product,
-                      'gender': genderController.text.trim(),
-                      'size': sizeController.text.trim(),
-                      'thickness': thicknessController.text.trim(),
-                      'weight': totalWeightController.text.trim(),
-                      'weight_per_unit': weightPerUnitController.text.trim(),
-                      'unit_count': unitCountController.text.trim(),
-                      'total_weight': totalWeightController.text.trim(),
-                      'unit': unitController.text.trim(),
-                      'unit_price': unitPrice,
-                      'total_price': totalPrice,
-                      'price_rate': priceRate,
+                      'total_amount': totalAmount,
+                      'paid_amount': paidAmount,
+                      'remaining_amount': remaining,
+                      'loan_type': selectedPaymentMethod == 'loan_full' ? 'full' : 'partial',
                       'currency': currencyType,
-                      'usd_equivalent': usdEquivalent,
-                      'afn_equivalent': afnEquivalent,
-                      'loading_cost': loadingCost,
-                      'transfer_cost': transferCost,
-                      'clearance_cost': clearanceCost,
-                      'discount': discount,
-                      'loading_time': timeController.text.trim(),
-                      'loading_time_en': selectedEnglishTime,
-                      'final_price': finalPrice,
-                      'payment_method': selectedPaymentMethod,
-                      'loan_type': selectedPaymentMethod == 'loan_full' ? 'full' : selectedPaymentMethod == 'loan_partial' ? 'partial' : 'cash',
-                      'paid_amount': selectedPaymentMethod == 'cash' ? finalPrice : paidAmount,
-                      'remaining_amount': remainingAmount,
-                      'description': descriptionController.text.trim(),
-                      'sale_type': selectedType,
                       'date': dateController.text.trim(),
                       'date_en': selectedEnglishDate,
-                      'produced_product_id': selectedProductId,
                     };
-                    
-                    final id = await _db.insertSalesInvoice(payload);
-                    if (id == -1) {
-                      _showSnackbar(l10n.errorAddingSale, Colors.red);
-                      return;
+                    if (loanPayload.isEmpty) {
+                      print('⚠️ loanPayload empty');
                     }
-
-                    if (selectedProductId != null && totalWeight > 0) {
-                      final unit = unitController.text.trim();
-                      final stockDeducted = await _db.deductProductStock(
-                        selectedProductId!, 
-                        totalWeight, 
-                        unit
-                      );
-                      
-                      if (!stockDeducted) {
-                        _showSnackbar('⚠️ موجودی کافی نیست!', Colors.red);
-                        await _db.deleteSalesInvoice(id);
-                        return;
+                    final loanId = await _db.insertSellLoan(loanPayload);
+                    if (loanId == -1) {
+                      _showSnackbar(l10n.errorSavingLoan, Colors.red);
+                    } else {
+                      if (paidAmount > 0) {
+                        await _db.insertSellLoanPayment({
+                          'loan_id': loanId,
+                          'amount': paidAmount,
+                          'note': l10n.initialPaymentNote,
+                          'date': dateController.text.trim(),
+                          'date_en': selectedEnglishDate,
+                        });
                       }
                     }
+                  }
 
-                    if (selectedPaymentMethod != 'cash') {
-                      final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
-                      final totalAmount = finalPrice;
-                      final remaining = (totalAmount - paidAmount) < 0 ? 0 : (totalAmount - paidAmount);
-                      final loanPayload = {
-                        'sale_invoice_id': id,
-                        'invoice_number': invoiceNumber,
-                        'customer_name': customerName,
-                        'customer_company': company,
-                        'total_amount': totalAmount,
-                        'paid_amount': paidAmount,
-                        'remaining_amount': remaining,
-                        'loan_type': selectedPaymentMethod == 'loan_full' ? 'full' : 'partial',
-                        'currency': currencyType,
-                        'date': dateController.text.trim(),
-                        'date_en': selectedEnglishDate,
-                      };
-                      if (loanPayload.isEmpty) {
-                        print('⚠️ loanPayload empty');
-                      }
-                      final loanId = await _db.insertSellLoan(loanPayload);
-                      if (loanId == -1) {
-                        _showSnackbar(l10n.errorSavingLoan, Colors.red);
-                      } else {
-                        if (paidAmount > 0) {
-                          await _db.insertSellLoanPayment({
-                            'loan_id': loanId,
-                            'amount': paidAmount,
-                            'note': l10n.initialPaymentNote,
-                            'date': dateController.text.trim(),
-                            'date_en': selectedEnglishDate,
-                          });
-                        }
-                      }
-                    }
-
-                    Navigator.pop(context);
-                    await _loadData();
-                    _showInvoiceModal(context, invoiceNumber, {
-                      ...payload,
-                      'supplier_name': customerName,
-                      'location': address,
-                    }, l10n);
-                    _showSnackbar(l10n.saleSavedSuccess, Colors.green);
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white),
-                  child: Text(l10n.saveSale),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
+                  Navigator.pop(context);
+                  await _loadData();
+                  _showInvoiceModal(context, invoiceNumber, {
+                    ...payload,
+                    'supplier_name': customerName,
+                    'location': address,
+                  }, l10n);
+                  _showSnackbar(l10n.saleSavedSuccess, Colors.green);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white),
+                child: Text(l10n.saveSale),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
 
   // ============================================
   // PARTY TRANSACTION HISTORY

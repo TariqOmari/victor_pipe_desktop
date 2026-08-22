@@ -484,6 +484,8 @@ class _SalesPageState extends State<SalesPage> {
             'date': date,
             'date_en': dateEn,
             'produced_product_id': null,
+            'driver_name': '',
+            'number_plate': '',
           };
 
           print('📦 Inserting: ${sale['invoice_number']}');
@@ -682,6 +684,8 @@ class _SalesPageState extends State<SalesPage> {
     final dateController = TextEditingController(text: sale['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate());
     final paidAmountController = TextEditingController(text: sale['paid_amount']?.toString() ?? '');
     final invoiceNumberController = TextEditingController(text: sale['invoice_number']?.toString() ?? '');
+    final driverNameController = TextEditingController(text: sale['driver_name']?.toString() ?? '');
+    final numberPlateController = TextEditingController(text: sale['number_plate']?.toString() ?? '');
     
     String selectedPaymentMethod = sale['payment_method']?.toString() ?? 'cash';
     String selectedCurrency = sale['currency']?.toString() ?? 'USD';
@@ -725,40 +729,55 @@ class _SalesPageState extends State<SalesPage> {
       );
     }
 
-    void updateTotals() {
-      double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
-      String currentUnit = unitController.text;
-      
-      double weightPerUnitInTons = weightPerUnit;
-      bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
-      if (isKg) {
-        weightPerUnitInTons = weightPerUnit / 1000;
-      }
-      
-      double unitCount = double.tryParse(unitCountController.text) ?? 0;
-      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      double priceRate = double.tryParse(priceRateController.text) ?? 1;
-      double loadingCost = double.tryParse(loadingController.text) ?? 0;
-      double transferCost = double.tryParse(transferController.text) ?? 0;
-      double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-      double discount = double.tryParse(discountController.text) ?? 0;
-      
-      double totalWeight = weightPerUnit * unitCount;
-      double totalWeightInTons = weightPerUnitInTons * unitCount;
-      double totalPrice = totalWeightInTons * unitPrice;
+  void updateTotals() {
+  double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
+  String currentUnit = unitController.text;
+  
+  double weightPerUnitInTons = weightPerUnit;
+  bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
+  if (isKg) {
+    weightPerUnitInTons = weightPerUnit / 1000;
+  }
+  
+  double unitCount = double.tryParse(unitCountController.text) ?? 0;
+  double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+  double priceRate = double.tryParse(priceRateController.text) ?? 1;
+  
+  // ✅ THESE ARE ALWAYS IN AFN - NOT USD!
+  double loadingCost = double.tryParse(loadingController.text) ?? 0;
+  double transferCost = double.tryParse(transferController.text) ?? 0;
+  double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+  double discount = double.tryParse(discountController.text) ?? 0;
+  
+  // Calculate base total price in USD (main currency)
+  double totalWeight = weightPerUnit * unitCount;
+  double totalWeightInTons = weightPerUnitInTons * unitCount;
+  double totalPrice = totalWeightInTons * unitPrice;
 
-      totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
-      totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
+  totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+  totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
 
-      if (selectedCurrency == 'USD') {
-        equivalentController.text = totalPrice > 0 ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) : '';
-      } else {
-        equivalentController.text = totalPrice > 0 ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(2) : '';
-      }
+  // ✅ CONVERT AFN EXPENSES TO USD BEFORE ADDING
+  double loadingCostUSD = loadingCost / (priceRate <= 0 ? 1 : priceRate);
+  double transferCostUSD = transferCost / (priceRate <= 0 ? 1 : priceRate);
+  double clearanceCostUSD = clearanceCost / (priceRate <= 0 ? 1 : priceRate);
+  double discountUSD = discount / (priceRate <= 0 ? 1 : priceRate);
 
-      double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-      finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
-    }
+  // ✅ Final price in USD with proper precision
+  double finalPrice = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
+  finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(2) : '';
+
+  // ✅ AFN equivalent with proper rounding
+  if (selectedCurrency == 'USD') {
+    equivalentController.text = totalPrice > 0 
+        ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) 
+        : '';
+  } else {
+    equivalentController.text = totalPrice > 0 
+        ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(2) 
+        : '';
+  }
+}
 
     await showDialog(
       context: context,
@@ -1545,6 +1564,20 @@ class _SalesPageState extends State<SalesPage> {
                         maxLines: 2,
                         l10n: l10n,
                       ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: driverNameController,
+                        label: 'نام دریور',
+                        icon: Icons.person_outline,
+                        l10n: l10n,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: numberPlateController,
+                        label: 'شماره پلیت',
+                        icon: Icons.local_shipping_outlined,
+                        l10n: l10n,
+                      ),
                     ],
                   ),
                 ),
@@ -1633,6 +1666,8 @@ class _SalesPageState extends State<SalesPage> {
                       'date': dateController.text.trim(),
                       'date_en': selectedEnglishDate,
                       'produced_product_id': selectedProductId,
+                      'driver_name': driverNameController.text.trim(),
+                      'number_plate': numberPlateController.text.trim(),
                     };
                     
                     final result = await _db.updateSalesInvoice(sale['id'], payload);
@@ -1686,6 +1721,8 @@ Future<void> _showAddSaleDialog() async {
   final equivalentController = TextEditingController();
   final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
   final paidAmountController = TextEditingController();
+  final driverNameController = TextEditingController();
+  final numberPlateController = TextEditingController();
   
   final invoiceNumberController = TextEditingController();
   
@@ -1718,39 +1755,54 @@ Future<void> _showAddSaleDialog() async {
   String? selectedProductSize;
 
   void updateTotals() {
-    double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
-    String currentUnit = unitController.text;
-    
-    double weightPerUnitInTons = weightPerUnit;
-    bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
-    if (isKg) {
-      weightPerUnitInTons = weightPerUnit / 1000;
-    }
-    
-    double unitCount = double.tryParse(unitCountController.text) ?? 0;
-    double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-    double priceRate = double.tryParse(priceRateController.text) ?? 1;
-    double loadingCost = double.tryParse(loadingController.text) ?? 0;
-    double transferCost = double.tryParse(transferController.text) ?? 0;
-    double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-    double discount = double.tryParse(discountController.text) ?? 0;
-    
-    double totalWeight = weightPerUnit * unitCount;
-    double totalWeightInTons = weightPerUnitInTons * unitCount;
-    double totalPrice = totalWeightInTons * unitPrice;
-
-    totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
-    totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
-
-    if (selectedCurrency == 'USD') {
-      equivalentController.text = totalPrice > 0 ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) : '';
-    } else {
-      equivalentController.text = totalPrice > 0 ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(2) : '';
-    }
-
-    double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-    finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
+  double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
+  String currentUnit = unitController.text;
+  
+  double weightPerUnitInTons = weightPerUnit;
+  bool isKg = currentUnit == 'کیلوگرم' || currentUnit == 'kg' || currentUnit == 'Kg';
+  if (isKg) {
+    weightPerUnitInTons = weightPerUnit / 1000;
   }
+  
+  double unitCount = double.tryParse(unitCountController.text) ?? 0;
+  double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+  double priceRate = double.tryParse(priceRateController.text) ?? 1;
+  
+  // ✅ THESE ARE ALWAYS IN AFN - NOT USD!
+  double loadingCost = double.tryParse(loadingController.text) ?? 0;
+  double transferCost = double.tryParse(transferController.text) ?? 0;
+  double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+  double discount = double.tryParse(discountController.text) ?? 0;
+  
+  // Calculate base total price in USD (main currency)
+  double totalWeight = weightPerUnit * unitCount;
+  double totalWeightInTons = weightPerUnitInTons * unitCount;
+  double totalPrice = totalWeightInTons * unitPrice;
+
+  totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
+  totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
+
+  // ✅ CONVERT AFN EXPENSES TO USD BEFORE ADDING
+  double loadingCostUSD = loadingCost / (priceRate <= 0 ? 1 : priceRate);
+  double transferCostUSD = transferCost / (priceRate <= 0 ? 1 : priceRate);
+  double clearanceCostUSD = clearanceCost / (priceRate <= 0 ? 1 : priceRate);
+  double discountUSD = discount / (priceRate <= 0 ? 1 : priceRate);
+
+  // ✅ Final price in USD with proper precision
+  double finalPrice = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
+  finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(2) : '';
+
+  // ✅ AFN equivalent with proper rounding
+  if (selectedCurrency == 'USD') {
+    equivalentController.text = totalPrice > 0 
+        ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) 
+        : '';
+  } else {
+    equivalentController.text = totalPrice > 0 
+        ? (totalPrice / (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(2) 
+        : '';
+  }
+}
 
   await showDialog(
     context: context,
@@ -2499,6 +2551,20 @@ Future<void> _showAddSaleDialog() async {
                       maxLines: 2,
                       l10n: l10n,
                     ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: driverNameController,
+                      label: 'نام دریور',
+                      icon: Icons.person_outline,
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(
+                      controller: numberPlateController,
+                      label: 'شماره پلیت',
+                      icon: Icons.local_shipping_outlined,
+                      l10n: l10n,
+                    ),
                   ],
                 ),
               ),
@@ -2587,6 +2653,8 @@ Future<void> _showAddSaleDialog() async {
                     'date': dateController.text.trim(),
                     'date_en': selectedEnglishDate,
                     'produced_product_id': selectedProductId,
+                    'driver_name': driverNameController.text.trim(),
+                    'number_plate': numberPlateController.text.trim(),
                   };
                   
                   final id = await _db.insertSalesInvoice(payload);
@@ -2848,7 +2916,7 @@ void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, d
                         if (isSale) const SizedBox(height: 20),
                         _buildInvoiceSignatureRow(),
                         const SizedBox(height: 25),
-                        _buildInvoiceDriverSection(),
+                        _buildInvoiceDriverSection(invoice),
                         const SizedBox(height: 15),
                         _buildInvoiceCustomerSection(),
                         const SizedBox(height: 15),
@@ -3384,7 +3452,10 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
     ],
   );
 }
-  Widget _buildInvoiceDriverSection() {
+  Widget _buildInvoiceDriverSection(Map<String, dynamic> invoice) {
+    String driverName = invoice['driver_name']?.toString() ?? '';
+    String numberPlate = invoice['number_plate']?.toString() ?? '';
+    
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.black),
@@ -3404,9 +3475,9 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
-                Expanded(child: _buildInvoiceInlineInput('اسم :', '')),
+                Expanded(child: _buildInvoiceInlineInput('اسم :', driverName)),
                 const SizedBox(width: 15),
-                Expanded(child: _buildInvoiceInlineInput('نمبر پلیت:', '')),
+                Expanded(child: _buildInvoiceInlineInput('نمبر پلیت:', numberPlate)),
                 const SizedBox(width: 15),
                 Expanded(child: _buildInvoiceInlineInput('امضا/شصت دریور:', '')),
               ],
@@ -3716,6 +3787,36 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
                                 pw.SizedBox(height: 6),
                                 pw.Text('${l10n.amountDue}: ${_formatCurrency(invoice?['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
                               ]),
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(height: 24),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(12),
+                          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(10)),
+                          child: pw.Column(
+                            children: [
+                              pw.Container(
+                                color: PdfColors.blue900,
+                                width: double.infinity,
+                                padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+                                child: pw.Text(
+                                  'تسلیم دهی دریور:',
+                                  style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12),
+                                ),
+                              ),
+                              pw.Padding(
+                                padding: const pw.EdgeInsets.all(8.0),
+                                child: pw.Row(
+                                  children: [
+                                    pw.Expanded(child: pw.Text('اسم : ${getPdfValue('driver_name')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                                    pw.SizedBox(width: 15),
+                                    pw.Expanded(child: pw.Text('نمبر پلیت: ${getPdfValue('number_plate')}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                                    pw.SizedBox(width: 15),
+                                    pw.Expanded(child: pw.Text('امضا/شصت دریور:', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),

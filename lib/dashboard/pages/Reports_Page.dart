@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel;
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -83,9 +85,22 @@ class _ReportsPageState extends State<ReportsPage> {
   String _formatWeightWithConversion(String unit, double weight) {
     if (_isWeightUnit(unit)) {
       double tons = weight / 1000;
+      if (tons < 0.01) {
+        return '${tons.toStringAsFixed(3)} تن';
+      }
       return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
     }
     return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
+  }
+
+  // Format weight for waste - converts kg to tons
+  String _formatWasteWeight(double weight) {
+    if (weight <= 0) return '0';
+    double tons = weight / 1000;
+    if (tons < 1) {
+      return '${tons.toStringAsFixed(3)} تن';
+    }
+    return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
   }
 
   // Convert weight to tons (returns double)
@@ -97,6 +112,67 @@ class _ReportsPageState extends State<ReportsPage> {
       return weight;
     }
     return weight;
+  }
+
+  // Unit translation helper
+  String _translateUnit(String unit, AppLocalizations l10n) {
+    if (_isWeightUnit(unit)) return l10n.tonUnit;
+    if (unit == 'متر' || unit == 'm' || unit == 'M') return l10n.meterUnit;
+    if (unit == 'عدد' || unit == 'pcs' || unit == 'Pcs') return l10n.pcsUnit;
+    if (unit == 'لیتر' || unit == 'l' || unit == 'L') return l10n.literUnit;
+    return unit;
+  }
+
+  // Format unit with conversion for table display
+  String _formatUnitWithConversion(String unit, double weight, AppLocalizations l10n) {
+    if (_isWeightUnit(unit)) {
+      double tons = weight / 1000;
+      return '${tons.toStringAsFixed(1)} ${l10n.tonUnit}';
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} ${_translateUnit(unit, l10n)}';
+  }
+
+  // Format currency WITHOUT K/M/B abbreviations (for tables)
+  String _formatCurrencyNoK(dynamic value) {
+    if (value == null) return '0';
+    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
+    return number.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    );
+  }
+
+  // Format currency with K/M/B for stats
+  String _formatCurrencyWithK(dynamic value) {
+    if (value == null) return '0';
+    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
+    if (number >= 1000000000) return '${(number / 1000000000).toStringAsFixed(1)}B';
+    else if (number >= 1000000) return '${(number / 1000000).toStringAsFixed(1)}M';
+    else if (number >= 1000) return '${(number / 1000).toStringAsFixed(1)}K';
+    return number.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    );
+  }
+
+  // Get category color
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'سوخت':
+        return Colors.orange.shade700;
+      case 'مواد اولیه':
+        return Colors.blue.shade700;
+      case 'حقوق کارگران':
+        return Colors.purple.shade700;
+      case 'تعمیرات':
+        return Colors.red.shade700;
+      case 'حمل و نقل':
+        return Colors.green.shade700;
+      case 'سایر':
+        return Colors.grey.shade700;
+      default:
+        return Colors.grey.shade700;
+    }
   }
 
   List<ReportType> _getLocalizedReportTypes(AppLocalizations l10n) {
@@ -127,6 +203,26 @@ class _ReportsPageState extends State<ReportsPage> {
         icon: Icons.receipt_long, 
         color: const Color(0xFFCB001D), 
         fetchData: (db) => db.getSalesInvoices(),
+        hasFinancial: true,
+        hasWeight: true,
+        hasNetGrossWeight: false,
+      ),
+      ReportType(
+        id: 'daily_expenses', 
+        label: l10n.dailyExpenses, 
+        icon: Icons.money_off, 
+        color: const Color(0xFFCB001D), 
+        fetchData: (db) => db.getDailyExpenses(),
+        hasFinancial: true,
+        hasWeight: false,
+        hasNetGrossWeight: false,
+      ),
+      ReportType(
+        id: 'waste_records', 
+        label: l10n.wastes, 
+        icon: Icons.delete_outline, 
+        color: const Color(0xFFCB001D), 
+        fetchData: (db) => db.getWasteRecords(),
         hasFinancial: true,
         hasWeight: true,
         hasNetGrossWeight: false,
@@ -189,26 +285,6 @@ class _ReportsPageState extends State<ReportsPage> {
         fetchData: (db) => db.getSarafiTransactions(),
         hasFinancial: true,
         hasWeight: false,
-        hasNetGrossWeight: false,
-      ),
-      ReportType(
-        id: 'daily_expenses', 
-        label: l10n.dailyExpenses, 
-        icon: Icons.money_off, 
-        color: const Color(0xFFCB001D), 
-        fetchData: (db) => db.getDailyExpenses(),
-        hasFinancial: true,
-        hasWeight: false,
-        hasNetGrossWeight: false,
-      ),
-      ReportType(
-        id: 'waste_records', 
-        label: l10n.wastes, 
-        icon: Icons.delete_outline, 
-        color: const Color(0xFFCB001D), 
-        fetchData: (db) => db.getWasteRecords(),
-        hasFinancial: true,
-        hasWeight: true,
         hasNetGrossWeight: false,
       ),
       ReportType(
@@ -343,96 +419,41 @@ class _ReportsPageState extends State<ReportsPage> {
       
       List<Map<String, dynamic>> data = await reportType.fetchData(_db);
 
-      // Process data to convert weights to tons and separate currencies
+      // Process data
       List<Map<String, dynamic>> processedData = data.map((item) {
         var newItem = Map<String, dynamic>.from(item);
         
         // Convert weight fields to tons
         String unit = item['unit']?.toString() ?? 'kg';
         
-        // Weight (old field)
         if (item.containsKey('weight') && item['weight'] != null) {
           double weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
           newItem['weight_display'] = _formatWeightWithConversion(unit, weight);
           newItem['weight_tons'] = _convertToTons(unit, weight);
         }
         
-        // Total weight (sales)
         if (item.containsKey('total_weight') && item['total_weight'] != null) {
           double totalWeight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
           newItem['total_weight_display'] = _formatWeightWithConversion(unit, totalWeight);
           newItem['total_weight_tons'] = _convertToTons(unit, totalWeight);
         }
         
-        // Net weight (pure weight - NEW)
         if (item.containsKey('net_weight') && item['net_weight'] != null) {
           double netWeight = double.tryParse(item['net_weight']?.toString() ?? '0') ?? 0;
           newItem['net_weight_display'] = _formatWeightWithConversion(unit, netWeight);
           newItem['net_weight_tons'] = _convertToTons(unit, netWeight);
         }
         
-        // Gross weight (with packaging - NEW)
         if (item.containsKey('gross_weight') && item['gross_weight'] != null) {
           double grossWeight = double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
           newItem['gross_weight_display'] = _formatWeightWithConversion(unit, grossWeight);
           newItem['gross_weight_tons'] = _convertToTons(unit, grossWeight);
         }
         
-        // Remaining stock (NEW)
-        if (item.containsKey('remaining_stock') && item['remaining_stock'] != null) {
-          double remainingStock = double.tryParse(item['remaining_stock']?.toString() ?? '0') ?? 0;
-          newItem['remaining_stock_display'] = _formatWeightWithConversion(unit, remainingStock);
-          newItem['remaining_stock_tons'] = _convertToTons(unit, remainingStock);
-        }
-        
-        if (item.containsKey('weight_per_unit')) {
-          String unit2 = item['unit']?.toString() ?? 'kg';
-          double weightPerUnit = double.tryParse(item['weight_per_unit']?.toString() ?? '0') ?? 0;
-          newItem['weight_per_unit_display'] = _formatWeightWithConversion(unit2, weightPerUnit);
-          newItem['weight_per_unit_tons'] = _convertToTons(unit2, weightPerUnit);
-        }
-
-        // Separate AFN and USD amounts
-        String currency = item['currency']?.toString()?.toUpperCase() ?? 'AFN';
-        double amount = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0;
-        double paidAmount = double.tryParse(item['paid_amount']?.toString() ?? '0') ?? 0;
-        double remainingAmount = double.tryParse(item['remaining_amount']?.toString() ?? '0') ?? 0;
-        double value = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
-        double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
-        double totalAmount = double.tryParse(item['total_amount']?.toString() ?? '0') ?? 0;
-
-        if (currency == 'USD') {
-          newItem['amount_usd'] = amount;
-          newItem['amount_afn'] = 0;
-          newItem['paid_usd'] = paidAmount;
-          newItem['paid_afn'] = 0;
-          newItem['remaining_usd'] = remainingAmount;
-          newItem['remaining_afn'] = 0;
-          newItem['value_usd'] = value;
-          newItem['value_afn'] = 0;
-          newItem['price_usd'] = price;
-          newItem['price_afn'] = 0;
-          newItem['total_amount_usd'] = totalAmount;
-          newItem['total_amount_afn'] = 0;
-        } else {
-          newItem['amount_afn'] = amount;
-          newItem['amount_usd'] = 0;
-          newItem['paid_afn'] = paidAmount;
-          newItem['paid_usd'] = 0;
-          newItem['remaining_afn'] = remainingAmount;
-          newItem['remaining_usd'] = 0;
-          newItem['value_afn'] = value;
-          newItem['value_usd'] = 0;
-          newItem['price_afn'] = price;
-          newItem['price_usd'] = 0;
-          newItem['total_amount_afn'] = totalAmount;
-          newItem['total_amount_usd'] = 0;
-        }
-        
         return newItem;
       }).toList();
 
-      // Apply date range filter ONLY
+      // Apply date range filter
       List<Map<String, dynamic>> filteredData = processedData.where((item) {
         String itemDate = item['date']?.toString() ?? item['date_en']?.toString() ?? '';
         if (itemDate.isEmpty) return true;
@@ -454,7 +475,6 @@ class _ReportsPageState extends State<ReportsPage> {
       for (var item in processedData) {
         String itemDate = item['date']?.toString() ?? item['date_en']?.toString() ?? '';
         
-        // Get weights
         double weight = double.tryParse(item['weight_tons']?.toString() ?? '0') ?? 0;
         if (weight == 0) {
           weight = double.tryParse(item['total_weight_tons']?.toString() ?? '0') ?? 0;
@@ -467,30 +487,75 @@ class _ReportsPageState extends State<ReportsPage> {
         double grossWeight = double.tryParse(item['gross_weight_tons']?.toString() ?? '0') ?? 0;
         totalGrossWeightTons += grossWeight;
 
-        double afnAmount = double.tryParse(item['amount_afn']?.toString() ?? '0') ?? 0;
-        double usdAmount = double.tryParse(item['amount_usd']?.toString() ?? '0') ?? 0;
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['price_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['price_usd']?.toString() ?? '0') ?? 0;
-        }
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['total_amount_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['total_amount_usd']?.toString() ?? '0') ?? 0;
-        }
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['value_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['value_usd']?.toString() ?? '0') ?? 0;
-        }
-
-        if (itemDate == todayPersianDate) { 
-          todayCount++; 
-          todayTotalAFN += afnAmount;
-          todayTotalUSD += usdAmount;
-        }
-        if (itemDate.startsWith(currentYearMonth)) { 
-          monthCount++; 
-          monthTotalAFN += afnAmount;
-          monthTotalUSD += usdAmount;
+        // Handle different report types
+        String currency = item['currency']?.toString()?.toUpperCase() ?? 'AFN';
+        double amount = 0;
+        double usdEquivalent = 0;
+        
+        if (_selectedReportId == 'daily_expenses') {
+          amount = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
+          usdEquivalent = double.tryParse(item['usd_equivalent']?.toString() ?? '0') ?? 0;
+          
+          if (currency == 'دالر' || currency == 'USD') {
+            todayTotalUSD += amount;
+            todayTotalAFN += usdEquivalent;
+            monthTotalUSD += amount;
+            monthTotalAFN += usdEquivalent;
+          } else {
+            todayTotalAFN += amount;
+            todayTotalUSD += usdEquivalent;
+            monthTotalAFN += amount;
+            monthTotalUSD += usdEquivalent;
+          }
+        } else if (_selectedReportId == 'waste_records') {
+          amount = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
+          usdEquivalent = double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0;
+          
+          if (currency == 'USD') {
+            todayTotalUSD += amount;
+            todayTotalAFN += usdEquivalent;
+            monthTotalUSD += amount;
+            monthTotalAFN += usdEquivalent;
+          } else {
+            todayTotalAFN += amount;
+            todayTotalUSD += usdEquivalent;
+            monthTotalAFN += amount;
+            monthTotalUSD += usdEquivalent;
+          }
+        } else {
+          amount = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0;
+          if (amount == 0) {
+            amount = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+          }
+          if (amount == 0) {
+            amount = double.tryParse(item['total_amount']?.toString() ?? '0') ?? 0;
+          }
+          if (amount == 0) {
+            amount = double.tryParse(item['amount']?.toString() ?? '0') ?? 0;
+          }
+          if (amount == 0) {
+            amount = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
+          }
+          
+          double afnAmount = 0;
+          double usdAmount = 0;
+          
+          if (currency == 'USD') {
+            usdAmount = amount;
+          } else {
+            afnAmount = amount;
+          }
+          
+          if (itemDate == todayPersianDate) { 
+            todayCount++; 
+            todayTotalAFN += afnAmount;
+            todayTotalUSD += usdAmount;
+          }
+          if (itemDate.startsWith(currentYearMonth)) { 
+            monthCount++; 
+            monthTotalAFN += afnAmount;
+            monthTotalUSD += usdAmount;
+          }
         }
       }
 
@@ -662,7 +727,7 @@ class _ReportsPageState extends State<ReportsPage> {
               ),
               Row(
                 children: [
-                  _buildExportDropdown(l10n),
+                  _buildExportButton(l10n),
                   const SizedBox(width: 8),
                   _buildActionButton(
                     icon: Icons.print, 
@@ -680,60 +745,263 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Widget _buildExportDropdown(AppLocalizations l10n) {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          icon: const Icon(Icons.download, color: Colors.white, size: 20),
-          dropdownColor: Colors.white,
-          hint: Text(
-            l10n.excelExport,
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+  // ============ NEW EXPORT WITH CUSTOM NAME AND LOCATION ============
+  Widget _buildExportButton(AppLocalizations l10n) {
+    return ElevatedButton.icon(
+      onPressed: () => _showExportDialog(l10n),
+      icon: const Icon(Icons.download, color: Colors.white, size: 20),
+      label: Text(
+        l10n.excelExport,
+        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white.withOpacity(0.2),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Future<void> _showExportDialog(AppLocalizations l10n) async {
+    final TextEditingController fileNameController = TextEditingController(
+      text: 'VictorPipe_${_selectedReportId}_${DateTime.now().millisecondsSinceEpoch}'
+    );
+    
+    String? selectedDirectory;
+    String? selectedPath;
+    
+    // Try to get default downloads directory
+    try {
+      final dir = await getExternalStorageDirectory();
+      if (dir != null) {
+        selectedDirectory = dir.path;
+        selectedPath = dir.path;
+      }
+    } catch (e) {
+      // Fallback to documents directory
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        selectedDirectory = dir.path;
+        selectedPath = dir.path;
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.save_alt, color: Color(0xFFCB001D), size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'ذخیره فایل اکسل',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
           ),
-          items: [
-            DropdownMenuItem(
-              value: 'all',
-              child: Row(
-                children: [
-                  const Icon(Icons.table_chart, color: Color(0xFFCB001D), size: 18),
-                  const SizedBox(width: 8),
-                  Text(l10n.exportAllData),
-                ],
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Report type info
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCB001D).withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Color(0xFFCB001D), size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'نوع گزارش: $_selectedReportLabel',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // File name
+                Text(
+                  'نام فایل',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: fileNameController,
+                  decoration: InputDecoration(
+                    hintText: 'نام فایل را وارد کنید',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.description, color: Color(0xFFCB001D)),
+                    suffixText: '.xlsx',
+                    suffixStyle: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Location picker
+                Text(
+                  'مسیر ذخیره',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.folder_open, color: Color(0xFFCB001D), size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                selectedPath ?? 'انتخاب مسیر...',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: selectedPath != null ? Colors.black : Colors.grey.shade500,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () async {
+                        String? selectedFolder = await FilePicker.platform.getDirectoryPath(
+                          dialogTitle: 'انتخاب مسیر ذخیره',
+                        );
+                        if (selectedFolder != null) {
+                          selectedPath = selectedFolder;
+                          setState(() {});
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFCB001D),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('انتخاب'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                
+                // Info about data
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.data_usage, color: Colors.green, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${_getFilteredData().length} رکورد برای صادرات',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                fileNameController.dispose();
+                Navigator.pop(context);
+              },
+              child: Text(
+                'لغو',
+                style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
               ),
             ),
-            DropdownMenuItem(
-              value: 'filtered',
-              child: Row(
-                children: [
-                  const Icon(Icons.filter_list, color: Color(0xFFCB001D), size: 18),
-                  const SizedBox(width: 8),
-                  Text(l10n.exportFilteredData),
-                ],
+            ElevatedButton.icon(
+              onPressed: () async {
+                final fileName = fileNameController.text.trim();
+                if (fileName.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('لطفاً نام فایل را وارد کنید'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                
+                if (selectedPath == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('لطفاً مسیر ذخیره را انتخاب کنید'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return;
+                }
+                
+                Navigator.pop(context);
+                await _exportToExcel(fileName, selectedPath!, l10n);
+                fileNameController.dispose();
+              },
+              icon: const Icon(Icons.save, size: 18),
+              label: const Text('ذخیره'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
             ),
           ],
-          onChanged: (String? value) {
-            if (value == 'all') _exportToCSV(allData: true);
-            else if (value == 'filtered') _exportToCSV(allData: false);
-          },
         ),
       ),
     );
   }
 
-  Future<void> _exportToCSV({required bool allData}) async {
-    final l10n = AppLocalizations.of(context)!;
+  // ============ EXPORT TO EXCEL WITH CUSTOM NAME AND LOCATION ============
+  Future<void> _exportToExcel(String fileName, String savePath, AppLocalizations l10n) async {
     try {
       final reportType = _reportTypes.firstWhere(
         (r) => r.id == _selectedReportId,
         orElse: () => _reportTypes.first,
       );
       
-      List<Map<String, dynamic>> dataToExport = allData 
-          ? await reportType.fetchData(_db) 
-          : _getFilteredData();
+      List<Map<String, dynamic>> dataToExport = _getFilteredData();
           
       if (dataToExport.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -742,116 +1010,234 @@ class _ReportsPageState extends State<ReportsPage> {
         return;
       }
 
-      StringBuffer csvBuffer = StringBuffer();
-      csvBuffer.writeln(l10n.victorPipeCompanyName);
-      csvBuffer.writeln('${l10n.reportsPageTitle}: ${reportType.label}');
-      csvBuffer.writeln('${l10n.date}: ${PersianDateConverter.getCurrentPersianDateTime()}');
-      if (_useDateRange && _isDateComplete(_fromYear, _fromMonth, _fromDay) && 
-          _isDateComplete(_toYear, _toMonth, _toDay)) {
-        csvBuffer.writeln('بازه تاریخ: از ${_getFormattedDate(_fromYear, _fromMonth, _fromDay)} تا ${_getFormattedDate(_toYear, _toMonth, _toDay)}');
-      }
-      csvBuffer.writeln('');
-
-      List<String> headers;
-      if (_selectedReportId == 'raw_materials') {
-        headers = ['شماره', 'تاریخ', 'تفصیل', 'فروشنده', 'ارسالی', 'نوع خرید', 'نوع مواد', 'ضخامت', 'وزن خالص (تن)', 'وزن ناخالص (تن)', 'قیمت (AFN)', 'قیمت (USD)'];
-      } else if (_selectedReportId == 'produced_products') {
-        headers = ['شماره', 'نام محصول', 'نوع تولید', 'ضخامت', 'تعداد', 'وزن (تن)', 'وزن خالص (تن)', 'وزن ناخالص (تن)', 'واحد', 'موجودی (تن)', 'وضعیت'];
-      } else if (_selectedReportId == 'sales_invoices') {
-        headers = ['شماره', 'تاریخ', 'نام مشتری', 'محصول', 'واحد', 'تعداد', 'وزن کل (تن)', 'قیمت واحد (AFN)', 'قیمت واحد (USD)', 'جمع کل (AFN)', 'جمع کل (USD)'];
-      } else if (_selectedReportId == 'daily_expenses') {
-        headers = ['شماره', 'تاریخ', 'دسته بندی', 'شرح', 'قیمت (AFN)', 'قیمت (USD)'];
-      } else if (_selectedReportId == 'waste_records') {
-        headers = ['شماره', 'تاریخ', 'طرف', 'نوع ضایعات', 'وزن (تن)', 'تعداد', 'ارزش (AFN)', 'ارزش (USD)'];
-      } else if (_selectedReportId == 'sell_loans') {
-        headers = ['شماره', 'تاریخ', 'نام مشتری', 'مبلغ کل (AFN)', 'مبلغ کل (USD)', 'پرداخت شده (AFN)', 'پرداخت شده (USD)', 'باقی‌مانده (AFN)', 'باقی‌مانده (USD)'];
-      } else {
-        headers = dataToExport.first.keys.map((k) => _getFieldLabel(k, l10n)).toList();
-        headers.removeWhere((e) => ['created_at', 'updated_at', 'supplier_id', 'account_id'].contains(e));
-      }
+      // Create Excel file
+      var excelFile = excel.Excel.createExcel();
       
-      csvBuffer.writeln(headers.join(','));
-
+      // Get headers based on report type
+      List<String> headers = _getExcelHeaders();
+      
+      // Add sheet
+      excel.Sheet sheet = excelFile['Sheet1'];
+      
+      // Add headers with styling
+      List<excel.CellValue> headerRow = [];
+      for (var header in headers) {
+        headerRow.add(excel.TextCellValue(header));
+      }
+      sheet.appendRow(headerRow);
+      
+      // Add data rows
       for (var item in dataToExport) {
-        List<String> row = [];
+        List<excel.CellValue> row = [];
+        String currency = item['currency']?.toString()?.toUpperCase() ?? 'AFN';
+        
         for (var key in headers) {
           String value = '';
-          if (key == 'شماره') value = item['id']?.toString() ?? '';
-          else if (key == 'تاریخ') value = (item['date']?.toString() ?? item['date_en']?.toString() ?? '').replaceAll('-', '/');
-          else if (key == 'تفصیل' || key == 'نام' || key == 'محصول') value = item['name']?.toString() ?? item['product_name']?.toString() ?? item['product']?.toString() ?? '';
-          else if (key == 'فروشنده' || key == 'تأمین‌کننده') value = item['supplier_name']?.toString() ?? '';
-          else if (key == 'ارسالی' || key == 'محل') value = item['location']?.toString() ?? '';
-          else if (key == 'نوع خرید' || key == 'روش پرداخت') value = item['purchase_type']?.toString() ?? item['payment_method']?.toString() ?? '';
-          else if (key == 'نوع مواد') value = item['material_type']?.toString() ?? '';
-          else if (key == 'ضخامت') value = (item['thickness']?.toString() ?? '').replaceAll('mm', '').trim();
-          else if (key.contains('وزن خالص') && key.contains('تن')) {
+          
+          // Map each header to the actual data
+          if (key == 'شماره') {
+            value = item['id']?.toString() ?? '';
+          } else if (key == 'تاریخ') {
+            value = (item['date']?.toString() ?? item['date_en']?.toString() ?? '').replaceAll('-', '/');
+          } else if (key == 'نام مواد') {
+            value = item['name']?.toString() ?? '';
+          } else if (key == 'نام فروشنده') {
+            value = item['supplier_name']?.toString() ?? '';
+          } else if (key == 'تلفن فروشنده') {
+            value = item['supplier_phone']?.toString() ?? '';
+          } else if (key == 'آدرس فروشنده') {
+            value = item['location']?.toString() ?? item['supplier_address']?.toString() ?? '';
+          } else if (key == 'واحد') {
+            String unit = item['unit']?.toString() ?? '';
+            value = _translateUnit(unit, l10n);
+          } else if (key == 'وزن خالص') {
             double netWeight = double.tryParse(item['net_weight']?.toString() ?? '0') ?? 0;
             String unit = item['unit']?.toString() ?? 'kg';
-            value = _formatWeightWithConversion(unit, netWeight);
-          }
-          else if (key.contains('وزن ناخالص') && key.contains('تن')) {
+            value = _formatUnitWithConversion(unit, netWeight, l10n);
+          } else if (key == 'وزن ناخالص') {
             double grossWeight = double.tryParse(item['gross_weight']?.toString() ?? '0') ?? 0;
             String unit = item['unit']?.toString() ?? 'kg';
-            value = _formatWeightWithConversion(unit, grossWeight);
-          }
-          else if (key.contains('وزن') && key.contains('تن') && !key.contains('خالص') && !key.contains('ناخالص')) {
-            String unit = item['unit']?.toString() ?? 'kg';
+            value = _formatUnitWithConversion(unit, grossWeight, l10n);
+          } else if (key == 'قیمت واحد') {
+            value = item['unit_price']?.toString() ?? '';
+          } else if (key == 'مبلغ فروشنده') {
+            value = '${item['seller_payment'] ?? ''} $currency';
+          } else if (key == 'پرداخت اولیه') {
+            value = '${item['seller_paid_amount'] ?? ''} $currency';
+          } else if (key == 'روش پرداخت') {
+            String method = item['seller_payment_method']?.toString() ?? 'cash';
+            if (method == 'cash') value = 'نقد';
+            else if (method == 'loan_full') value = 'قرض کامل';
+            else if (method == 'loan_partial') value = 'قرض جزئی';
+            else value = method;
+          } else if (key == 'قیمت محصول') {
+            value = item['product']?.toString() ?? '';
+          } else if (key == 'کمیسیون') {
+            value = item['commission']?.toString() ?? '';
+          } else if (key == 'هزینه حمل') {
+            value = item['transfer_cost']?.toString() ?? '';
+          } else if (key == 'متفرقه') {
+            value = item['miscellaneous']?.toString() ?? '';
+          } else if (key == 'غرفه‌داری') {
+            value = item['ghurfedari']?.toString() ?? '';
+          } else if (key == 'برچالانی') {
+            value = item['barchalani']?.toString() ?? '';
+          } else if (key == 'نوع خرید') {
+            value = item['purchase_type']?.toString() ?? '';
+          } else if (key == 'قیمت نهایی') {
+            value = '${item['final_price'] ?? ''} $currency';
+          } else if (key == 'واحد پول') {
+            value = currency;
+          } else if (key == 'نوع تولید') {
+            value = item['production_type']?.toString() ?? '';
+          } else if (key == 'سایز') {
+            value = item['size']?.toString() ?? '';
+          } else if (key == 'ضخامت') {
+            value = item['thickness']?.toString() ?? '';
+          } else if (key == 'طول') {
+            value = item['length']?.toString() ?? '';
+          } else if (key == 'تعداد خاده') {
+            value = item['raw_count']?.toString() ?? '';
+          } else if (key == 'وزن فی خاده') {
+            String unit = item['unit']?.toString() ?? '';
+            double rawWeight = double.tryParse(item['raw_weight']?.toString() ?? '0') ?? 0;
+            if (_isWeightUnit(unit)) {
+              value = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
+            } else {
+              value = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $unit';
+            }
+          } else if (key == 'مجموع وزن') {
+            String unit = item['unit']?.toString() ?? '';
+            double totalWeight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
+            if (_isWeightUnit(unit)) {
+              double tons = totalWeight / 1000;
+              if (tons < 0.01) {
+                value = '${tons.toStringAsFixed(3)} تن';
+              } else {
+                value = '${tons.toStringAsFixed(2)} تن';
+              }
+            } else {
+              value = '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1)} $unit';
+            }
+          } else if (key == 'وضعیت') {
+            value = item['status']?.toString() ?? '';
+          } else if (key == 'شماره فاکتور') {
+            value = item['invoice_number']?.toString() ?? '';
+          } else if (key == 'نوع') {
+            value = item['sale_type']?.toString() ?? '';
+          } else if (key == 'مشتری') {
+            value = item['customer_name']?.toString() ?? '';
+          } else if (key == 'شرکت') {
+            value = item['customer_company']?.toString() ?? '';
+          } else if (key == 'وزن فی خاده (kg)') {
+            double weightPerUnit = double.tryParse(item['weight_per_unit']?.toString() ?? '0') ?? 0;
+            value = weightPerUnit.toStringAsFixed(weightPerUnit % 1 == 0 ? 0 : 1);
+          } else if (key == 'وزن کل (تن)') {
+            double totalWeight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
+            double tons = totalWeight / 1000;
+            value = tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
+          } else if (key == 'قیمت کل') {
+            if (currency == 'USD') {
+              value = item['total_price']?.toString() ?? '';
+            } else {
+              value = item['afn_equivalent']?.toString() ?? '';
+            }
+          } else if (key == 'تخفیف') {
+            value = item['discount']?.toString() ?? '';
+          } else if (key == 'وضعیت فروش') {
+            final isReturned = item['is_back_returned'] == 1 || item['is_back_returned']?.toString() == '1';
+            value = isReturned ? 'برگشتی' : 'عادی';
+          } else if (key == 'شماره بل') {
+            value = item['invoice_number']?.toString() ?? '';
+          } else if (key == 'شماره ثبت') {
+            value = item['registration_number']?.toString() ?? '';
+          } else if (key == 'تاریخ شمسی') {
+            value = item['date']?.toString() ?? '';
+          } else if (key == 'تاریخ میلادی') {
+            value = item['date_en']?.toString() ?? '';
+          } else if (key == 'دسته بندی') {
+            value = item['category']?.toString() ?? '';
+          } else if (key == 'شرح') {
+            value = item['description']?.toString() ?? '';
+          } else if (key == 'مبلغ') {
+            double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
+            value = price.toStringAsFixed(0);
+          } else if (key == 'نرخ ارز') {
+            value = item['exchange_rate']?.toString() ?? '';
+          } else if (key == 'معادل') {
+            double usdEquivalent = double.tryParse(item['usd_equivalent']?.toString() ?? '0') ?? 0;
+            value = usdEquivalent.toStringAsFixed(0);
+          } else if (key == 'طرف') {
+            value = item['party_details']?.toString() ?? '';
+          } else if (key == 'نوع ضایعات') {
+            value = item['waste_type']?.toString() ?? '';
+          } else if (key == 'وزن (تن)') {
             double weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
-            if (key.contains('کل')) weight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
-            value = _formatWeightWithConversion(unit, weight);
+            value = _formatWasteWeight(weight);
+          } else if (key == 'تعداد') {
+            value = item['quantity']?.toString() ?? '';
+          } else if (key == 'ارزش') {
+            double valueAmount = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
+            value = valueAmount.toStringAsFixed(0);
+          } else if (key == 'معادل افغانی') {
+            double afnEquivalent = double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0;
+            value = afnEquivalent.toStringAsFixed(0);
+          } else if (key == 'تلفن') {
+            value = item['customer_phone']?.toString() ?? '';
+          } else if (key == 'آدرس') {
+            value = item['customer_address']?.toString() ?? '';
+          } else if (key == 'نوع خدمت') {
+            value = item['service_type']?.toString() ?? '';
+          } else if (key == 'هزینه بارگیری') {
+            value = item['loading_cost']?.toString() ?? '';
+          } else if (key == 'هزینه ترخیص') {
+            value = item['clearance_cost']?.toString() ?? '';
+          } else {
+            value = item[key]?.toString() ?? '';
           }
-          else if (key == 'موجودی (تن)') {
-            double remainingStock = double.tryParse(item['remaining_stock']?.toString() ?? '0') ?? 0;
-            String unit = item['unit']?.toString() ?? 'kg';
-            value = _formatWeightWithConversion(unit, remainingStock);
-          }
-          else if (key == 'نام مشتری') value = item['customer_name']?.toString() ?? '';
-          else if (key == 'واحد') value = item['unit']?.toString() ?? '';
-          else if (key == 'تعداد') value = item['quantity']?.toString() ?? item['unit_count']?.toString() ?? '';
-          else if (key.contains('قیمت') && key.contains('AFN')) value = item['amount_afn']?.toString() ?? item['price_afn']?.toString() ?? '';
-          else if (key.contains('قیمت') && key.contains('USD')) value = item['amount_usd']?.toString() ?? item['price_usd']?.toString() ?? '';
-          else if (key.contains('جمع کل') && key.contains('AFN')) value = item['amount_afn']?.toString() ?? '';
-          else if (key.contains('جمع کل') && key.contains('USD')) value = item['amount_usd']?.toString() ?? '';
-          else if (key.contains('مبلغ کل') && key.contains('AFN')) value = item['total_amount_afn']?.toString() ?? '';
-          else if (key.contains('مبلغ کل') && key.contains('USD')) value = item['total_amount_usd']?.toString() ?? '';
-          else if (key.contains('پرداخت شده') && key.contains('AFN')) value = item['paid_afn']?.toString() ?? '';
-          else if (key.contains('پرداخت شده') && key.contains('USD')) value = item['paid_usd']?.toString() ?? '';
-          else if (key.contains('باقی‌مانده') && key.contains('AFN')) value = item['remaining_afn']?.toString() ?? '';
-          else if (key.contains('باقی‌مانده') && key.contains('USD')) value = item['remaining_usd']?.toString() ?? '';
-          else if (key == 'دسته بندی') value = item['category']?.toString() ?? '';
-          else if (key == 'شرح') value = item['description']?.toString() ?? '';
-          else if (key == 'طرف') value = item['party_details']?.toString() ?? '';
-          else if (key == 'نوع ضایعات') value = item['waste_type']?.toString() ?? '';
-          else if (key.contains('ارزش') && key.contains('AFN')) value = item['value_afn']?.toString() ?? '';
-          else if (key.contains('ارزش') && key.contains('USD')) value = item['value_usd']?.toString() ?? '';
-          else if (key == 'نام محصول') value = item['product_name']?.toString() ?? '';
-          else if (key == 'نوع تولید') value = item['production_type']?.toString() ?? '';
-          else if (key == 'وضعیت') value = item['status']?.toString() ?? '';
-          else value = item[key]?.toString() ?? '';
-
-          row.add(value.replaceAll(',', ' ').replaceAll('\n', ' '));
+          
+          // Clean up the value for Excel
+          value = value.replaceAll(',', '').trim();
+          row.add(excel.TextCellValue(value));
         }
-        csvBuffer.writeln(row.join(','));
+        sheet.appendRow(row);
       }
 
-      final directory = await getApplicationDocumentsDirectory();
-      final fileName = 'VictorPipe_${_selectedReportId}_${DateTime.now().millisecondsSinceEpoch}.csv';
-      final file = File('${directory.path}/$fileName');
-      final List<int> utf8Bom = [0xEF, 0xBB, 0xBF];
-      final List<int> utf8Bytes = utf8.encode(csvBuffer.toString());
-      await file.writeAsBytes([...utf8Bom, ...utf8Bytes]);
+      // Save the file
+      final filePath = '$savePath/$fileName.xlsx';
+      final file = File(filePath);
+      await file.writeAsBytes(excelFile.save()!);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${l10n.exportSuccessMsg} $fileName'),
+          content: Text('✅ فایل با موفقیت در مسیر زیر ذخیره شد:\n$filePath'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 5),
         ),
       );
+      
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${l10n.exportErrorMsg} $e'), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  List<String> _getExcelHeaders() {
+    if (_selectedReportId == 'raw_materials') {
+      return ['شماره', 'نام مواد', 'نام فروشنده', 'تلفن فروشنده', 'آدرس فروشنده', 'تاریخ', 'واحد', 'وزن خالص', 'وزن ناخالص', 'قیمت واحد', 'مبلغ فروشنده', 'پرداخت اولیه', 'روش پرداخت', 'قیمت محصول', 'کمیسیون', 'هزینه حمل', 'متفرقه', 'غرفه‌داری', 'برچالانی', 'نوع خرید', 'قیمت نهایی', 'واحد پول'];
+    } else if (_selectedReportId == 'produced_products') {
+      return ['شماره', 'نوع تولید', 'سایز', 'ضخامت', 'طول', 'تعداد خاده', 'وزن فی خاده', 'مجموع وزن', 'واحد', 'تاریخ', 'وضعیت', 'وضعیت فروش'];
+    } else if (_selectedReportId == 'sales_invoices') {
+      return ['شماره فاکتور', 'نوع', 'مشتری', 'شرکت', 'نوع تولید', 'سایز', 'ضخامت', 'وزن فی خاده (kg)', 'تعداد خاده', 'وزن کل (تن)', 'قیمت واحد', 'قیمت کل', 'تخفیف', 'قیمت نهایی', 'واحد پول', 'تاریخ', 'وضعیت'];
+    } else if (_selectedReportId == 'daily_expenses') {
+      return ['شماره بل', 'شماره ثبت', 'تاریخ شمسی', 'تاریخ میلادی', 'دسته بندی', 'شرح', 'مبلغ', 'واحد پول', 'نرخ ارز', 'معادل'];
+    } else if (_selectedReportId == 'waste_records') {
+      return ['شماره', 'تاریخ', 'طرف', 'نوع ضایعات', 'وزن (تن)', 'تعداد', 'مجموع وزن', 'ارزش', 'واحد پول', 'نرخ ارز', 'معادل افغانی', 'شرح'];
+    } else if (_selectedReportId == 'service_invoices') {
+      return ['شماره', 'شماره فاکتور', 'مشتری', 'تلفن', 'آدرس', 'نوع خدمت', 'سایز', 'ضخامت', 'وزن کل', 'واحد', 'قیمت واحد', 'قیمت کل', 'هزینه بارگیری', 'هزینه حمل', 'هزینه ترخیص', 'تخفیف', 'قیمت نهایی', 'واحد پول', 'تاریخ'];
+    } else {
+      return ['شماره', 'تاریخ', 'نام', 'توضیحات', 'مبلغ', 'واحد پول'];
     }
   }
 
@@ -1080,7 +1466,6 @@ class _ReportsPageState extends State<ReportsPage> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                // FROM Date
                 _buildDateDropdownRow(
                   'از',
                   _fromYear, _fromMonth, _fromDay,
@@ -1088,7 +1473,6 @@ class _ReportsPageState extends State<ReportsPage> {
                   (val) => setState(() { _fromMonth = val; _applyDateFilter(); }),
                   (val) => setState(() { _fromDay = val; _applyDateFilter(); }),
                 ),
-                // TO Date
                 _buildDateDropdownRow(
                   'تا',
                   _toYear, _toMonth, _toDay,
@@ -1130,7 +1514,6 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
           ),
           const SizedBox(width: 6),
-          // Year Dropdown
           Container(
             width: 75,
             height: 32,
@@ -1171,7 +1554,6 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
           ),
           const SizedBox(width: 4),
-          // Month Dropdown
           Container(
             width: 65,
             height: 32,
@@ -1212,7 +1594,6 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
           ),
           const SizedBox(width: 4),
-          // Day Dropdown
           Container(
             width: 60,
             height: 32,
@@ -1352,47 +1733,64 @@ class _ReportsPageState extends State<ReportsPage> {
     double totalNetWeight = 0, totalGrossWeight = 0;
     
     for (var item in data) {
-      double afnAmount = double.tryParse(item['amount_afn']?.toString() ?? '0') ?? 0;
-      if (afnAmount == 0) {
-        afnAmount = double.tryParse(item['price_afn']?.toString() ?? '0') ?? 0;
-      }
-      if (afnAmount == 0) {
-        afnAmount = double.tryParse(item['total_amount_afn']?.toString() ?? '0') ?? 0;
-      }
-      if (afnAmount == 0) {
-        afnAmount = double.tryParse(item['value_afn']?.toString() ?? '0') ?? 0;
-      }
-      if (afnAmount == 0) {
-        afnAmount = double.tryParse(item['paid_afn']?.toString() ?? '0') ?? 0;
-      }
-      if (afnAmount == 0) {
-        afnAmount = double.tryParse(item['remaining_afn']?.toString() ?? '0') ?? 0;
-      }
-      totalAFN += afnAmount;
+      String currency = item['currency']?.toString()?.toUpperCase() ?? 'AFN';
       
-      double usdAmount = double.tryParse(item['amount_usd']?.toString() ?? '0') ?? 0;
-      if (usdAmount == 0) {
-        usdAmount = double.tryParse(item['price_usd']?.toString() ?? '0') ?? 0;
+      if (_selectedReportId == 'daily_expenses') {
+        double price = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
+        double usdEquivalent = double.tryParse(item['usd_equivalent']?.toString() ?? '0') ?? 0;
+        
+        if (currency == 'دالر' || currency == 'USD') {
+          totalUSD += price;
+          totalAFN += usdEquivalent;
+        } else {
+          totalAFN += price;
+          totalUSD += usdEquivalent;
+        }
+      } else if (_selectedReportId == 'waste_records') {
+        double value = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
+        double afnEquivalent = double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0;
+        
+        if (currency == 'USD') {
+          totalUSD += value;
+          totalAFN += afnEquivalent;
+        } else {
+          totalAFN += value;
+          totalUSD += afnEquivalent;
+        }
+        
+        double weight = double.tryParse(item['weight_tons']?.toString() ?? '0') ?? 0;
+        if (weight == 0) {
+          double weightKg = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
+          weight = weightKg / 1000;
+        }
+        totalWeight += weight;
+      } else {
+        double amount = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0;
+        if (amount == 0) {
+          amount = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+        }
+        if (amount == 0) {
+          amount = double.tryParse(item['total_amount']?.toString() ?? '0') ?? 0;
+        }
+        if (amount == 0) {
+          amount = double.tryParse(item['amount']?.toString() ?? '0') ?? 0;
+        }
+        if (amount == 0) {
+          amount = double.tryParse(item['price']?.toString() ?? '0') ?? 0;
+        }
+        
+        if (currency == 'USD') {
+          totalUSD += amount;
+        } else {
+          totalAFN += amount;
+        }
+        
+        double weight = double.tryParse(item['weight_tons']?.toString() ?? '0') ?? 0;
+        if (weight == 0) {
+          weight = double.tryParse(item['total_weight_tons']?.toString() ?? '0') ?? 0;
+        }
+        totalWeight += weight;
       }
-      if (usdAmount == 0) {
-        usdAmount = double.tryParse(item['total_amount_usd']?.toString() ?? '0') ?? 0;
-      }
-      if (usdAmount == 0) {
-        usdAmount = double.tryParse(item['value_usd']?.toString() ?? '0') ?? 0;
-      }
-      if (usdAmount == 0) {
-        usdAmount = double.tryParse(item['paid_usd']?.toString() ?? '0') ?? 0;
-      }
-      if (usdAmount == 0) {
-        usdAmount = double.tryParse(item['remaining_usd']?.toString() ?? '0') ?? 0;
-      }
-      totalUSD += usdAmount;
-      
-      double weight = double.tryParse(item['weight_tons']?.toString() ?? '0') ?? 0;
-      if (weight == 0) {
-        weight = double.tryParse(item['total_weight_tons']?.toString() ?? '0') ?? 0;
-      }
-      totalWeight += weight;
       
       double netWeight = double.tryParse(item['net_weight_tons']?.toString() ?? '0') ?? 0;
       totalNetWeight += netWeight;
@@ -1412,7 +1810,7 @@ class _ReportsPageState extends State<ReportsPage> {
       ),
       _buildStatCard(
         'مجموع (AFN)',
-        _formatCurrency(totalAFN),
+        _formatCurrencyWithK(totalAFN),
         Icons.attach_money,
         Colors.green,
         null,
@@ -1420,7 +1818,7 @@ class _ReportsPageState extends State<ReportsPage> {
       ),
       _buildStatCard(
         'مجموع (USD)',
-        _formatCurrency(totalUSD),
+        _formatCurrencyWithK(totalUSD),
         Icons.attach_money,
         Colors.blue,
         null,
@@ -1527,7 +1925,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   ),
                   if (hasCurrency) ...[
                     Text(
-                      'AFN: ${_formatCurrency(afnAmount)} | USD: ${_formatCurrency(usdAmount)}',
+                      'AFN: ${_formatCurrencyWithK(afnAmount)} | USD: ${_formatCurrencyWithK(usdAmount)}',
                       style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                     ),
                   ],
@@ -1537,18 +1935,6 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ],
       ),
-    );
-  }
-
-  String _formatCurrency(dynamic value) {
-    if (value == null) return '0';
-    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
-    if (number >= 1000000000) return '${(number / 1000000000).toStringAsFixed(1)}B';
-    else if (number >= 1000000) return '${(number / 1000000).toStringAsFixed(1)}M';
-    else if (number >= 1000) return '${(number / 1000).toStringAsFixed(1)}K';
-    return number.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
     );
   }
 
@@ -1564,18 +1950,43 @@ class _ReportsPageState extends State<ReportsPage> {
   Widget _buildReportTable(AppLocalizations l10n, bool isEnglish) {
     final data = _getFilteredData();
     if (data.isEmpty) return _buildEmptyState(l10n);
+    
+    // For service_invoices report, show the services table
+    if (_selectedReportId == 'service_invoices') {
+      return _buildServicesTable(l10n);
+    }
+    
+    // For raw_materials report
+    if (_selectedReportId == 'raw_materials') {
+      return _buildRawMaterialsTable(l10n);
+    }
+    
+    // For produced_products report
+    if (_selectedReportId == 'produced_products') {
+      return _buildProducedProductsTable(l10n);
+    }
+    
+    // For sales_invoices report
+    if (_selectedReportId == 'sales_invoices') {
+      return _buildSalesTable(l10n);
+    }
+    
+    // For daily_expenses report
+    if (_selectedReportId == 'daily_expenses') {
+      return _buildDailyExpensesTable(l10n);
+    }
+    
+    // For waste_records report
+    if (_selectedReportId == 'waste_records') {
+      return _buildWastesTable(l10n);
+    }
+    
+    // Default table for other reports
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
         border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
       ),
       child: LayoutBuilder(
@@ -1586,394 +1997,10 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Widget _buildMobileCards(List<Map<String, dynamic>> data, AppLocalizations l10n) {
-    final reportType = _reportTypes.firstWhere(
-      (r) => r.id == _selectedReportId,
-      orElse: () => _reportTypes.first,
-    );
+  // ============ SERVICES TABLE ============
+  Widget _buildServicesTable(AppLocalizations l10n) {
+    final data = _getFilteredData();
     
-    final importantFields = data.first.keys
-        .where((key) => key.contains('name') || key.contains('id') || key.contains('amount') || 
-            key.contains('price') || key.contains('total') || key.contains('date') || key.contains('status') ||
-            key.contains('weight') || key.contains('net') || key.contains('gross') ||
-            key.contains('afn') || key.contains('usd') || key.contains('display') ||
-            key.contains('remaining'))
-        .take(18)
-        .toList();
-        
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(12),
-      itemCount: data.length,
-      itemBuilder: (context, index) {
-        final item = data[index];
-        
-        double itemWeight = double.tryParse(item['weight_tons']?.toString() ?? '0') ?? 0;
-        if (itemWeight == 0) {
-          itemWeight = double.tryParse(item['total_weight_tons']?.toString() ?? '0') ?? 0;
-        }
-        
-        double netWeight = double.tryParse(item['net_weight_tons']?.toString() ?? '0') ?? 0;
-        double grossWeight = double.tryParse(item['gross_weight_tons']?.toString() ?? '0') ?? 0;
-        double remainingStock = double.tryParse(item['remaining_stock_tons']?.toString() ?? '0') ?? 0;
-        
-        double afnAmount = double.tryParse(item['amount_afn']?.toString() ?? '0') ?? 0;
-        double usdAmount = double.tryParse(item['amount_usd']?.toString() ?? '0') ?? 0;
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['price_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['price_usd']?.toString() ?? '0') ?? 0;
-        }
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['total_amount_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['total_amount_usd']?.toString() ?? '0') ?? 0;
-        }
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['value_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['value_usd']?.toString() ?? '0') ?? 0;
-        }
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['paid_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['paid_usd']?.toString() ?? '0') ?? 0;
-        }
-        if (afnAmount == 0) {
-          afnAmount = double.tryParse(item['remaining_afn']?.toString() ?? '0') ?? 0;
-          usdAmount = double.tryParse(item['remaining_usd']?.toString() ?? '0') ?? 0;
-        }
-        
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFCB001D),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.receipt_long, color: Colors.white, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          item['id']?.toString() ?? 'Row ${index + 1}',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '#${index + 1}',
-                        style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  children: [
-                    if (reportType.hasWeight && itemWeight > 0)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                'وزن کل',
-                                style: TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                '${_formatNumber(itemWeight)} تن',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFCB001D),
-                                ),
-                                textAlign: TextAlign.left,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    
-                    if (reportType.hasNetGrossWeight) ...[
-                      if (netWeight > 0)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.purple.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'وزن خالص',
-                                  style: TextStyle(fontSize: 11, color: Colors.purple, fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              Flexible(
-                                child: Text(
-                                  '${_formatNumber(netWeight)} تن',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.purple,
-                                  ),
-                                  textAlign: TextAlign.left,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (grossWeight > 0)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.deepOrange.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'وزن ناخالص',
-                                  style: TextStyle(fontSize: 11, color: Colors.deepOrange, fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              Flexible(
-                                child: Text(
-                                  '${_formatNumber(grossWeight)} تن',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.deepOrange,
-                                  ),
-                                  textAlign: TextAlign.left,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (remainingStock > 0)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'موجودی',
-                                  style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              Flexible(
-                                child: Text(
-                                  '${_formatNumber(remainingStock)} تن',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                  textAlign: TextAlign.left,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                    
-                    if (reportType.hasFinancial && (afnAmount > 0 || usdAmount > 0))
-                      Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'AFN',
-                                    style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
-                                  ),
-                                ),
-                                Flexible(
-                                  child: Text(
-                                    _formatCurrency(afnAmount),
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1A1A2E),
-                                    ),
-                                    textAlign: TextAlign.left,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (usdAmount > 0)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 2),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      'USD',
-                                      style: TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.w500),
-                                    ),
-                                  ),
-                                  Flexible(
-                                    child: Text(
-                                      _formatCurrency(usdAmount),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.left,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          const Divider(height: 8),
-                        ],
-                      ),
-                    
-                    ...importantFields
-                        .where((key) => key != 'id' && 
-                            !key.contains('afn') && !key.contains('usd') && 
-                            !key.contains('weight_tons') && !key.contains('net_weight_tons') && 
-                            !key.contains('gross_weight_tons') && !key.contains('remaining_stock_tons') &&
-                            !key.contains('_display'))
-                        .map((key) {
-                          dynamic value = item[key];
-                          if (value == null) return const SizedBox.shrink();
-                          
-                          String displayValue = value.toString();
-                          bool isWeightField = key.contains('weight') || key.contains('net') || key.contains('gross');
-                          
-                          if (isWeightField && key.contains('display')) {
-                            displayValue = value.toString();
-                          }
-                          
-                          final isNumeric = _isNumeric(displayValue);
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCB001D).withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    _getFieldLabel(key, l10n),
-                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                                  ),
-                                ),
-                                Flexible(
-                                  child: Text(
-                                    displayValue,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: isNumeric ? FontWeight.bold : FontWeight.w500,
-                                      color: isNumeric && displayValue.contains('تن') ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
-                                    ),
-                                    textAlign: TextAlign.left,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        })
-                        .toList(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  bool _isNumeric(String value) => 
-      double.tryParse(value.replaceAll(',', '').replaceAll(' تن', '')) != null || 
-      int.tryParse(value.replaceAll(',', '').replaceAll(' تن', '')) != null;
-
-  Widget _buildDesktopTable(List<Map<String, dynamic>> data, AppLocalizations l10n, bool isEnglish) {
-    final reportType = _reportTypes.firstWhere(
-      (r) => r.id == _selectedReportId,
-      orElse: () => _reportTypes.first,
-    );
-    
-    List<String> allKeys = data.first.keys.toList();
-    
-    List<String> headers = [];
-    for (var key in allKeys) {
-      if ((key == 'weight' || key == 'total_weight' || key == 'net_weight' || 
-           key == 'gross_weight' || key == 'weight_per_unit') && 
-          allKeys.contains('${key}_display')) {
-        continue;
-      }
-      headers.add(key);
-    }
-    
-    if (headers.isEmpty) {
-      headers = allKeys;
-    }
-
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1981,543 +2008,1024 @@ class _ReportsPageState extends State<ReportsPage> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFFCB001D),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  l10n.reportsTableTitle,
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Row(
-                  children: [
-                    if (reportType.hasWeight)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.scale, color: Colors.white, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              'وزن کل: ${_formatNumber(_statsData['total_weight_tons'])} تن',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (reportType.hasNetGrossWeight) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.clear, color: Colors.white, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              'خالص: ${_formatNumber(_statsData['total_net_weight_tons'])} تن',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.square, color: Colors.white, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              'ناخالص: ${_formatNumber(_statsData['total_gross_weight_tons'])} تن',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    if (_useDateRange && _isDateComplete(_fromYear, _fromMonth, _fromDay) && 
-                        _isDateComplete(_toYear, _toMonth, _toDay))
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'از ${_getFormattedDate(_fromYear, _fromMonth, _fromDay)} تا ${_getFormattedDate(_toYear, _toMonth, _toDay)}',
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${data.length} ${l10n.recordsCountLabel} | ${headers.length} ${l10n.columnsCountLabel}',
-                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              controller: _horizontalScrollController,
-              padding: const EdgeInsets.all(16),
-              child: DataTable(
-                headingRowColor: MaterialStateProperty.all(Colors.grey.shade50),
-                headingTextStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFCB001D),
-                  fontSize: 12,
-                ),
-                dataRowMinHeight: 40,
-                dataRowMaxHeight: 50,
-                columnSpacing: 20,
-                columns: headers.map((header) => DataColumn(
-                  label: Container(
-                    constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text(
-                      _getFieldLabel(header, l10n),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )).toList(),
-                rows: data.map((item) {
-                  double itemWeight = double.tryParse(item['weight_tons']?.toString() ?? '0') ?? 0;
-                  if (itemWeight == 0) {
-                    itemWeight = double.tryParse(item['total_weight_tons']?.toString() ?? '0') ?? 0;
-                  }
-                  
-                  double netWeight = double.tryParse(item['net_weight_tons']?.toString() ?? '0') ?? 0;
-                  double grossWeight = double.tryParse(item['gross_weight_tons']?.toString() ?? '0') ?? 0;
-                  double remainingStock = double.tryParse(item['remaining_stock_tons']?.toString() ?? '0') ?? 0;
-                  
-                  double afnAmount = double.tryParse(item['amount_afn']?.toString() ?? '0') ?? 0;
-                  double usdAmount = double.tryParse(item['amount_usd']?.toString() ?? '0') ?? 0;
-                  if (afnAmount == 0) {
-                    afnAmount = double.tryParse(item['price_afn']?.toString() ?? '0') ?? 0;
-                    usdAmount = double.tryParse(item['price_usd']?.toString() ?? '0') ?? 0;
-                  }
-                  if (afnAmount == 0) {
-                    afnAmount = double.tryParse(item['total_amount_afn']?.toString() ?? '0') ?? 0;
-                    usdAmount = double.tryParse(item['total_amount_usd']?.toString() ?? '0') ?? 0;
-                  }
-                  if (afnAmount == 0) {
-                    afnAmount = double.tryParse(item['value_afn']?.toString() ?? '0') ?? 0;
-                    usdAmount = double.tryParse(item['value_usd']?.toString() ?? '0') ?? 0;
-                  }
-                  if (afnAmount == 0) {
-                    afnAmount = double.tryParse(item['paid_afn']?.toString() ?? '0') ?? 0;
-                    usdAmount = double.tryParse(item['paid_usd']?.toString() ?? '0') ?? 0;
-                  }
-                  if (afnAmount == 0) {
-                    afnAmount = double.tryParse(item['remaining_afn']?.toString() ?? '0') ?? 0;
-                    usdAmount = double.tryParse(item['remaining_usd']?.toString() ?? '0') ?? 0;
-                  }
-
-                  return DataRow(
-                    cells: headers.map((header) {
-                      dynamic value = item[header];
-                      String displayValue = value?.toString() ?? '-';
-                      
-                      if (header.contains('_display') || 
-                          (header.contains('weight') && !header.contains('_tons') && !header.contains('_display'))) {
-                        displayValue = value?.toString() ?? '-';
-                      } else if (header == 'weight' || header == 'total_weight' || 
-                                 header == 'net_weight' || header == 'gross_weight' || 
-                                 header == 'weight_per_unit') {
-                        String unit = item['unit']?.toString() ?? 'kg';
-                        double weight = double.tryParse(value?.toString() ?? '0') ?? 0;
-                        displayValue = _formatWeightWithConversion(unit, weight);
-                      }
-                      
-                      bool isWeightField = displayValue.contains('تن') || displayValue.contains('kg');
-                      bool isNumeric = _isNumeric(displayValue);
-                      
-                      if (header == 'net_weight_display' && netWeight > 0) {
-                        return DataCell(
-                          Container(
-                            constraints: const BoxConstraints(maxWidth: 150),
-                            child: Text(
-                              '${_formatNumber(netWeight)} تن',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.purple,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      }
-                      
-                      if (header == 'gross_weight_display' && grossWeight > 0) {
-                        return DataCell(
-                          Container(
-                            constraints: const BoxConstraints(maxWidth: 150),
-                            child: Text(
-                              '${_formatNumber(grossWeight)} تن',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      }
-                      
-                      if (header == 'remaining_stock_display' && remainingStock > 0) {
-                        return DataCell(
-                          Container(
-                            constraints: const BoxConstraints(maxWidth: 150),
-                            child: Text(
-                              '${_formatNumber(remainingStock)} تن',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      }
-                      
-                      if (reportType.hasFinancial && (afnAmount > 0 || usdAmount > 0)) {
-                        if (header.contains('amount_afn') || header.contains('price_afn') || 
-                            header.contains('total_amount_afn') || header.contains('value_afn') ||
-                            header.contains('paid_afn') || header.contains('remaining_afn')) {
-                          return DataCell(
-                            Container(
-                              constraints: const BoxConstraints(maxWidth: 150),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    _formatCurrency(afnAmount),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (usdAmount > 0)
-                                    Text(
-                                      'USD: ${_formatCurrency(usdAmount)}',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.blue.shade600,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                        if (header.contains('amount_usd') || header.contains('price_usd') || 
-                            header.contains('total_amount_usd') || header.contains('value_usd') ||
-                            header.contains('paid_usd') || header.contains('remaining_usd')) {
-                          return DataCell(
-                            Container(
-                              constraints: const BoxConstraints(maxWidth: 150),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    _formatCurrency(usdAmount),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (afnAmount > 0)
-                                    Text(
-                                      'AFN: ${_formatCurrency(afnAmount)}',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.green.shade600,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                      
-                      if (header.contains('weight') && reportType.hasWeight && itemWeight > 0) {
-                        return DataCell(
-                          Container(
-                            constraints: const BoxConstraints(maxWidth: 150),
-                            child: Text(
-                              '${_formatNumber(itemWeight)} تن',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFCB001D),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      }
-                      
-                      if (header.contains('_afn') || header.contains('_usd')) {
-                        if (header != 'amount_afn' && header != 'amount_usd' && 
-                            header != 'price_afn' && header != 'price_usd' &&
-                            header != 'total_amount_afn' && header != 'total_amount_usd' &&
-                            header != 'value_afn' && header != 'value_usd' &&
-                            header != 'paid_afn' && header != 'paid_usd' &&
-                            header != 'remaining_afn' && header != 'remaining_usd') {
-                          return DataCell(
-                            Container(
-                              constraints: const BoxConstraints(maxWidth: 150),
-                              child: Text(
-                                displayValue,
-                                textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                      
-                      return DataCell(
-                        Container(
-                          constraints: const BoxConstraints(maxWidth: 150),
-                          child: Text(
-                            displayValue,
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: (isNumeric || isWeightField) ? FontWeight.bold : FontWeight.normal,
-                              color: isWeightField ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                }).toList(),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // HEADER ROW
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: const Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  _buildHeaderCell('شماره', 50),
+                  _buildHeaderCell('شماره فاکتور', 90),
+                  _buildHeaderCell('مشتری', 100),
+                  _buildHeaderCell('تلفن', 70),
+                  _buildHeaderCell('آدرس', 80),
+                  _buildHeaderCell('نوع خدمت', 80),
+                  _buildHeaderCell('سایز', 50),
+                  _buildHeaderCell('ضخامت', 50),
+                  _buildHeaderCell('وزن کل', 70),
+                  _buildHeaderCell('واحد', 45),
+                  _buildHeaderCell('قیمت واحد', 65),
+                  _buildHeaderCell('قیمت کل', 70),
+                  _buildHeaderCell('هزینه بارگیری', 65),
+                  _buildHeaderCell('هزینه حمل', 65),
+                  _buildHeaderCell('هزینه ترخیص', 65),
+                  _buildHeaderCell('تخفیف', 50),
+                  _buildHeaderCell('قیمت نهایی', 75),
+                  _buildHeaderCell('واحد پول', 50),
+                  _buildHeaderCell('تاریخ', 80),
+                ],
               ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-              border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+            
+            // DATA ROWS
+            ...data.map((service) {
+              String unit = service['unit']?.toString() ?? 'TON';
+              double totalWeight = double.tryParse(service['total_weight']?.toString() ?? '0') ?? 0;
+              String currency = service['currency']?.toString() ?? 'USD';
+              
+              String displayWeight = unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' 
+                  ? _formatWeightWithConversion(unit, totalWeight)
+                  : '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} $unit';
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
+                ),
+                child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
-                    const SizedBox(width: 8),
-                    Text(
-                      l10n.scrollHintText,
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                    _buildDataCell(service['id']?.toString() ?? '-', 50, isBold: true),
+                    _buildDataCell(service['invoice_number']?.toString() ?? '-', 90, isBold: true),
+                    _buildDataCell(service['customer_name']?.toString() ?? '-', 100),
+                    _buildDataCell(service['customer_phone']?.toString() ?? '-', 70),
+                    _buildDataCell(service['customer_address']?.toString() ?? '-', 80),
+                    _buildDataCell(service['service_type']?.toString() ?? '-', 80),
+                    _buildDataCell(service['size']?.toString() ?? '-', 50),
+                    _buildDataCell(service['thickness']?.toString() ?? '-', 50),
+                    _buildDataCell(displayWeight, 70),
+                    _buildDataCell(unit, 45),
+                    _buildDataCell(_formatCurrencyNoK(service['unit_price']), 65),
+                    _buildDataCell(_formatCurrencyNoK(service['total_price']), 70),
+                    _buildDataCell(_formatCurrencyNoK(service['loading_cost']), 65),
+                    _buildDataCell(_formatCurrencyNoK(service['transfer_cost']), 65),
+                    _buildDataCell(_formatCurrencyNoK(service['clearance_cost']), 65),
+                    _buildDataCell(_formatCurrencyNoK(service['discount']), 50),
+                    _buildDataCell(_formatCurrencyNoK(service['final_price']), 75, isBold: true, isRed: true),
+                    _buildDataCell(currency, 50),
+                    _buildDataCell(service['date']?.toString() ?? '-', 80),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============ RAW MATERIALS TABLE ============
+  Widget _buildRawMaterialsTable(AppLocalizations l10n) {
+    final data = _getFilteredData();
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 40),
+                  const SizedBox(width: 6),
+                  _buildHeaderCell('شماره', 50),
+                  _buildHeaderCell('نام مواد', 80),
+                  _buildHeaderCell('نام فروشنده', 100),
+                  _buildHeaderCell('تلفن', 70),
+                  _buildHeaderCell('آدرس', 100),
+                  _buildHeaderCell('تاریخ', 80),
+                  _buildHeaderCell('واحد', 50),
+                  _buildHeaderCell('وزن خالص', 60),
+                  _buildHeaderCell('وزن ناخالص', 60),
+                  _buildHeaderCell('قیمت واحد', 60),
+                  _buildHeaderCell('مبلغ فروشنده', 70),
+                  _buildHeaderCell('پرداخت اولیه', 70),
+                  _buildHeaderCell('روش پرداخت', 70),
+                  _buildHeaderCell('قیمت محصول', 50),
+                  _buildHeaderCell('کمیسیون', 50),
+                  _buildHeaderCell('هزینه حمل', 50),
+                  _buildHeaderCell('متفرقه', 50),
+                  _buildHeaderCell('غرفه‌داری', 50),
+                  _buildHeaderCell('برچالانی', 50),
+                  _buildHeaderCell('نوع خرید', 60),
+                  _buildHeaderCell('قیمت نهایی', 70),
+                ],
+              ),
+            ),
+            ...data.map((material) {
+              final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
+              
+              double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
+              double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
+              String unit = material['unit'] ?? '-';
+              
+              String displayNet = _formatUnitWithConversion(unit, netWeight, l10n);
+              String displayGross = _formatUnitWithConversion(unit, grossWeight, l10n);
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 40),
+                    const SizedBox(width: 6),
+                    _buildDataCell(material['id'].toString(), 50),
+                    _buildDataCell(material['name'] ?? '-', 80),
+                    _buildDataCell(material['supplier_name'] ?? '-', 100),
+                    _buildDataCell(material['supplier_phone'] ?? '-', 70),
+                    _buildDataCell(material['location'] ?? material['supplier_address'] ?? '-', 100),
+                    Container(
+                      width: 80,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            material['date_en'] ?? '-',
+                            style: const TextStyle(
+                              fontSize: 7,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1A1A2E),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            material['date'] ?? '-',
+                            style: const TextStyle(
+                              fontSize: 6,
+                              color: Color(0xFFCB001D),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildDataCell(translatedUnit, 50),
+                    _buildDataCell(displayNet, 60),
+                    _buildDataCell(displayGross, 60),
+                    _buildDataCell(material['unit_price'] ?? '-', 60),
+                    _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 70),
+                    _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 70),
+                    _buildDataCell(material['seller_payment_method'] == 'cash'
+                        ? 'نقد'
+                        : material['seller_payment_method'] == 'loan_full'
+                            ? 'قرض کامل'
+                            : material['seller_payment_method'] == 'loan_partial'
+                                ? 'قرض جزئی'
+                                : '-', 70),
+                    _buildDataCell(material['product'] ?? '-', 50),
+                    _buildDataCell(material['commission'] ?? '-', 50),
+                    _buildDataCell(material['transfer_cost'] ?? '-', 50),
+                    _buildDataCell(material['miscellaneous'] ?? '-', 50),
+                    _buildDataCell(material['ghurfedari'] ?? '-', 50),
+                    _buildDataCell(material['barchalani'] ?? '-', 50),
+                    _buildDataCell(material['purchase_type'] ?? '-', 60),
+                    _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 70, isBold: true, isRed: true),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============ PRODUCED PRODUCTS TABLE ============
+  Widget _buildProducedProductsTable(AppLocalizations l10n) {
+    final data = _getFilteredData();
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: const Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  _buildHeaderCell('شماره', 35),
+                  _buildHeaderCell('نوع تولید', 90),
+                  _buildHeaderCell('سایز', 45),
+                  _buildHeaderCell('ضخامت', 45),
+                  _buildHeaderCell('طول', 45),
+                  _buildHeaderCell('تعداد خاده', 50),
+                  _buildHeaderCell('وزن فی خاده', 65),
+                  _buildHeaderCell('مجموع وزن', 70),
+                  _buildHeaderCell('واحد', 40),
+                  _buildHeaderCell('تاریخ', 80),
+                  _buildHeaderCell('وضعیت', 65),
+                  _buildHeaderCell('وضعیت فروش', 70),
+                ],
+              ),
+            ),
+            ...data.map((product) {
+              String unit = product['unit']?.toString() ?? '';
+              double rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
+              double totalWeight = double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0;
+              
+              String displayRawWeight;
+              if (_isWeightUnit(unit)) {
+                displayRawWeight = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
+              } else {
+                displayRawWeight = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $unit';
+              }
+              
+              String displayTotalWeight;
+              if (_isWeightUnit(unit)) {
+                double tons = totalWeight / 1000;
+                if (tons < 0.01) {
+                  displayTotalWeight = '${tons.toStringAsFixed(3)} تن';
+                } else {
+                  displayTotalWeight = '${tons.toStringAsFixed(2)} تن';
+                }
+              } else {
+                displayTotalWeight = '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1)} $unit';
+              }
+              
+              String displayUnit = _isWeightUnit(unit) ? 'تن' : unit;
+              
+              final isSold = (product['is_sold'] == 1 || product['is_sold']?.toString() == '1');
+              final availableStock = double.tryParse(product['remaining_stock']?.toString() ?? '0') ?? 0;
+              String stockDisplay = _formatWeightWithConversion(unit, availableStock);
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    _buildDataCell(product['id'].toString(), 35),
+                    _buildDataCell(product['production_type']?.toString() ?? '-', 90, isBold: true),
+                    _buildDataCell(product['size']?.toString() ?? '-', 45),
+                    _buildDataCell(product['thickness']?.toString() ?? '-', 45),
+                    _buildDataCell(product['length']?.toString() ?? '-', 45),
+                    _buildDataCell(product['raw_count']?.toString() ?? '0', 50, isBold: true),
+                    _buildDataCell(displayRawWeight, 65),
+                    _buildDataCell(displayTotalWeight, 70, isBold: true, isRed: true),
+                    _buildDataCell(displayUnit, 40),
+                    SizedBox(
+                      width: 80,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            product['production_date']?.toString() ?? '-',
+                            style: const TextStyle(fontSize: 8, color: Color(0xFF1A1A2E)),
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            product['production_date_en']?.toString() ?? '-',
+                            style: const TextStyle(fontSize: 6, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 65,
+                      child: Center(
+                        child: _buildStatusChip(product['status']?.toString(), l10n),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 70,
+                      child: Center(
+                        child: _buildSoldStatusChip(product, l10n, availableStock, stockDisplay),
+                      ),
                     ),
                   ],
                 ),
-                Row(
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============ SALES TABLE ============
+  Widget _buildSalesTable(AppLocalizations l10n) {
+    final data = _getFilteredData();
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: const Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  _buildHeaderCell('شماره فاکتور', 90),
+                  _buildHeaderCell('نوع', 60),
+                  _buildHeaderCell('مشتری', 100),
+                  _buildHeaderCell('شرکت', 80),
+                  _buildHeaderCell('نوع تولید', 90),
+                  _buildHeaderCell('سایز', 50),
+                  _buildHeaderCell('ضخامت', 50),
+                  _buildHeaderCell('وزن فی خاده (kg)', 70),
+                  _buildHeaderCell('تعداد خاده', 55),
+                  _buildHeaderCell('وزن کل (تن)', 70),
+                  _buildHeaderCell('قیمت واحد', 65),
+                  _buildHeaderCell('قیمت کل', 70),
+                  _buildHeaderCell('تخفیف', 50),
+                  _buildHeaderCell('قیمت نهایی', 75),
+                  _buildHeaderCell('واحد پول', 50),
+                  _buildHeaderCell('تاریخ', 80),
+                  _buildHeaderCell('وضعیت', 60),
+                ],
+              ),
+            ),
+            ...data.map((sale) {
+              String unit = sale['unit']?.toString() ?? 'کیلوگرم';
+              double weightPerUnit = double.tryParse(sale['weight_per_unit']?.toString() ?? '0') ?? 0;
+              double totalWeight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
+              String currency = sale['currency']?.toString()?.toUpperCase() ?? 'AFN';
+              String saleType = sale['sale_type']?.toString() ?? 'فروش';
+              
+              String displayWeightPerUnit = weightPerUnit.toStringAsFixed(weightPerUnit % 1 == 0 ? 0 : 1);
+              double totalWeightInTons = totalWeight / 1000;
+              String displayTotalWeight = totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2);
+              
+              final isReturned = sale['is_back_returned'] == 1 || sale['is_back_returned']?.toString() == '1';
+              String statusText = isReturned ? 'برگشتی' : 'عادی';
+              Color statusColor = isReturned ? Colors.orange : Colors.green;
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
+                ),
+                child: Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left, size: 20),
-                      onPressed: () {
-                        _horizontalScrollController.animateTo(
-                          _horizontalScrollController.offset - 200,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                      constraints: const BoxConstraints(),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right, size: 20),
-                      onPressed: () {
-                        _horizontalScrollController.animateTo(
-                          _horizontalScrollController.offset + 200,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                      constraints: const BoxConstraints(),
+                    _buildDataCell(sale['invoice_number']?.toString() ?? '-', 90, isBold: true),
+                    _buildDataCell(saleType, 60),
+                    _buildDataCell(sale['customer_name']?.toString() ?? '-', 100),
+                    _buildDataCell(sale['customer_company']?.toString() ?? '-', 80),
+                    _buildDataCell(sale['product_name']?.toString() ?? '-', 90),
+                    _buildDataCell(sale['size']?.toString() ?? '-', 50),
+                    _buildDataCell(sale['thickness']?.toString() ?? '-', 50),
+                    _buildDataCell(displayWeightPerUnit, 70),
+                    _buildDataCell(sale['unit_count']?.toString() ?? '0', 55),
+                    _buildDataCell(displayTotalWeight, 70),
+                    _buildDataCell(_formatCurrencyNoK(sale['unit_price']), 65),
+                    _buildDataCell(_formatCurrencyNoK(sale['total_price'] ?? sale['final_price']), 70),
+                    _buildDataCell(_formatCurrencyNoK(sale['discount']), 50),
+                    _buildDataCell(_formatCurrencyNoK(sale['final_price']), 75, isBold: true, isRed: true),
+                    _buildDataCell(currency, 50),
+                    _buildDataCell(sale['date']?.toString() ?? '-', 80),
+                    Container(
+                      width: 60,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
+                          ),
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ],
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============ DAILY EXPENSES TABLE ============
+  Widget _buildDailyExpensesTable(AppLocalizations l10n) {
+    final data = _getFilteredData();
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: const Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  _buildHeaderCell('شماره بل', 90),
+                  _buildHeaderCell('شماره ثبت', 90),
+                  _buildHeaderCell('تاریخ شمسی', 80),
+                  _buildHeaderCell('تاریخ میلادی', 80),
+                  _buildHeaderCell('دسته بندی', 70),
+                  _buildHeaderCell('شرح', 120),
+                  _buildHeaderCell('مبلغ', 80),
+                  _buildHeaderCell('واحد پول', 60),
+                  _buildHeaderCell('نرخ ارز', 60),
+                  _buildHeaderCell('معادل', 80),
+                ],
+              ),
             ),
+            ...data.map((expense) {
+              String currency = expense['currency']?.toString() ?? 'افغانی';
+              String category = expense['category']?.toString() ?? 'سایر';
+              Color categoryColor = _getCategoryColor(category);
+              
+              double price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
+              double usdEquivalent = double.tryParse(expense['usd_equivalent']?.toString() ?? '0') ?? 0;
+              double exchangeRate = double.tryParse(expense['exchange_rate']?.toString() ?? '1') ?? 1;
+              
+              String mainCurrency = '';
+              String equivalentCurrency = '';
+              double mainAmount = 0;
+              double equivalentAmount = 0;
+              
+              if (currency == 'دالر' || currency == 'USD') {
+                mainCurrency = 'USD';
+                equivalentCurrency = 'AFN';
+                mainAmount = price;
+                equivalentAmount = usdEquivalent;
+              } else {
+                mainCurrency = 'AFN';
+                equivalentCurrency = 'USD';
+                mainAmount = price;
+                equivalentAmount = usdEquivalent;
+              }
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    _buildDataCell(expense['invoice_number']?.toString() ?? '-', 90, isBold: true),
+                    _buildDataCell(expense['registration_number']?.toString() ?? '-', 90),
+                    _buildDataCell(expense['date']?.toString() ?? '-', 80),
+                    _buildDataCell(expense['date_en']?.toString() ?? '-', 80),
+                    Container(
+                      width: 70,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: categoryColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            category,
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              color: categoryColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _buildDataCell(expense['description']?.toString() ?? '-', 120),
+                    Container(
+                      width: 80,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _formatCurrencyNoK(mainAmount),
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1A1A2E),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          Text(
+                            mainCurrency,
+                            style: TextStyle(
+                              fontSize: 7,
+                              color: mainCurrency == 'USD' ? Colors.blue : Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildDataCell(currency, 60),
+                    _buildDataCell(exchangeRate.toStringAsFixed(exchangeRate % 1 == 0 ? 0 : 2), 60),
+                    Container(
+                      width: 80,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _formatCurrencyNoK(equivalentAmount),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: equivalentCurrency == 'USD' ? Colors.blue : Colors.green,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          Text(
+                            equivalentCurrency,
+                            style: TextStyle(
+                              fontSize: 7,
+                              color: equivalentCurrency == 'USD' ? Colors.blue : Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============ WASTES TABLE ============
+  Widget _buildWastesTable(AppLocalizations l10n) {
+    final data = _getFilteredData();
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFCB001D).withOpacity(0.05),
+                border: const Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  _buildHeaderCell('شماره', 60),
+                  _buildHeaderCell('تاریخ', 80),
+                  _buildHeaderCell('طرف', 100),
+                  _buildHeaderCell('نوع ضایعات', 90),
+                  _buildHeaderCell('وزن (تن)', 70),
+                  _buildHeaderCell('تعداد', 50),
+                  _buildHeaderCell('مجموع وزن', 80),
+                  _buildHeaderCell('ارزش', 70),
+                  _buildHeaderCell('واحد پول', 50),
+                  _buildHeaderCell('نرخ ارز', 60),
+                  _buildHeaderCell('معادل افغانی', 80),
+                  _buildHeaderCell('شرح', 120),
+                ],
+              ),
+            ),
+            ...data.map((waste) {
+              String currency = waste['currency']?.toString() ?? 'USD';
+              double weight = double.tryParse(waste['weight']?.toString() ?? '0') ?? 0;
+              double quantity = double.tryParse(waste['quantity']?.toString() ?? '0') ?? 0;
+              double totalWeight = weight * quantity;
+              double value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0;
+              double afnEquivalent = double.tryParse(waste['afn_equivalent']?.toString() ?? '0') ?? 0;
+              double exchangeRate = double.tryParse(waste['exchange_rate']?.toString() ?? '1') ?? 1;
+              
+              String displayWeight = _formatWasteWeight(weight);
+              String displayTotalWeight = _formatWasteWeight(totalWeight);
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    _buildDataCell(waste['id']?.toString() ?? '-', 60, isBold: true),
+                    _buildDataCell(waste['date']?.toString() ?? '-', 80),
+                    _buildDataCell(waste['party_details']?.toString() ?? '-', 100),
+                    _buildDataCell(waste['waste_type']?.toString() ?? '-', 90),
+                    _buildDataCell(displayWeight, 70),
+                    _buildDataCell(waste['quantity']?.toString() ?? '0', 50),
+                    _buildDataCell(displayTotalWeight, 80, isBold: true, isRed: true),
+                    _buildDataCell(_formatCurrencyNoK(value), 70),
+                    _buildDataCell(currency, 50),
+                    _buildDataCell(exchangeRate.toStringAsFixed(exchangeRate % 1 == 0 ? 0 : 2), 60),
+                    _buildDataCell(_formatCurrencyNoK(afnEquivalent), 80),
+                    _buildDataCell(waste['description']?.toString() ?? '-', 120),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper for status chip
+  Widget _buildStatusChip(String? status, AppLocalizations l10n) {
+    Color color;
+    IconData icon;
+    String label;
+    switch (status) {
+      case 'تکمیل شده':
+        color = Colors.green.shade700;
+        icon = Icons.check_circle_rounded;
+        label = 'تکمیل شده';
+        break;
+      case 'در حال تولید':
+        color = Colors.blue.shade700;
+        icon = Icons.pending_rounded;
+        label = 'در حال تولید';
+        break;
+      case 'در انتظار':
+        color = Colors.orange.shade700;
+        icon = Icons.hourglass_empty_rounded;
+        label = 'در انتظار';
+        break;
+      default:
+        color = Colors.grey.shade600;
+        icon = Icons.help_rounded;
+        label = status ?? '-';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 10),
+          const SizedBox(width: 2),
+          Text(
+            label, 
+            style: TextStyle(
+              color: color, 
+              fontSize: 8, 
+              fontWeight: FontWeight.w600
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
   }
 
+  // Helper for sold status chip
+  Widget _buildSoldStatusChip(Map<String, dynamic> product, AppLocalizations l10n, double availableStock, String stockDisplay) {
+    final isSold = (product['is_sold'] == 1 || product['is_sold']?.toString() == '1');
+    
+    if (isSold && availableStock <= 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.grey.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
+        ),
+        child: const Text(
+          'فروخته شده',
+          style: TextStyle(
+            fontSize: 7,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: availableStock > 0 ? Colors.green.withOpacity(0.12) : Colors.orange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: availableStock > 0 ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3), 
+          width: 1
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            availableStock > 0 ? Icons.check_circle : Icons.warning_amber_rounded, 
+            color: availableStock > 0 ? Colors.green : Colors.orange, 
+            size: 8
+          ),
+          const SizedBox(width: 2),
+          Text(
+            availableStock > 0 ? '$stockDisplay موجود' : 'موجودی: $stockDisplay',
+            style: TextStyle(
+              fontSize: 7,
+              fontWeight: FontWeight.w600,
+              color: availableStock > 0 ? Colors.green : Colors.orange,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 8,
+          color: Color(0xFF1A1A2E),
+        ),
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _buildDataCell(String text, double width, {bool isBold = false, bool isRed = false}) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+          color: isRed ? const Color(0xFFCB001D) : const Color(0xFF1A1A2E),
+          fontSize: 8,
+        ),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  // ============ MOBILE CARDS FOR OTHER REPORTS ============
+  Widget _buildMobileCards(List<Map<String, dynamic>> data, AppLocalizations l10n) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: data.length,
+      itemBuilder: (context, index) {
+        final item = data[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: item.entries.map((entry) {
+                if (entry.key.contains('_display') || entry.key == 'id') return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _getFieldLabel(entry.key, l10n),
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      Flexible(
+                        child: Text(
+                          entry.value?.toString() ?? '-',
+                          style: const TextStyle(fontSize: 12),
+                          textAlign: TextAlign.right,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ============ DESKTOP TABLE FOR OTHER REPORTS ============
+  Widget _buildDesktopTable(List<Map<String, dynamic>> data, AppLocalizations l10n, bool isEnglish) {
+    List<String> allKeys = data.first.keys.toList();
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1), width: 1),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        controller: _horizontalScrollController,
+        padding: const EdgeInsets.all(16),
+        child: DataTable(
+          headingRowColor: MaterialStateProperty.all(Colors.grey.shade50),
+          headingTextStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFFCB001D),
+            fontSize: 12,
+          ),
+          columns: allKeys.map((header) => DataColumn(
+            label: Container(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: Text(
+                _getFieldLabel(header, l10n),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )).toList(),
+          rows: data.map((item) {
+            return DataRow(
+              cells: allKeys.map((header) {
+                dynamic value = item[header];
+                return DataCell(
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 150),
+                    child: Text(
+                      value?.toString() ?? '-',
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   String _getFieldLabel(String key, AppLocalizations l10n) {
     final labels = {
-      'id': l10n.tableIdLabel,
-      'created_at': l10n.tableCreatedAtLabel,
-      'name': l10n.tableNameLabel,
-      'supplier_name': l10n.tableSupplierNameLabel,
-      'supplier_phone': l10n.tableSupplierPhoneLabel,
-      'supplier_email': l10n.tableSupplierEmailLabel,
-      'supplier_address': l10n.tableSupplierAddressLabel,
-      'material_type': l10n.tableMaterialTypeLabel,
-      'thickness': l10n.tableThicknessLabel,
+      'id': 'شماره',
+      'name': 'نام',
+      'supplier_name': 'نام فروشنده',
+      'supplier_phone': 'تلفن',
+      'supplier_address': 'آدرس',
+      'location': 'موقعیت',
+      'date': 'تاریخ',
+      'date_en': 'تاریخ میلادی',
+      'unit': 'واحد',
       'net_weight': 'وزن خالص',
-      'net_weight_display': 'وزن خالص (تن)',
       'gross_weight': 'وزن ناخالص',
-      'gross_weight_display': 'وزن ناخالص (تن)',
-      'remaining_stock': 'موجودی',
-      'remaining_stock_display': 'موجودی (تن)',
-      'unit': l10n.tableUnitLabel,
-      'unit_price': l10n.tableUnitPriceLabel,
-      'product': l10n.tableProductLabel,
-      'commission': l10n.tableCommissionLabel,
-      'transfer_cost': l10n.tableTransferCostLabel,
-      'miscellaneous': l10n.tableMiscellaneousLabel,
-      'ghurfedari': l10n.tableGhurfedariLabel,
-      'barchalani': l10n.tableBarchalaniLabel,
-      'purchase_type': l10n.tablePurchaseTypeLabel,
-      'seller_payment': l10n.tableSellerPaymentLabel,
-      'seller_payment_method': l10n.tableSellerPaymentMethodLabel,
-      'seller_paid_amount': l10n.tableSellerPaidAmountLabel,
-      'currency': l10n.tableCurrencyLabel,
-      'exchange_rate': l10n.tableExchangeRateLabel,
-      'final_price': l10n.tableFinalPriceLabel,
-      'date': l10n.tableDateLabel,
-      'date_en': l10n.tableDateEnLabel,
-      'product_name': l10n.tableProductNameLabel,
-      'production_type': l10n.tableProductionTypeLabel,
-      'loading': l10n.tableLoadingLabel,
-      'length': l10n.tableLengthLabel,
-      'quantity': l10n.tableQuantityLabel,
-      'weight': 'وزن',
-      'weight_display': 'وزن (تن)',
-      'total_weight': 'وزن کل',
-      'total_weight_display': 'وزن کل (تن)',
-      'weight_per_unit': 'وزن فی خاده',
-      'weight_per_unit_display': 'وزن فی خاده (تن)',
-      'production_date': l10n.tableProductionDateLabel,
-      'production_date_en': l10n.tableProductionDateEnLabel,
-      'status': l10n.tableStatusLabel,
-      'batch': l10n.tableBatchLabel,
-      'description': l10n.tableDescriptionLabel,
-      'invoice_number': l10n.tableInvoiceNumberLabel,
-      'customer_name': l10n.tableCustomerNameLabel,
-      'customer_phone': l10n.tableCustomerPhoneLabel,
-      'customer_address': l10n.tableCustomerAddressLabel,
-      'customer_company': l10n.tableCustomerCompanyLabel,
-      'gender': l10n.tableGenderLabel,
-      'size': l10n.tableSizeLabel,
-      'total_price': l10n.tableTotalPriceLabel,
-      'price_rate': l10n.tablePriceRateLabel,
-      'usd_equivalent': l10n.tableUsdEquivalentLabel,
-      'afn_equivalent': l10n.tableAfnEquivalentLabel,
-      'loading_cost': l10n.tableLoadingCostLabel,
-      'clearance_cost': l10n.tableClearanceCostLabel,
-      'discount': l10n.tableDiscountLabel,
-      'loading_time': l10n.tableLoadingTimeLabel,
-      'loading_time_en': l10n.tableLoadingTimeEnLabel,
-      'payment_method': l10n.tablePaymentMethodLabel,
-      'loan_type': l10n.tableLoanTypeLabel,
-      'paid_amount': l10n.tablePaidAmountLabel,
-      'remaining_amount': l10n.tableRemainingAmountLabel,
-      'sale_type': l10n.tableSaleTypeLabel,
-      'is_back_returned': l10n.tableBackReturnedLabel,
-      'back_return_reason': l10n.tableBackReturnReasonLabel,
-      'back_return_date': l10n.tableBackReturnDateLabel,
-      'back_return_date_en': l10n.tableBackReturnDateEnLabel,
-      'service_title': l10n.tableServiceTitleLabel,
-      'service_type': l10n.tableServiceTypeLabel,
-      'price': l10n.tablePriceLabel,
-      'total_amount': l10n.tableTotalAmountLabel,
-      'due_date': l10n.tableDueDateLabel,
-      'loan_source': l10n.tableLoanSourceLabel,
-      'account_id': l10n.tableAccountIdLabel,
-      'account_number': l10n.tableAccountNumberLabel,
-      'transaction_type': l10n.tableTransactionTypeLabel,
-      'amount_usd': 'مبلغ (USD)',
+      'unit_price': 'قیمت واحد',
+      'seller_payment': 'مبلغ فروشنده',
+      'seller_paid_amount': 'پرداخت اولیه',
+      'seller_payment_method': 'روش پرداخت',
+      'product': 'قیمت محصول',
+      'commission': 'کمیسیون',
+      'transfer_cost': 'هزینه حمل',
+      'miscellaneous': 'متفرقه',
+      'ghurfedari': 'غرفه‌داری',
+      'barchalani': 'برچالانی',
+      'purchase_type': 'نوع خرید',
+      'final_price': 'قیمت نهایی',
+      'currency': 'واحد پول',
+      'exchange_rate': 'نرخ ارز',
       'amount_afn': 'مبلغ (AFN)',
-      'balance_after': l10n.tableBalanceAfterLabel,
-      'source_name': l10n.tableSourceNameLabel,
-      'source_account': l10n.tableSourceAccountLabel,
-      'source_email': l10n.tableSourceEmailLabel,
-      'source_phone': l10n.tableSourcePhoneLabel,
-      'address': l10n.tableAddressLabel,
-      'note': l10n.tableNoteLabel,
-      'current_usd_balance': l10n.tableCurrentUsdBalanceLabel,
-      'initial_usd_balance': l10n.tableInitialUsdBalanceLabel,
-      'asset_type': l10n.tableAssetTypeLabel,
-      'asset_name': l10n.tableAssetNameLabel,
-      'current_balance': l10n.tableCurrentBalanceLabel,
-      'initial_balance': l10n.tableInitialBalanceLabel,
-      'category': l10n.tableCategoryLabel,
-      'party_details': l10n.tablePartyDetailsLabel,
-      'waste_type': l10n.tableWasteTypeLabel,
-      'value': l10n.tableValueLabel,
-      'nickname': l10n.tableNicknameLabel,
-      'phone': l10n.tablePhoneLabel,
-      'email': l10n.tableEmailLabel,
-      'type': l10n.tableTypeLabel,
-      'transactions': l10n.tableTransactionsLabel,
-      'amount': 'مبلغ',
-      'price_afn': 'قیمت (AFN)',
-      'price_usd': 'قیمت (USD)',
-      'total_amount_afn': 'جمع کل (AFN)',
-      'total_amount_usd': 'جمع کل (USD)',
-      'value_afn': 'ارزش (AFN)',
-      'value_usd': 'ارزش (USD)',
+      'amount_usd': 'مبلغ (USD)',
       'paid_afn': 'پرداخت (AFN)',
       'paid_usd': 'پرداخت (USD)',
       'remaining_afn': 'باقی‌مانده (AFN)',
       'remaining_usd': 'باقی‌مانده (USD)',
-      'weight_tons': 'وزن (تن)',
-      'total_weight_tons': 'وزن کل (تن)',
-      'gross_weight_tons': 'وزن ناخالص (تن)',
-      'net_weight_tons': 'وزن خالص (تن)',
-      'weight_per_unit_tons': 'وزن فی خاده (تن)',
+      'value_afn': 'ارزش (AFN)',
+      'value_usd': 'ارزش (USD)',
+      'production_type': 'نوع تولید',
+      'size': 'سایز',
+      'thickness': 'ضخامت',
+      'length': 'طول',
+      'raw_count': 'تعداد خاده',
+      'raw_weight': 'وزن فی خاده',
+      'total_weight': 'مجموع وزن',
+      'status': 'وضعیت',
+      'production_date': 'تاریخ تولید',
+      'invoice_number': 'شماره فاکتور',
+      'customer_name': 'مشتری',
+      'customer_company': 'شرکت',
+      'product_name': 'محصول',
+      'total_price': 'قیمت کل',
+      'discount': 'تخفیف',
+      'loading_cost': 'هزینه بارگیری',
+      'clearance_cost': 'هزینه ترخیص',
+      'payment_method': 'روش پرداخت',
+      'sale_type': 'نوع فروش',
+      'registration_number': 'شماره ثبت',
+      'category': 'دسته بندی',
+      'description': 'شرح',
+      'price': 'قیمت',
+      'usd_equivalent': 'معادل دالر',
+      'party_details': 'طرف',
+      'waste_type': 'نوع ضایعات',
+      'weight': 'وزن',
+      'quantity': 'تعداد',
+      'value': 'ارزش',
+      'afn_equivalent': 'معادل افغانی',
+      'customer_phone': 'تلفن',
+      'customer_address': 'آدرس',
+      'service_type': 'نوع خدمت',
     };
     return labels[key] ?? key.replaceAll('_', ' ');
   }

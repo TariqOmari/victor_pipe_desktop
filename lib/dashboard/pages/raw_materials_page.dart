@@ -71,14 +71,13 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   }
 
   // Format unit with conversion for table display
-String _formatUnitWithConversion(String unit, double weight, AppLocalizations l10n) {
-  if (_isWeightUnit(unit)) {
-    double tons = weight / 1000;
-    // Show 2 decimal places for tons (shows 0.04 instead of 0.0)
-    return '${tons.toStringAsFixed(2)} ${l10n.tonUnit}';
+  String _formatUnitWithConversion(String unit, double weight, AppLocalizations l10n) {
+    if (_isWeightUnit(unit)) {
+      double tons = weight / 1000;
+      return '${tons.toStringAsFixed(1)} ${l10n.tonUnit}';
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} ${_translateUnit(unit, l10n)}';
   }
-  return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} ${_translateUnit(unit, l10n)}';
-}
 
   @override
   void initState() {
@@ -149,24 +148,16 @@ String _formatUnitWithConversion(String unit, double weight, AppLocalizations l1
     return value;
   }
 
- double _parseNumber(String value) {
-  if (value.isEmpty) return 0;
-  
-  // حذف فاصله و کاما
-  String cleaned = value.replaceAll(RegExp(r'[,\s]'), '');
-  
-  // چک کردن اینکه عدد هست یا نه
-  if (cleaned.isEmpty) return 0;
-  
-  try {
-    double result = double.parse(cleaned);
-    print('🔢 Parsing "$value" -> $result');
-    return result;
-  } catch (e) {
-    print('⚠️ Could not parse "$value": $e');
-    return 0;
+  double _parseNumber(String value) {
+    if (value.isEmpty) return 0;
+    String cleaned = value.replaceAll(RegExp(r'[,\s]'), '');
+    if (cleaned.isEmpty) return 0;
+    try {
+      return double.parse(cleaned);
+    } catch (e) {
+      return 0;
+    }
   }
-}
 
   // ============ EXCEL IMPORT ============
   Future<void> _importExcel() async {
@@ -244,327 +235,315 @@ String _formatUnitWithConversion(String unit, double weight, AppLocalizations l1
     }
   }
 
-Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
-     
-  try {
-    List<Map<String, dynamic>> importedData = [];
-    int successCount = 0;
-    int skippedCount = 0;
-    List<String> errors = [];
+  Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
+    try {
+      List<Map<String, dynamic>> importedData = [];
+      int successCount = 0;
+      int skippedCount = 0;
+      List<String> errors = [];
 
-    // پیدا کردن سطر هدر
-    List<String> headers = [];
-    int headerRowIndex = -1;
-    
-    for (int i = 0; i < sheet.rows.length && i < 20; i++) {
-      final row = sheet.rows[i];
-      if (row.isEmpty) continue;
+      // پیدا کردن سطر هدر
+      List<String> headers = [];
+      int headerRowIndex = -1;
       
-      List<String> potentialHeaders = [];
-      for (var cell in row) {
-        if (cell != null && cell.value != null) {
-          String val = cell.value.toString().trim();
-          if (val.isNotEmpty) potentialHeaders.add(val);
-        }
-      }
-      
-      bool hasHeader = potentialHeaders.any((h) => 
-        h.contains('نام مواد') || h.contains('فروشنده') || h.contains('وزن') || h.contains('تاریخ'));
-      
-      if (hasHeader && potentialHeaders.length >= 2) {
-        headers = potentialHeaders;
-        headerRowIndex = i;
-        print('✅ Found headers: $headers');
-        break;
-      }
-    }
-
-    if (headers.isEmpty) {
-      return {'success': false, 'message': 'هیچ ستونی پیدا نشد'};
-    }
-
-    print('📋 Headers count: ${headers.length}');
-    
-    // پیدا کردن ایندکس هر فیلد - با تطابق دقیق
-    int nameIndex = -1;
-    int supplierIndex = -1;
-    int netWeightIndex = -1;
-    int grossWeightIndex = -1;
-    int dateIndex = -1;
-    int unitIndex = -1;
-    int unitPriceIndex = -1;
-    int locationIndex = -1;
-    int materialTypeIndex = -1;
-    int thicknessIndex = -1;
-    int productIndex = -1;
-    int commissionIndex = -1;
-    int transferCostIndex = -1;
-    int miscellaneousIndex = -1;
-    int ghurfedariIndex = -1;
-    int barchalaniIndex = -1;
-    int purchaseTypeIndex = -1;
-    int paymentMethodIndex = -1;
-    int currencyIndex = -1;
-    int exchangeRateIndex = -1;
-
-    for (int i = 0; i < headers.length; i++) {
-      String h = headers[i].trim();
-      print('  Header $i: "$h"');
-      
-      // تطابق دقیق با نام هدرها
-      if (h == 'نام مواد') {
-        nameIndex = i;
-        print('  ✅ Name found at index $i');
-      } else if (h == 'اسم فروشنده') {
-        supplierIndex = i;
-        print('  ✅ Supplier found at index $i');
-      } else if (h == 'وزن خالص') {
-        netWeightIndex = i;
-        print('  ✅ Net Weight found at index $i');
-      } else if (h == 'وزن ناخالص') {
-        grossWeightIndex = i;
-        print('  ✅ Gross Weight found at index $i');
-      } else if (h == 'تاریخ') {
-        dateIndex = i;
-      } else if (h == 'واحد') {
-        unitIndex = i;
-      } else if (h == 'قیمت واحد') {
-        unitPriceIndex = i;
-      } else if (h == 'محل تخلیه') {
-        locationIndex = i;
-      } else if (h == 'نوع مواد') {
-        materialTypeIndex = i;
-      } else if (h == 'ضخامت') {
-        thicknessIndex = i;
-      } else if (h == 'قیمت محصول') {
-        productIndex = i;
-      } else if (h == 'کمیسیون') {
-        commissionIndex = i;
-      } else if (h == 'هزینه حمل') {
-        transferCostIndex = i;
-      } else if (h == 'متفرقه') {
-        miscellaneousIndex = i;
-      } else if (h == 'غرفه‌داری') {
-        ghurfedariIndex = i;
-      } else if (h == 'برچالانی') {
-        barchalaniIndex = i;
-      } else if (h == 'نوع خرید') {
-        purchaseTypeIndex = i;
-      } else if (h == 'روش پرداخت') {
-        paymentMethodIndex = i;
-      } else if (h == 'واحد پول') {
-        currencyIndex = i;
-      } else if (h == 'نرخ ارز') {
-        exchangeRateIndex = i;
-      }
-    }
-
-    print('📋 Name index: $nameIndex');
-    print('📋 Supplier index: $supplierIndex');
-    print('📋 Net Weight index: $netWeightIndex');
-    print('📋 Gross Weight index: $grossWeightIndex');
-
-    // چک کردن REQUIRED
-    if (nameIndex == -1 || supplierIndex == -1 || netWeightIndex == -1 || grossWeightIndex == -1) {
-      String msg = '';
-      if (nameIndex == -1) msg += 'نام مواد، ';
-      if (supplierIndex == -1) msg += 'اسم فروشنده، ';
-      if (netWeightIndex == -1) msg += 'وزن خالص، ';
-      if (grossWeightIndex == -1) msg += 'وزن ناخالص، ';
-      return {
-        'success': false,
-        'message': 'فیلدهای مورد نیاز پیدا نشد: $msg'
-      };
-    }
-
-    // گرفتن فروشنده‌ها
-    final suppliers = await _db.getSuppliers();
-    Map<String, int> supplierMap = {};
-    for (var supplier in suppliers) {
-      supplierMap[supplier['name']?.toString() ?? ''] = supplier['id'];
-    }
-
-    // پردازش ردیف‌ها
-        print('📝 Processing rows from ${headerRowIndex + 2} to ${sheet.rows.length}');
-    
-      for (int i = headerRowIndex + 1; i < sheet.rows.length; i++) {
-      final row = sheet.rows[i];
-      
-      // چک کردن اینکه ردیف داده داره
-      bool rowHasData = false;
-      for (var cell in row) {
-        if (cell != null && cell.value != null) {
-          String val = cell.value.toString().trim();
-          if (val.isNotEmpty && val != '0' && val != '-') {
-            rowHasData = true;
-            break;
+      for (int i = 0; i < sheet.rows.length && i < 20; i++) {
+        final row = sheet.rows[i];
+        if (row.isEmpty) continue;
+        
+        List<String> potentialHeaders = [];
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty) potentialHeaders.add(val);
           }
         }
-      }
-      
-      if (!rowHasData) {
-        print('📝 Row ${i+1}: SKIPPED (empty)');
-        continue;
-      }
-
-      try {
-        // گرفتن داده‌ها با ایندکس
-        String name = _getCellValueDirect(row, nameIndex);
-        String supplierName = _getCellValueDirect(row, supplierIndex);
-      String netWeightStr = _getCellValueDirect(row, netWeightIndex);
-     String grossWeightStr = _getCellValueDirect(row, grossWeightIndex);
         
-        String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
-        String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
-        String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
-        String location = locationIndex != -1 ? _getCellValueDirect(row, locationIndex) : '';
-        String materialType = materialTypeIndex != -1 ? _getCellValueDirect(row, materialTypeIndex) : '';
-        String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
-        String productStr = productIndex != -1 ? _getCellValueDirect(row, productIndex) : '0';
-        String commissionStr = commissionIndex != -1 ? _getCellValueDirect(row, commissionIndex) : '0';
-        String transferCostStr = transferCostIndex != -1 ? _getCellValueDirect(row, transferCostIndex) : '0';
-        String miscellaneousStr = miscellaneousIndex != -1 ? _getCellValueDirect(row, miscellaneousIndex) : '0';
-        String ghurfedariStr = ghurfedariIndex != -1 ? _getCellValueDirect(row, ghurfedariIndex) : '0';
-        String barchalaniStr = barchalaniIndex != -1 ? _getCellValueDirect(row, barchalaniIndex) : '0';
-        String purchaseType = purchaseTypeIndex != -1 ? _getCellValueDirect(row, purchaseTypeIndex) : 'مستقیم';
-        String paymentMethod = paymentMethodIndex != -1 ? _getCellValueDirect(row, paymentMethodIndex) : 'cash';
-        String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'AFN';
-        String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValueDirect(row, exchangeRateIndex) : '1';
-
-        print('📝 Row ${i+1}:');
-        print('  Name: "$name"');
-        print('  Supplier: "$supplierName"');
-        print('  Net Weight: "$netWeightStr"');
-        print('  Gross Weight: "$grossWeightStr"');
-
-        if (name.isEmpty || supplierName.isEmpty || netWeightStr.isEmpty || grossWeightStr.isEmpty) {
-          skippedCount++;
-          errors.add('ردیف ${i+1}: فیلدهای مورد نیاز کامل نیستند');
-          continue;
+        bool hasHeader = potentialHeaders.any((h) => 
+          h.contains('نام مواد') || h.contains('فروشنده') || h.contains('وزن') || h.contains('تاریخ'));
+        
+        if (hasHeader && potentialHeaders.length >= 2) {
+          headers = potentialHeaders;
+          headerRowIndex = i;
+          break;
         }
+      }
 
-        double netWeight = _parseNumber(netWeightStr);
-        double grossWeight = _parseNumber(grossWeightStr);
+      if (headers.isEmpty) {
+        return {'success': false, 'message': 'هیچ ستونی پیدا نشد'};
+      }
 
-        if (netWeight <= 0 || grossWeight <= 0) {
-          skippedCount++;
-          errors.add('ردیف ${i+1}: وزن نامعتبر (خالص: $netWeight, ناخالص: $grossWeight)');
-          continue;
+      // پیدا کردن ایندکس هر فیلد
+      int nameIndex = -1;
+      int supplierIndex = -1;
+      int netWeightIndex = -1;
+      int grossWeightIndex = -1;
+      int dateIndex = -1;
+      int unitIndex = -1;
+      int unitPriceIndex = -1;
+      int locationIndex = -1;
+      int materialTypeIndex = -1;
+      int thicknessIndex = -1;
+      int productIndex = -1;
+      int commissionIndex = -1;
+      int transferCostIndex = -1;
+      int miscellaneousIndex = -1;
+      int ghurfedariIndex = -1;
+      int barchalaniIndex = -1;
+      int purchaseTypeIndex = -1;
+      int paymentMethodIndex = -1;
+      int currencyIndex = -1;
+      int exchangeRateIndex = -1;
+
+      for (int i = 0; i < headers.length; i++) {
+        String h = headers[i].trim();
+        if (h == 'نام مواد') {
+          nameIndex = i;
+        } else if (h == 'اسم فروشنده') {
+          supplierIndex = i;
+        } else if (h == 'وزن خالص') {
+          netWeightIndex = i;
+        } else if (h == 'وزن ناخالص') {
+          grossWeightIndex = i;
+        } else if (h == 'تاریخ') {
+          dateIndex = i;
+        } else if (h == 'واحد') {
+          unitIndex = i;
+        } else if (h == 'قیمت واحد') {
+          unitPriceIndex = i;
+        } else if (h == 'محل تخلیه') {
+          locationIndex = i;
+        } else if (h == 'نوع مواد') {
+          materialTypeIndex = i;
+        } else if (h == 'ضخامت') {
+          thicknessIndex = i;
+        } else if (h == 'قیمت محصول') {
+          productIndex = i;
+        } else if (h == 'کمیسیون') {
+          commissionIndex = i;
+        } else if (h == 'هزینه حمل') {
+          transferCostIndex = i;
+        } else if (h == 'متفرقه') {
+          miscellaneousIndex = i;
+        } else if (h == 'غرفه‌داری') {
+          ghurfedariIndex = i;
+        } else if (h == 'برچالانی') {
+          barchalaniIndex = i;
+        } else if (h == 'نوع خرید') {
+          purchaseTypeIndex = i;
+        } else if (h == 'روش پرداخت') {
+          paymentMethodIndex = i;
+        } else if (h == 'واحد پول') {
+          currencyIndex = i;
+        } else if (h == 'نرخ ارز') {
+          exchangeRateIndex = i;
         }
+      }
 
-        // ایجاد فروشنده
-        int? supplierId = supplierMap[supplierName];
-        if (supplierId == null) {
-          supplierId = await _db.insertSupplier({
-            'name': supplierName,
-            'phone': '',
-            'address': location,
-          });
-          if (supplierId != -1) {
-            supplierMap[supplierName] = supplierId;
-            print('✅ Created supplier: $supplierName');
-          } else {
+      if (nameIndex == -1 || supplierIndex == -1 || netWeightIndex == -1 || grossWeightIndex == -1) {
+        String msg = '';
+        if (nameIndex == -1) msg += 'نام مواد، ';
+        if (supplierIndex == -1) msg += 'اسم فروشنده، ';
+        if (netWeightIndex == -1) msg += 'وزن خالص، ';
+        if (grossWeightIndex == -1) msg += 'وزن ناخالص، ';
+        return {
+          'success': false,
+          'message': 'فیلدهای مورد نیاز پیدا نشد: $msg'
+        };
+      }
+
+      final suppliers = await _db.getSuppliers();
+      Map<String, int> supplierMap = {};
+      for (var supplier in suppliers) {
+        supplierMap[supplier['name']?.toString() ?? ''] = supplier['id'];
+      }
+
+      for (int i = headerRowIndex + 1; i < sheet.rows.length; i++) {
+        final row = sheet.rows[i];
+        
+        bool rowHasData = false;
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty && val != '0' && val != '-') {
+              rowHasData = true;
+              break;
+            }
+          }
+        }
+        
+        if (!rowHasData) continue;
+
+        try {
+          String name = _getCellValueDirect(row, nameIndex);
+          String supplierName = _getCellValueDirect(row, supplierIndex);
+          String netWeightStr = _getCellValueDirect(row, netWeightIndex);
+          String grossWeightStr = _getCellValueDirect(row, grossWeightIndex);
+          
+          String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
+          String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
+          String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
+          String location = locationIndex != -1 ? _getCellValueDirect(row, locationIndex) : '';
+          String materialType = materialTypeIndex != -1 ? _getCellValueDirect(row, materialTypeIndex) : '';
+          String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
+          String productStr = productIndex != -1 ? _getCellValueDirect(row, productIndex) : '0';
+          String commissionStr = commissionIndex != -1 ? _getCellValueDirect(row, commissionIndex) : '0';
+          String transferCostStr = transferCostIndex != -1 ? _getCellValueDirect(row, transferCostIndex) : '0';
+          String miscellaneousStr = miscellaneousIndex != -1 ? _getCellValueDirect(row, miscellaneousIndex) : '0';
+          String ghurfedariStr = ghurfedariIndex != -1 ? _getCellValueDirect(row, ghurfedariIndex) : '0';
+          String barchalaniStr = barchalaniIndex != -1 ? _getCellValueDirect(row, barchalaniIndex) : '0';
+          String purchaseType = purchaseTypeIndex != -1 ? _getCellValueDirect(row, purchaseTypeIndex) : 'مستقیم';
+          String paymentMethod = paymentMethodIndex != -1 ? _getCellValueDirect(row, paymentMethodIndex) : 'cash';
+          String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'AFN';
+          String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValueDirect(row, exchangeRateIndex) : '1';
+
+          if (name.isEmpty || supplierName.isEmpty || netWeightStr.isEmpty || grossWeightStr.isEmpty) {
             skippedCount++;
-            errors.add('ردیف ${i+1}: خطا در ایجاد فروشنده');
+            errors.add('ردیف ${i+1}: فیلدهای مورد نیاز کامل نیستند');
             continue;
           }
-        }
 
-        // محاسبه قیمت‌ها
-        double unitPrice = _parseNumber(unitPriceStr);
-        double product = _parseNumber(productStr);
-        double commission = _parseNumber(commissionStr);
-        double transferCost = _parseNumber(transferCostStr);
-        double miscellaneous = _parseNumber(miscellaneousStr);
-        double ghurfedari = _parseNumber(ghurfedariStr);
-        double barchalani = _parseNumber(barchalaniStr);
+          double netWeight = _parseNumber(netWeightStr);
+          double grossWeight = _parseNumber(grossWeightStr);
 
-        double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg') ? netWeight / 1000 : netWeight;
-        double basePrice = netWeightInTons * unitPrice;
-        double finalPrice = basePrice + product + commission + transferCost + miscellaneous + ghurfedari + barchalani;
+          if (netWeight <= 0 || grossWeight <= 0) {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: وزن نامعتبر');
+            continue;
+          }
 
-        if (date.isEmpty) {
-          date = PersianDateConverter.gregorianToJalali(DateTime.now());
-        }
-        String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+          int? supplierId = supplierMap[supplierName];
+          if (supplierId == null) {
+            supplierId = await _db.insertSupplier({
+              'name': supplierName,
+              'phone': '',
+              'address': location,
+            });
+            if (supplierId != -1) {
+              supplierMap[supplierName] = supplierId;
+            } else {
+              skippedCount++;
+              errors.add('ردیف ${i+1}: خطا در ایجاد فروشنده');
+              continue;
+            }
+          }
 
-        // ساخت ماده خام
-        Map<String, dynamic> material = {
-          'supplier_id': supplierId,
-          'name': name,
-          'location': location,
-          'material_type': materialType,
-          'thickness': thickness,
-          'net_weight': netWeight.toString(),
-          'gross_weight': grossWeight.toString(),
-          'date': date,
-          'date_en': dateEn,
-          'unit': unit,
-          'unit_price': unitPrice.toString(),
-          'product': product > 0 ? product.toString() : '0',
-          'commission': commission > 0 ? commission.toString() : '0',
-          'transfer_cost': transferCost > 0 ? transferCost.toString() : '0',
-          'miscellaneous': miscellaneous > 0 ? miscellaneous.toString() : '0',
-          'ghurfedari': ghurfedari > 0 ? ghurfedari.toString() : '0',
-          'barchalani': barchalani > 0 ? barchalani.toString() : '0',
-          'purchase_type': purchaseType,
-          'seller_payment': basePrice > 0 ? basePrice.toStringAsFixed(0) : '0',
-          'seller_payment_method': paymentMethod,
-          'seller_paid_amount': (basePrice > 0 && paymentMethod == 'cash') ? basePrice.toStringAsFixed(0) : '0',
-          'currency': currency,
-          'exchange_rate': _parseNumber(exchangeRateStr),
-          'final_price': finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '0',
-        };
+          // ============================================================
+          // ✅ FIXED CALCULATION - Expenses are ALWAYS in AFN
+          // ============================================================
+          double unitPrice = _parseNumber(unitPriceStr);
+          double product = _parseNumber(productStr);
+          double commission = _parseNumber(commissionStr);
+          double transferCost = _parseNumber(transferCostStr);
+          double miscellaneous = _parseNumber(miscellaneousStr);
+          double ghurfedari = _parseNumber(ghurfedariStr);
+          double barchalani = _parseNumber(barchalaniStr);
+          double exchangeRate = _parseNumber(exchangeRateStr);
+          
+          if (exchangeRate <= 0) exchangeRate = 1;
 
-        print('📦 Inserting: ${material['name']}');
-        
-        int result = await _db.insertRawMaterial(material);
-        if (result != -1) {
-          successCount++;
-          importedData.add(material);
-          print('✅ Row ${i+1} imported successfully!');
-        } else {
+          double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') 
+              ? netWeight / 1000 
+              : netWeight;
+          
+          double basePrice = netWeightInTons * unitPrice;
+
+          // Expenses are ALWAYS in AFN
+          double expensesAfn = product + commission + transferCost + 
+                               miscellaneous + ghurfedari + barchalani;
+
+          double expensesInPriceCurrency;
+          if (currency == 'USD') {
+            expensesInPriceCurrency = expensesAfn / exchangeRate;
+          } else {
+            expensesInPriceCurrency = expensesAfn;
+          }
+
+          double finalPrice = basePrice + expensesInPriceCurrency;
+          double sellerPayment = basePrice;
+
+          double sellerPaidAmount = 0;
+          if (paymentMethod == 'cash') {
+            sellerPaidAmount = basePrice;
+          } else {
+            sellerPaidAmount = _parseNumber('0');
+          }
+
+          if (date.isEmpty) {
+            date = PersianDateConverter.gregorianToJalali(DateTime.now());
+          }
+          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+          Map<String, dynamic> material = {
+            'supplier_id': supplierId,
+            'name': name,
+            'location': location,
+            'material_type': materialType,
+            'thickness': thickness,
+            'net_weight': netWeight.toString(),
+            'gross_weight': grossWeight.toString(),
+            'date': date,
+            'date_en': dateEn,
+            'unit': unit,
+            'unit_price': unitPrice.toString(),
+            'product': product > 0 ? product.toString() : '0',
+            'commission': commission > 0 ? commission.toString() : '0',
+            'transfer_cost': transferCost > 0 ? transferCost.toString() : '0',
+            'miscellaneous': miscellaneous > 0 ? miscellaneous.toString() : '0',
+            'ghurfedari': ghurfedari > 0 ? ghurfedari.toString() : '0',
+            'barchalani': barchalani > 0 ? barchalani.toString() : '0',
+            'purchase_type': purchaseType,
+            'seller_payment': sellerPayment.toStringAsFixed(0),
+            'seller_payment_method': paymentMethod,
+            'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
+            'currency': currency,
+            'exchange_rate': exchangeRate,
+            'final_price': finalPrice.toStringAsFixed(1),
+          };
+
+          int result = await _db.insertRawMaterial(material);
+          if (result != -1) {
+            successCount++;
+            importedData.add(material);
+          } else {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: خطا در ذخیره‌سازی');
+          }
+
+        } catch (e) {
           skippedCount++;
-          errors.add('ردیف ${i+1}: خطا در ذخیره‌سازی');
+          errors.add('ردیف ${i+1}: خطا - $e');
         }
-
-      } catch (e) {
-        skippedCount++;
-        errors.add('ردیف ${i+1}: خطا - $e');
-        print('❌ Error in row ${i+1}: $e');
       }
+
+      return {
+        'success': true,
+        'successCount': successCount,
+        'skippedCount': skippedCount,
+        'importedData': importedData,
+        'errors': errors,
+        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+      };
+
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'خطا در پردازش فایل: $e',
+      };
     }
-
-    return {
-      'success': true,
-      'successCount': successCount,
-      'skippedCount': skippedCount,
-      'importedData': importedData,
-      'errors': errors,
-      'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
-    };
-
-  } catch (e) {
-    print('❌ Error: $e');
-    return {
-      'success': false,
-      'message': 'خطا در پردازش فایل: $e',
-    };
   }
-}
 
-String _getCellValueDirect(List<excel.Data?> row, int index) {
-  if (index < 0 || index >= row.length) return '';
-  final cell = row[index];
-  if (cell == null) return '';
-  if (cell.value == null) return '';
-  
-  String value = cell.value.toString().trim();
-  if (value.isNotEmpty) {
-    value = _convertPersianToEnglishDigits(value);
+  String _getCellValueDirect(List<excel.Data?> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final cell = row[index];
+    if (cell == null) return '';
+    if (cell.value == null) return '';
+    
+    String value = cell.value.toString().trim();
+    if (value.isNotEmpty) {
+      value = _convertPersianToEnglishDigits(value);
+    }
+    return value;
   }
-  return value;
-}
 
   void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
     showDialog(
@@ -1225,7 +1204,7 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
     String _convertToTon(double weight) {
       if (weight <= 0) return '0';
       double tons = weight / 1000;
-      return tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
+      return tons.toStringAsFixed(1);
     }
 
     String _getUnitSymbol(String unit) {
@@ -1238,42 +1217,69 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
     }
 
     void _updateFinalPrice() {
-      double netWeight = double.tryParse(netWeightController.text) ?? 0;
-      String selectedUnit = unitController.text;
-      
-      double netWeightInTons = netWeight;
-      if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
-        netWeightInTons = netWeight / 1000;
-      }
-      
-      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      double productCost = double.tryParse(productController.text) ?? 0;
-      double commission = double.tryParse(commissionController.text) ?? 0;
-      double transferCost = double.tryParse(transferCostController.text) ?? 0;
-      double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
-      double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
-      double barchalani = double.tryParse(barchalaniController.text) ?? 0;
-      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+  double netWeight = double.tryParse(netWeightController.text) ?? 0;
+  String selectedUnit = unitController.text;
+  
+  double netWeightInTons = netWeight;
+  if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
+    netWeightInTons = netWeight / 1000;
+  }
+  
+  double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+  
+  // ✅ These are ALWAYS in AFN
+  double productCost = double.tryParse(productController.text) ?? 0;
+  double commission = double.tryParse(commissionController.text) ?? 0;
+  double transferCost = double.tryParse(transferCostController.text) ?? 0;
+  double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
+  double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
+  double barchalani = double.tryParse(barchalaniController.text) ?? 0;
+  
+  double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+  if (exchangeRate <= 0) exchangeRate = 1;
 
-      double basePrice = netWeightInTons * unitPrice;
-      double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
-      double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
-      double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
-      finalPriceController.text = finalPrice.toStringAsFixed(0);
-      
-      if (selectedCurrency == 'USD') {
-        afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(0);
-      } else {
-        afnEquivalentController.text = exchangeRate > 0 ? (finalPrice * exchangeRate).toStringAsFixed(3) : '0';
-      }
-      
-      sellerPaymentController.text = basePrice.toStringAsFixed(0);
-      if (selectedSellerPaymentMethod == 'cash') {
-        sellerPaidAmountController.text = sellerPaymentController.text;
-      } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
-        sellerPaidAmountController.text = '0';
-      }
-    }
+  // Base price is in the selected currency (USD or AFN)
+  double basePrice = netWeightInTons * unitPrice;
+  
+  // ✅ Convert AFN expenses to the selected currency with HIGH PRECISION
+  double totalAfnExpenses = productCost + commission + transferCost + 
+                            miscellaneous + ghurfedari + barchalani;
+  
+  double expensesInPriceCurrency;
+  if (selectedCurrency == 'USD') {
+    expensesInPriceCurrency = totalAfnExpenses / exchangeRate; // AFN ➜ USD
+  } else {
+    expensesInPriceCurrency = totalAfnExpenses; // AFN ➜ AFN (no conversion)
+  }
+
+  // ✅ Final price with 2 decimal precision
+  double finalPrice = basePrice + expensesInPriceCurrency;
+  
+  // ✅ Show with 2 decimal places for precision
+  finalPriceController.text = finalPrice.toStringAsFixed(2);
+  
+  // ✅ Calculate AFN equivalent with HIGH PRECISION
+  double afnEquivalent;
+  if (selectedCurrency == 'USD') {
+    // Final price is in USD, convert to AFN
+    afnEquivalent = finalPrice * exchangeRate;
+  } else {
+    // Final price is in AFN, this is the AFN equivalent
+    afnEquivalent = finalPrice;
+  }
+  
+  // ✅ Show AFN equivalent with 0 decimal places (rounded properly)
+  afnEquivalentController.text = afnEquivalent.toStringAsFixed(0);
+  
+  // ✅ Seller payment is base price only (no expenses)
+  sellerPaymentController.text = basePrice.toStringAsFixed(2);
+  
+  if (selectedSellerPaymentMethod == 'cash') {
+    sellerPaidAmountController.text = sellerPaymentController.text;
+  } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
+    sellerPaidAmountController.text = '0';
+  }
+}
 
     showDialog(
       context: context,
@@ -1285,7 +1291,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
           
           String netTon = _convertToTon(netWeight);
           String grossTon = _convertToTon(grossWeight);
-          String unitSymbol = _getUnitSymbol(selectedUnit);
           bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
           
           String unitDisplay = '';
@@ -2028,7 +2033,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
   }
 
   void _showEditDialog(BuildContext context, Map<String, dynamic> material, AppLocalizations l10n) {
-    // Initialize controllers with existing data
     final nameController = TextEditingController(text: material['name']?.toString() ?? '');
     final netWeightController = TextEditingController(text: material['net_weight']?.toString() ?? '');
     final grossWeightController = TextEditingController(text: material['gross_weight']?.toString() ?? '');
@@ -2060,7 +2064,7 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
     String _convertToTon(double weight) {
       if (weight <= 0) return '0';
       double tons = weight / 1000;
-      return tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
+      return tons.toStringAsFixed(1);
     }
 
     String _getUnitSymbol(String unit) {
@@ -2072,6 +2076,7 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
       return unit;
     }
 
+    // ✅ FIXED HERE - ONLY THIS FUNCTION CHANGED
     void _updateFinalPrice() {
       double netWeight = double.tryParse(netWeightController.text) ?? 0;
       String selectedUnit = unitController.text;
@@ -2082,24 +2087,43 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
       }
       
       double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+      
+      // ✅ FIX: These are ALWAYS in AFN (not USD)
       double productCost = double.tryParse(productController.text) ?? 0;
       double commission = double.tryParse(commissionController.text) ?? 0;
       double transferCost = double.tryParse(transferCostController.text) ?? 0;
       double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
       double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
       double barchalani = double.tryParse(barchalaniController.text) ?? 0;
-      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
-
-      double basePrice = netWeightInTons * unitPrice;
-      double expensesAfn = productCost + commission + transferCost + miscellaneous + ghurfedari + barchalani;
-      double expensesInPriceCurrency = selectedCurrency == 'USD' ? (exchangeRate <= 0 ? expensesAfn : expensesAfn / exchangeRate) : expensesAfn;
-      double finalPrice = selectedCurrency == 'USD' ? basePrice + expensesInPriceCurrency : basePrice + expensesAfn;
-      finalPriceController.text = finalPrice.toStringAsFixed(0);
       
+      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+      if (exchangeRate <= 0) exchangeRate = 1;
+
+      // Base price is in the selected currency (USD or AFN)
+      double basePrice = netWeightInTons * unitPrice;
+      
+      // ✅ Convert AFN expenses to the selected currency
+      double totalAfnExpenses = productCost + commission + transferCost + 
+                                miscellaneous + ghurfedari + barchalani;
+      
+      double expensesInPriceCurrency;
       if (selectedCurrency == 'USD') {
-        afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(0);
+        expensesInPriceCurrency = totalAfnExpenses / exchangeRate; // AFN ➜ USD
       } else {
-        afnEquivalentController.text = exchangeRate > 0 ? (finalPrice * exchangeRate).toStringAsFixed(3) : '0';
+        expensesInPriceCurrency = totalAfnExpenses; // AFN ➜ AFN (no conversion)
+      }
+
+      // Final price is always in the selected currency
+      double finalPrice = basePrice + expensesInPriceCurrency;
+      finalPriceController.text = finalPrice.toStringAsFixed(1);
+      
+      // ✅ Calculate AFN equivalent CORRECTLY
+      if (selectedCurrency == 'USD') {
+        afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(1);
+      } else {
+        afnEquivalentController.text = exchangeRate > 0 
+            ? (finalPrice * exchangeRate).toStringAsFixed(1) 
+            : '0';
       }
       
       sellerPaymentController.text = basePrice.toStringAsFixed(0);
@@ -2120,7 +2144,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
           
           String netTon = _convertToTon(netWeight);
           String grossTon = _convertToTon(grossWeight);
-          String unitSymbol = _getUnitSymbol(selectedUnit);
           bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
           
           String unitDisplay = '';
@@ -2902,7 +2925,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
                 ),
                 Row(
                   children: [
-                    // Import Excel Button
                     OutlinedButton.icon(
                       onPressed: _importExcel,
                       icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
@@ -2914,7 +2936,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // Add Raw Material Button
                     ElevatedButton.icon(
                       onPressed: () { _showAddDialog(context); },
                       icon: const Icon(Icons.add, color: Colors.white, size: 18),
@@ -2931,7 +2952,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
             ),
             const SizedBox(height: 16),
 
-            // ONE CARD - Total Tons
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -2963,7 +2983,7 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
                         ),
                         const SizedBox(height: 1),
                         Text(
-                          '${_getTotalTons().toStringAsFixed(_getTotalTons() % 1 == 0 ? 0 : 1)} تن',
+                          '${_getTotalTons().toStringAsFixed(1)} تن',
                           style: const TextStyle(
                             fontSize: 20, 
                             fontWeight: FontWeight.bold, 
@@ -2978,7 +2998,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
             ),
             const SizedBox(height: 12),
 
-            // Unit-based totals cards - Summary
             if (materials.isNotEmpty) ...[
               Text(
                 l10n.stockSummaryByUnit,
@@ -2992,7 +3011,6 @@ String _getCellValueDirect(List<excel.Data?> row, int index) {
             ],
             const SizedBox(height: 14),
 
-            // Main Table Container
             Expanded(
               child: Container(
                 decoration: BoxDecoration(

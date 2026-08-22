@@ -276,400 +276,415 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    try {
-      print('🔄 Upgrading database from version $oldVersion to $newVersion...');
+ Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  try {
+    print('🔄 Upgrading database from version $oldVersion to $newVersion...');
+    
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE suppliers(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          phone TEXT NOT NULL,
+          email TEXT,
+          address TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      print('✅ Suppliers table added!');
       
-      if (oldVersion < 2) {
+      await db.insert('suppliers', {
+        'name': 'تامین پلیمر تهران',
+        'phone': '021 1234 5678',
+        'email': 'info@taminpolimer.com',
+        'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
+      });
+      print('✅ Sample supplier added!');
+    }
+    
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE raw_materials(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          supplier_id INTEGER,
+          name TEXT NOT NULL,
+          location TEXT,
+          material_type TEXT,
+          thickness TEXT,
+          net_weight TEXT,
+          gross_weight TEXT,
+          date TEXT,
+          date_en TEXT,
+          unit TEXT,
+          unit_price TEXT,
+          product TEXT,
+          commission TEXT,
+          transfer_cost TEXT,
+          miscellaneous TEXT,
+          ghurfedari TEXT,
+          barchalani TEXT,
+          purchase_type TEXT,
+          seller_payment TEXT,
+          seller_payment_method TEXT,
+          seller_paid_amount TEXT,
+          currency TEXT,
+          exchange_rate REAL,
+          final_price TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )
+      ''');
+      print('✅ Raw materials table added!');
+    }
+
+    if (oldVersion < 4) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN location TEXT');
+      } catch (e) { print('⚠️ location: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN material_type TEXT');
+      } catch (e) { print('⚠️ material_type: $e'); }
+      print('✅ Version 4 upgrade done!');
+    }
+
+    if (oldVersion < 5) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN date TEXT');
+      } catch (e) { print('⚠️ date: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN unit TEXT');
+      } catch (e) { print('⚠️ unit: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN unit_price TEXT');
+      } catch (e) { print('⚠️ unit_price: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN product TEXT');
+      } catch (e) { print('⚠️ product: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN commission TEXT');
+      } catch (e) { print('⚠️ commission: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN transfer_cost TEXT');
+      } catch (e) { print('⚠️ transfer_cost: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN miscellaneous TEXT');
+      } catch (e) { print('⚠️ miscellaneous: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN final_price TEXT');
+      } catch (e) { print('⚠️ final_price: $e'); }
+      print('✅ Version 5 upgrade done!');
+    }
+
+    if (oldVersion < 6) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN ghurfedari TEXT');
+      } catch (e) { print('⚠️ ghurfedari: $e'); }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN barchalani TEXT');
+      } catch (e) { print('⚠️ barchalani: $e'); }
+      print('✅ Version 6 upgrade done!');
+    }
+
+    if (oldVersion < 9) {
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT');
+        print('✅ Added profile_pic column to users table');
+      } catch (e) {
+        print('⚠️ Error adding profile_pic: $e');
+      }
+      print('✅ Database upgraded to version 9!');
+    }
+
+    if (oldVersion < 10) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN purchase_type TEXT');
+        print('✅ Added purchase_type column to raw_materials table');
+      } catch (e) {
+        print('⚠️ Error adding purchase_type: $e');
+      }
+      print('✅ Database upgraded to version 10!');
+    }
+
+    if (oldVersion < 11) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN date_en TEXT');
+        print('✅ Added date_en column to raw_materials table');
+      } catch (e) {
+        print('⚠️ Error adding date_en: $e');
+      }
+      print('✅ Database upgraded to version 11!');
+    }
+
+    if (oldVersion < 24) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment TEXT');
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment_method TEXT');
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_paid_amount TEXT');
+        print('✅ Added seller payment columns to raw_materials table');
+      } catch (e) {
+        print('⚠️ Error adding seller payment columns: $e');
+      }
+      print('✅ Database upgraded to version 24!');
+    }
+
+    if (oldVersion < 25) {
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN currency TEXT');
+      } catch (e) {
+        print('⚠️ Error adding currency column to raw_materials: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE raw_materials ADD COLUMN exchange_rate REAL');
+      } catch (e) {
+        print('⚠️ Error adding exchange_rate column to raw_materials: $e');
+      }
+      print('✅ Database upgraded to version 25!');
+    }
+
+    if (oldVersion < 26) {
+      try {
+        await _ensureSalesInvoiceProductRelation(db);
+        print('✅ Added produced_product_id relationship to sales_invoices');
+      } catch (e) {
+        print('⚠️ Error adding produced_product_id: $e');
+      }
+      print('✅ Database upgraded to version 26!');
+    }
+
+    if (oldVersion < 27) {
+      try {
+        await _ensureSupplierLoanTables(db);
+        print('✅ Added supplier_loans table');
+      } catch (e) {
+        print('⚠️ Error adding supplier_loans table: $e');
+      }
+      print('✅ Database upgraded to version 27!');
+    }
+
+    if (oldVersion < 28) {
+      try {
+        print('🔄 Fixing service_invoices table for version 28...');
+        final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
+        final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+        
+        if (!columnNames.contains('invoice_number')) {
+          await db.execute('ALTER TABLE service_invoices ADD COLUMN invoice_number TEXT');
+          print('✅ Added invoice_number column to service_invoices');
+          await db.execute('UPDATE service_invoices SET invoice_number = "SERV" || substr("00000" || id, -5, 5) WHERE invoice_number IS NULL');
+          print('✅ Updated existing service invoices with invoice numbers');
+        }
+        print('⚠️ Note: To make invoice_number NOT NULL UNIQUE, recreate the table or ensure all rows have values');
+      } catch (e) {
+        print('⚠️ Error fixing service_invoices table: $e');
+      }
+      print('✅ Database upgraded to version 28!');
+    }
+
+    // ADD DRIVER_NAME AND NUMBER_PLATE COLUMNS - KEEP VERSION 28
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN driver_name TEXT');
+      print('✅ Added driver_name column to sales_invoices');
+    } catch (e) {
+      print('⚠️ driver_name column already exists: $e');
+    }
+
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN number_plate TEXT');
+      print('✅ Added number_plate column to sales_invoices');
+    } catch (e) {
+      print('⚠️ number_plate column already exists: $e');
+    }
+
+    if (oldVersion < 13) {
+      try {
+        await _ensureProducedProductsTable(db);
+        print('✅ Ensured produced_products table exists');
+      } catch (e) {
+        print('⚠️ Error ensuring produced_products table: $e');
+      }
+      print('✅ Database upgraded to version 13!');
+    }
+
+    if (oldVersion < 14) {
+      try {
+        await _ensureCapitalTables(db);
+        print('✅ Ensured capital tables exist');
+      } catch (e) {
+        print('⚠️ Error ensuring capital tables: $e');
+      }
+      print('✅ Database upgraded to version 14!');
+    }
+
+    if (oldVersion < 15) {
+      try {
+        await _ensureCustomerCompanyTables(db);
+        print('✅ Ensured customer/company tables exist');
+      } catch (e) {
+        print('⚠️ Error ensuring customer/company tables: $e');
+      }
+      print('✅ Database upgraded to version 15!');
+    }
+
+    if (oldVersion < 16) {
+      try {
+        await _ensureSalesInvoiceTable(db);
+        print('✅ Ensured sales invoices table exists');
+      } catch (e) {
+        print('⚠️ Error ensuring sales invoices table: $e');
+      }
+      print('✅ Database upgraded to version 16!');
+    }
+
+    if (oldVersion < 17) {
+      try {
+        await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time TEXT');
+        print('✅ Added loading_time column to sales_invoices table');
+      } catch (e) {
+        print('⚠️ Error adding loading_time column: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
+        print('✅ Added loading_time_en column to sales_invoices table');
+      } catch (e) {
+        print('⚠️ Error adding loading_time_en column: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
+      } catch (e) {
+        print('⚠️ Error adding price_rate column (may already exist): $e');
+      }
+      print('✅ Database upgraded to version 17!');
+    }
+
+    if (oldVersion < 18) {
+      try {
+        print('🔄 Migrating daily_expenses to remove bill_number and registration_number...');
         await db.execute('''
-          CREATE TABLE suppliers(
+          CREATE TABLE IF NOT EXISTS daily_expenses_new(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            email TEXT,
-            address TEXT,
+            invoice_number TEXT UNIQUE,
+            date TEXT,
+            date_en TEXT,
+            category TEXT,
+            description TEXT,
+            price REAL,
+            currency TEXT,
+            exchange_rate REAL,
+            usd_equivalent REAL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
         ''');
-        print('✅ Suppliers table added!');
-        
-        await db.insert('suppliers', {
-          'name': 'تامین پلیمر تهران',
-          'phone': '021 1234 5678',
-          'email': 'info@taminpolimer.com',
-          'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
-        });
-        print('✅ Sample supplier added!');
-      }
-      
-      if (oldVersion < 3) {
         await db.execute('''
-          CREATE TABLE raw_materials(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            supplier_id INTEGER,
-            name TEXT NOT NULL,
-            location TEXT,
-            material_type TEXT,
-            thickness TEXT,
-            net_weight TEXT,
-            gross_weight TEXT,
-            date TEXT,
-            date_en TEXT,
-            unit TEXT,
-            unit_price TEXT,
-            product TEXT,
-            commission TEXT,
-            transfer_cost TEXT,
-            miscellaneous TEXT,
-            ghurfedari TEXT,
-            barchalani TEXT,
-            purchase_type TEXT,
-            seller_payment TEXT,
-            seller_payment_method TEXT,
-            seller_paid_amount TEXT,
-            currency TEXT,
-            exchange_rate REAL,
-            final_price TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-          )
+          INSERT INTO daily_expenses_new (id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at)
+          SELECT id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at FROM daily_expenses
         ''');
-        print('✅ Raw materials table added!');
+        await db.execute('DROP TABLE IF EXISTS daily_expenses');
+        await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
+        print('✅ Migration to version 18 completed!');
+      } catch (e) {
+        print('⚠️ Migration to version 18 failed: $e');
       }
+    }
 
-      if (oldVersion < 4) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN location TEXT');
-        } catch (e) { print('⚠️ location: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN material_type TEXT');
-        } catch (e) { print('⚠️ material_type: $e'); }
-        print('✅ Version 4 upgrade done!');
+    if (oldVersion < 19) {
+      try {
+        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN account_id INTEGER');
+        await db.execute("UPDATE sarafi_transactions SET account_id = 1 WHERE account_id IS NULL");
+        print('✅ Added account_id column to sarafi_transactions');
+      } catch (e) {
+        print('⚠️ Error adding account_id to sarafi_transactions: $e');
       }
+    }
 
-      if (oldVersion < 5) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN date TEXT');
-        } catch (e) { print('⚠️ date: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN unit TEXT');
-        } catch (e) { print('⚠️ unit: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN unit_price TEXT');
-        } catch (e) { print('⚠️ unit_price: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN product TEXT');
-        } catch (e) { print('⚠️ product: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN commission TEXT');
-        } catch (e) { print('⚠️ commission: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN transfer_cost TEXT');
-        } catch (e) { print('⚠️ transfer_cost: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN miscellaneous TEXT');
-        } catch (e) { print('⚠️ miscellaneous: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN final_price TEXT');
-        } catch (e) { print('⚠️ final_price: $e'); }
-        print('✅ Version 5 upgrade done!');
-      }
-
-      if (oldVersion < 6) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN ghurfedari TEXT');
-        } catch (e) { print('⚠️ ghurfedari: $e'); }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN barchalani TEXT');
-        } catch (e) { print('⚠️ barchalani: $e'); }
-        print('✅ Version 6 upgrade done!');
-      }
-
-      if (oldVersion < 9) {
-        try {
-          await db.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT');
-          print('✅ Added profile_pic column to users table');
-        } catch (e) {
-          print('⚠️ Error adding profile_pic: $e');
-        }
-        print('✅ Database upgraded to version 9!');
-      }
-
-      if (oldVersion < 10) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN purchase_type TEXT');
-          print('✅ Added purchase_type column to raw_materials table');
-        } catch (e) {
-          print('⚠️ Error adding purchase_type: $e');
-        }
-        print('✅ Database upgraded to version 10!');
-      }
-
-      if (oldVersion < 11) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN date_en TEXT');
-          print('✅ Added date_en column to raw_materials table');
-        } catch (e) {
-          print('⚠️ Error adding date_en: $e');
-        }
-        print('✅ Database upgraded to version 11!');
-      }
-
-      if (oldVersion < 24) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment TEXT');
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment_method TEXT');
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_paid_amount TEXT');
-          print('✅ Added seller payment columns to raw_materials table');
-        } catch (e) {
-          print('⚠️ Error adding seller payment columns: $e');
-        }
-        print('✅ Database upgraded to version 24!');
-      }
-
-      if (oldVersion < 25) {
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN currency TEXT');
-        } catch (e) {
-          print('⚠️ Error adding currency column to raw_materials: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE raw_materials ADD COLUMN exchange_rate REAL');
-        } catch (e) {
-          print('⚠️ Error adding exchange_rate column to raw_materials: $e');
-        }
-        print('✅ Database upgraded to version 25!');
-      }
-
-      if (oldVersion < 26) {
-        try {
-          await _ensureSalesInvoiceProductRelation(db);
-          print('✅ Added produced_product_id relationship to sales_invoices');
-        } catch (e) {
-          print('⚠️ Error adding produced_product_id: $e');
-        }
-        print('✅ Database upgraded to version 26!');
-      }
-
-      if (oldVersion < 27) {
-        try {
-          await _ensureSupplierLoanTables(db);
-          print('✅ Added supplier_loans table');
-        } catch (e) {
-          print('⚠️ Error adding supplier_loans table: $e');
-        }
-        print('✅ Database upgraded to version 27!');
-      }
-
-      if (oldVersion < 28) {
-        try {
-          print('🔄 Fixing service_invoices table for version 28...');
-          final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
-          final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+    if (oldVersion < 20) {
+      try {
+        print('🔄 Migrating sarafi_transactions: renaming afn_equivalent to amount_afn...');
+        
+        final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+        final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+        
+        if (columnNames.contains('afn_equivalent') && !columnNames.contains('amount_afn')) {
+          await db.execute('ALTER TABLE sarafi_transactions RENAME TO sarafi_transactions_old');
           
-          if (!columnNames.contains('invoice_number')) {
-            await db.execute('ALTER TABLE service_invoices ADD COLUMN invoice_number TEXT');
-            print('✅ Added invoice_number column to service_invoices');
-            await db.execute('UPDATE service_invoices SET invoice_number = "SERV" || substr("00000" || id, -5, 5) WHERE invoice_number IS NULL');
-            print('✅ Updated existing service invoices with invoice numbers');
-          }
-          print('⚠️ Note: To make invoice_number NOT NULL UNIQUE, recreate the table or ensure all rows have values');
-        } catch (e) {
-          print('⚠️ Error fixing service_invoices table: $e');
-        }
-        print('✅ Database upgraded to version 28!');
-      }
-
-      if (oldVersion < 13) {
-        try {
-          await _ensureProducedProductsTable(db);
-          print('✅ Ensured produced_products table exists');
-        } catch (e) {
-          print('⚠️ Error ensuring produced_products table: $e');
-        }
-        print('✅ Database upgraded to version 13!');
-      }
-
-      if (oldVersion < 14) {
-        try {
-          await _ensureCapitalTables(db);
-          print('✅ Ensured capital tables exist');
-        } catch (e) {
-          print('⚠️ Error ensuring capital tables: $e');
-        }
-        print('✅ Database upgraded to version 14!');
-      }
-
-      if (oldVersion < 15) {
-        try {
-          await _ensureCustomerCompanyTables(db);
-          print('✅ Ensured customer/company tables exist');
-        } catch (e) {
-          print('⚠️ Error ensuring customer/company tables: $e');
-        }
-        print('✅ Database upgraded to version 15!');
-      }
-
-      if (oldVersion < 16) {
-        try {
-          await _ensureSalesInvoiceTable(db);
-          print('✅ Ensured sales invoices table exists');
-        } catch (e) {
-          print('⚠️ Error ensuring sales invoices table: $e');
-        }
-        print('✅ Database upgraded to version 16!');
-      }
-
-      if (oldVersion < 17) {
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time TEXT');
-          print('✅ Added loading_time column to sales_invoices table');
-        } catch (e) {
-          print('⚠️ Error adding loading_time column: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
-          print('✅ Added loading_time_en column to sales_invoices table');
-        } catch (e) {
-          print('⚠️ Error adding loading_time_en column: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
-        } catch (e) {
-          print('⚠️ Error adding price_rate column (may already exist): $e');
-        }
-        print('✅ Database upgraded to version 17!');
-      }
-
-      if (oldVersion < 18) {
-        try {
-          print('🔄 Migrating daily_expenses to remove bill_number and registration_number...');
           await db.execute('''
-            CREATE TABLE IF NOT EXISTS daily_expenses_new(
+            CREATE TABLE sarafi_transactions(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
-              invoice_number TEXT UNIQUE,
+              account_id INTEGER,
+              transaction_type TEXT NOT NULL,
+              amount_usd REAL NOT NULL,
+              exchange_rate REAL NOT NULL DEFAULT 1,
+              amount_afn REAL NOT NULL DEFAULT 0,
+              balance_after REAL NOT NULL DEFAULT 0,
+              source_name TEXT,
+              source_account TEXT,
+              source_email TEXT,
+              source_phone TEXT,
               date TEXT,
               date_en TEXT,
-              category TEXT,
-              description TEXT,
-              price REAL,
-              currency TEXT,
-              exchange_rate REAL,
-              usd_equivalent REAL,
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+              address TEXT,
+              note TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
             )
           ''');
+          
           await db.execute('''
-            INSERT INTO daily_expenses_new (id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at)
-            SELECT id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at FROM daily_expenses
+            INSERT INTO sarafi_transactions 
+              (id, account_id, transaction_type, amount_usd, exchange_rate, 
+               source_name, source_account, source_email, source_phone, 
+               date, date_en, address, note, created_at, amount_afn, balance_after)
+            SELECT 
+              id, account_id, transaction_type, amount_usd, exchange_rate,
+              source_name, source_account, source_email, source_phone,
+              date, date_en, address, note, created_at, afn_equivalent, 0
+            FROM sarafi_transactions_old
           ''');
-          await db.execute('DROP TABLE IF EXISTS daily_expenses');
-          await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
-          print('✅ Migration to version 18 completed!');
-        } catch (e) {
-          print('⚠️ Migration to version 18 failed: $e');
-        }
-      }
-
-      if (oldVersion < 19) {
-        try {
-          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN account_id INTEGER');
-          await db.execute("UPDATE sarafi_transactions SET account_id = 1 WHERE account_id IS NULL");
-          print('✅ Added account_id column to sarafi_transactions');
-        } catch (e) {
-          print('⚠️ Error adding account_id to sarafi_transactions: $e');
-        }
-      }
-
-      if (oldVersion < 20) {
-        try {
-          print('🔄 Migrating sarafi_transactions: renaming afn_equivalent to amount_afn...');
           
-          final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
-          final columnNames = columns.map((row) => row['name']?.toString()).toSet();
-          
-          if (columnNames.contains('afn_equivalent') && !columnNames.contains('amount_afn')) {
-            await db.execute('ALTER TABLE sarafi_transactions RENAME TO sarafi_transactions_old');
-            
-            await db.execute('''
-              CREATE TABLE sarafi_transactions(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_id INTEGER,
-                transaction_type TEXT NOT NULL,
-                amount_usd REAL NOT NULL,
-                exchange_rate REAL NOT NULL DEFAULT 1,
-                amount_afn REAL NOT NULL DEFAULT 0,
-                balance_after REAL NOT NULL DEFAULT 0,
-                source_name TEXT,
-                source_account TEXT,
-                source_email TEXT,
-                source_phone TEXT,
-                date TEXT,
-                date_en TEXT,
-                address TEXT,
-                note TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
-              )
-            ''');
-            
-            await db.execute('''
-              INSERT INTO sarafi_transactions 
-                (id, account_id, transaction_type, amount_usd, exchange_rate, 
-                 source_name, source_account, source_email, source_phone, 
-                 date, date_en, address, note, created_at, amount_afn, balance_after)
-              SELECT 
-                id, account_id, transaction_type, amount_usd, exchange_rate,
-                source_name, source_account, source_email, source_phone,
-                date, date_en, address, note, created_at, afn_equivalent, 0
-              FROM sarafi_transactions_old
-            ''');
-            
-            await db.execute('DROP TABLE sarafi_transactions_old');
-            print('✅ Successfully renamed afn_equivalent to amount_afn');
-          } else if (!columnNames.contains('amount_afn')) {
-            await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_afn REAL NOT NULL DEFAULT 0');
-            print('✅ Added amount_afn column');
-          }
-        } catch (e) {
-          print('⚠️ Error migrating amount_afn column: $e');
+          await db.execute('DROP TABLE sarafi_transactions_old');
+          print('✅ Successfully renamed afn_equivalent to amount_afn');
+        } else if (!columnNames.contains('amount_afn')) {
+          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_afn REAL NOT NULL DEFAULT 0');
+          print('✅ Added amount_afn column');
         }
+      } catch (e) {
+        print('⚠️ Error migrating amount_afn column: $e');
       }
-
-      if (oldVersion < 22) {
-        try {
-          await _ensureWasteMaterialsTable(db);
-          print('✅ Ensured waste_material_losses table exists');
-        } catch (e) {
-          print('⚠️ Error ensuring waste_material_losses table: $e');
-        }
-        print('✅ Database upgraded to version 22!');
-      }
-
-      if (oldVersion < 21) {
-        try {
-          print('🔄 Migrating sarafi_transactions: adding balance_after...');
-          
-          final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
-          final columnNames = columns.map((row) => row['name']?.toString()).toSet();
-          
-          if (!columnNames.contains('balance_after')) {
-            await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
-            print('✅ Added balance_after column');
-          } else {
-            print('✅ balance_after column already exists');
-          }
-        } catch (e) {
-          print('⚠️ Error adding balance_after column: $e');
-        }
-      }
-      
-      print('✅ Database upgraded successfully!');
-    } catch (e) {
-      print('❌ Error upgrading database: $e');
-      rethrow;
     }
+
+    if (oldVersion < 22) {
+      try {
+        await _ensureWasteMaterialsTable(db);
+        print('✅ Ensured waste_material_losses table exists');
+      } catch (e) {
+        print('⚠️ Error ensuring waste_material_losses table: $e');
+      }
+      print('✅ Database upgraded to version 22!');
+    }
+
+    if (oldVersion < 21) {
+      try {
+        print('🔄 Migrating sarafi_transactions: adding balance_after...');
+        
+        final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+        final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+        
+        if (!columnNames.contains('balance_after')) {
+          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
+          print('✅ Added balance_after column');
+        } else {
+          print('✅ balance_after column already exists');
+        }
+      } catch (e) {
+        print('⚠️ Error adding balance_after column: $e');
+      }
+    }
+    
+    print('✅ Database upgraded successfully!');
+  } catch (e) {
+    print('❌ Error upgrading database: $e');
+    rethrow;
   }
+}
 
   // ============ PRODUCED PRODUCTS TABLE (SINGLE DEFINITION) ============
  Future<void> _ensureProducedProductsTable(Database db) async {
@@ -1324,114 +1339,133 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> _ensureSalesInvoiceTable(Database db) async {
+Future<void> _ensureSalesInvoiceTable(Database db) async {
+  try {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sales_invoices(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT NOT NULL UNIQUE,
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_address TEXT,
+        customer_company TEXT,
+        product_name TEXT,
+        gender TEXT,
+        size TEXT,
+        thickness TEXT,
+        weight TEXT,
+        weight_per_unit TEXT,
+        unit_count TEXT,
+        total_weight TEXT,
+        unit TEXT,
+        unit_price REAL,
+        total_price REAL,
+        price_rate REAL,
+        currency TEXT,
+        usd_equivalent REAL,
+        afn_equivalent REAL,
+        loading_cost REAL,
+        transfer_cost REAL,
+        clearance_cost REAL,
+        discount REAL,
+        loading_time TEXT,
+        loading_time_en TEXT,
+        final_price REAL,
+        payment_method TEXT,
+        loan_type TEXT,
+        paid_amount REAL DEFAULT 0,
+        remaining_amount REAL DEFAULT 0,
+        description TEXT,
+        sale_type TEXT,
+        date TEXT,
+        date_en TEXT,
+        is_back_returned INTEGER DEFAULT 0,
+        back_return_reason TEXT,
+        back_return_date TEXT,
+        back_return_date_en TEXT,
+        produced_product_id INTEGER,
+        driver_name TEXT,
+        number_plate TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    // Try adding columns individually if they don't exist
     try {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS sales_invoices(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          invoice_number TEXT NOT NULL UNIQUE,
-          customer_name TEXT,
-          customer_phone TEXT,
-          customer_address TEXT,
-          customer_company TEXT,
-          product_name TEXT,
-          gender TEXT,
-          size TEXT,
-          thickness TEXT,
-          weight TEXT,
-          weight_per_unit TEXT,
-          unit_count TEXT,
-          total_weight TEXT,
-          unit TEXT,
-          unit_price REAL,
-          total_price REAL,
-          price_rate REAL,
-          currency TEXT,
-          usd_equivalent REAL,
-          afn_equivalent REAL,
-          loading_cost REAL,
-          transfer_cost REAL,
-          clearance_cost REAL,
-          discount REAL,
-          loading_time TEXT,
-          loading_time_en TEXT,
-          final_price REAL,
-          payment_method TEXT,
-          loan_type TEXT,
-          paid_amount REAL DEFAULT 0,
-          remaining_amount REAL DEFAULT 0,
-          description TEXT,
-          sale_type TEXT,
-          date TEXT,
-          date_en TEXT,
-          is_back_returned INTEGER DEFAULT 0,
-          back_return_reason TEXT,
-          back_return_date TEXT,
-          back_return_date_en TEXT,
-          produced_product_id INTEGER,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''');
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
-        } catch (e) {
-          print('⚠️ loading_time_en column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
-        } catch (e) {
-          print('⚠️ price_rate column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN payment_method TEXT');
-        } catch (e) {
-          print('⚠️ payment_method column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN loan_type TEXT');
-        } catch (e) {
-          print('⚠️ loan_type column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN paid_amount REAL DEFAULT 0');
-        } catch (e) {
-          print('⚠️ paid_amount column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN remaining_amount REAL DEFAULT 0');
-        } catch (e) {
-          print('⚠️ remaining_amount column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN is_back_returned INTEGER DEFAULT 0');
-        } catch (e) {
-          print('⚠️ is_back_returned column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_reason TEXT');
-        } catch (e) {
-          print('⚠️ back_return_reason column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date TEXT');
-        } catch (e) {
-          print('⚠️ back_return_date column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date_en TEXT');
-        } catch (e) {
-          print('⚠️ back_return_date_en column already exists or could not be added: $e');
-        }
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN produced_product_id INTEGER');
-        } catch (e) {
-          print('⚠️ produced_product_id column already exists or could not be added: $e');
-        }
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN driver_name TEXT');
+      print('✅ Added driver_name column');
     } catch (e) {
-      print('❌ Error ensuring sales invoices table: $e');
-      rethrow;
+      print('⚠️ driver_name column already exists: $e');
     }
+
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN number_plate TEXT');
+      print('✅ Added number_plate column');
+    } catch (e) {
+      print('⚠️ number_plate column already exists: $e');
+    }
+
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
+    } catch (e) {
+      print('⚠️ loading_time_en column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
+    } catch (e) {
+      print('⚠️ price_rate column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN payment_method TEXT');
+    } catch (e) {
+      print('⚠️ payment_method column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN loan_type TEXT');
+    } catch (e) {
+      print('⚠️ loan_type column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN paid_amount REAL DEFAULT 0');
+    } catch (e) {
+      print('⚠️ paid_amount column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN remaining_amount REAL DEFAULT 0');
+    } catch (e) {
+      print('⚠️ remaining_amount column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN is_back_returned INTEGER DEFAULT 0');
+    } catch (e) {
+      print('⚠️ is_back_returned column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_reason TEXT');
+    } catch (e) {
+      print('⚠️ back_return_reason column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date TEXT');
+    } catch (e) {
+      print('⚠️ back_return_date column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date_en TEXT');
+    } catch (e) {
+      print('⚠️ back_return_date_en column already exists or could not be added: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE sales_invoices ADD COLUMN produced_product_id INTEGER');
+    } catch (e) {
+      print('⚠️ produced_product_id column already exists or could not be added: $e');
+    }
+    
+  } catch (e) {
+    print('❌ Error ensuring sales invoices table: $e');
+    rethrow;
   }
+}
 
   Future<Map<String, dynamic>> _filterMapForTableColumns(Database db, String tableName, Map<String, dynamic> values) async {
     final cols = await db.rawQuery("PRAGMA table_info('$tableName')");

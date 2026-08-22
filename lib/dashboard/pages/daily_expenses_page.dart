@@ -29,6 +29,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   DateTime? _selectedDate;
   String _selectedCurrency = 'همه';
 
+  // BOTH CONTROLLERS - Invoice Number AND Registration Number
+  final TextEditingController _invoiceNumberController = TextEditingController();
   final TextEditingController _registrationNumberController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
@@ -57,6 +59,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   @override
   void dispose() {
+    _invoiceNumberController.dispose();
     _registrationNumberController.dispose();
     _dateController.dispose();
     _categoryController.dispose();
@@ -84,6 +87,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         for (final r in list) {
           _expensesData.add({
             'id': r['id'],
+            'invoiceNumber': r['invoice_number'] ?? '-',
             'registrationNumber': r['registration_number'] ?? '-',
             'date': r['date'],
             'date_en': r['date_en'],
@@ -233,7 +237,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       int skippedCount = 0;
       List<String> errors = [];
 
-      // گرفتن هدرها از ردیف اول
       final headersRow = sheet.rows.first;
       List<String> headers = [];
       for (var cell in headersRow) {
@@ -244,8 +247,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       print('📋 Headers: $headers');
 
-      // پیدا کردن ایندکس هر فیلد
-      int regNumberIndex = -1;
+      // BOTH INDEXES - Invoice Number AND Registration Number
+      int invoiceNumberIndex = -1;
+      int registrationNumberIndex = -1;
       int dateIndex = -1;
       int categoryIndex = -1;
       int descriptionIndex = -1;
@@ -255,9 +259,15 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       for (int i = 0; i < headers.length; i++) {
         String h = headers[i];
-        if (h.contains('شماره') || h.contains('ثبت') || h.contains('registration')) {
-          regNumberIndex = i;
-        } else if (h.contains('تاریخ') || h.contains('date')) {
+        // Check for invoice number
+        if (h.contains('شماره بل') || h.contains('شماره بل') || h.contains('invoice') || h.contains('بل')) {
+          invoiceNumberIndex = i;
+        }
+        // Check for registration number
+        else if (h.contains('شماره ثبت') || h.contains('ثبت') || h.contains('registration')) {
+          registrationNumberIndex = i;
+        }
+        else if (h.contains('تاریخ') || h.contains('date')) {
           dateIndex = i;
         } else if (h.contains('دسته') || h.contains('گروه') || h.contains('category')) {
           categoryIndex = i;
@@ -272,20 +282,27 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         }
       }
 
-      print('📋 RegNumber: $regNumberIndex, Date: $dateIndex, Category: $categoryIndex, Price: $priceIndex');
+      print('📋 InvoiceNumber Index: $invoiceNumberIndex, RegistrationNumber Index: $registrationNumberIndex');
 
-      if (regNumberIndex == -1 || dateIndex == -1 || priceIndex == -1) {
+      // Check if at least one number field exists
+      if (invoiceNumberIndex == -1 && registrationNumberIndex == -1) {
         return {
           'success': false,
-          'message': 'فیلدهای مورد نیاز پیدا نشد: شماره ثبت، تاریخ، قیمت'
+          'message': 'فیلد شماره بل یا شماره ثبت پیدا نشد'
         };
       }
 
-      // پردازش ردیف‌ها (از ردیف دوم)
+      if (dateIndex == -1 || priceIndex == -1) {
+        return {
+          'success': false,
+          'message': 'فیلدهای تاریخ یا قیمت پیدا نشد'
+        };
+      }
+
+      // Process rows (from second row)
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
         
-        // چک کردن اینکه ردیف خالی نباشه
         bool hasData = false;
         for (var cell in row) {
           if (cell != null && cell.value != null) {
@@ -299,8 +316,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         if (!hasData) continue;
 
         try {
-          // خوندن داده‌ها
-          String regNumber = _getCellValue(row, regNumberIndex);
+          // Read data - BOTH fields
+          String invoiceNumber = invoiceNumberIndex != -1 ? _getCellValue(row, invoiceNumberIndex) : '';
+          String registrationNumber = registrationNumberIndex != -1 ? _getCellValue(row, registrationNumberIndex) : '';
           String date = _getCellValue(row, dateIndex);
           String category = categoryIndex != -1 ? _getCellValue(row, categoryIndex) : 'سایر';
           String description = descriptionIndex != -1 ? _getCellValue(row, descriptionIndex) : '';
@@ -308,9 +326,10 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           String currency = currencyIndex != -1 ? _getCellValue(row, currencyIndex) : 'افغانی';
           String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValue(row, exchangeRateIndex) : '1';
 
-          print('📝 Row ${i+1}: Reg="$regNumber", Date="$date", Price="$priceStr"');
+          print('📝 Row ${i+1}: Invoice="$invoiceNumber", Registration="$registrationNumber", Date="$date", Price="$priceStr"');
 
-          if (regNumber.isEmpty || date.isEmpty || priceStr.isEmpty) {
+          // At least one number field is required
+          if ((invoiceNumber.isEmpty && registrationNumber.isEmpty) || date.isEmpty || priceStr.isEmpty) {
             skippedCount++;
             errors.add('ردیف ${i+1}: داده‌ها کامل نیستند');
             continue;
@@ -325,7 +344,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             continue;
           }
 
-          // محاسبه معادل دلار
+          // Calculate USD equivalent
           int usdEquivalent;
           if (currency == 'دالر') {
             usdEquivalent = (price * exchangeRate).round();
@@ -333,18 +352,31 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             usdEquivalent = exchangeRate > 0 ? (price / exchangeRate).round() : 0;
           }
 
-          // چک کردن تکراری نبودن شماره ثبت
+          // Check for duplicate - BOTH fields
           final existing = await _db.getDailyExpenses();
-          bool duplicate = existing.any((e) => e['registration_number'] == regNumber);
+          bool duplicate = false;
+          String duplicateField = '';
+          
+          if (invoiceNumber.isNotEmpty) {
+            duplicate = existing.any((e) => e['invoice_number'] == invoiceNumber);
+            if (duplicate) duplicateField = 'شماره بل';
+          }
+          
+          if (!duplicate && registrationNumber.isNotEmpty) {
+            duplicate = existing.any((e) => e['registration_number'] == registrationNumber);
+            if (duplicate) duplicateField = 'شماره ثبت';
+          }
+          
           if (duplicate) {
             skippedCount++;
-            errors.add('ردیف ${i+1}: شماره ثبت "$regNumber" تکراری است');
+            errors.add('ردیف ${i+1}: $duplicateField "$invoiceNumber$registrationNumber" تکراری است');
             continue;
           }
 
-          // ساخت داده
+          // Build data - BOTH fields
           Map<String, dynamic> expense = {
-            'registration_number': regNumber,
+            'invoice_number': invoiceNumber.isNotEmpty ? invoiceNumber : null,
+            'registration_number': registrationNumber.isNotEmpty ? registrationNumber : null,
             'date': date,
             'date_en': PersianDateConverter.getEnglishDate(DateTime.now()),
             'category': category.isNotEmpty ? category : 'سایر',
@@ -465,6 +497,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   Future<void> _addExpense() async {
     final l10n = AppLocalizations.of(context)!;
+    _invoiceNumberController.clear();
     _registrationNumberController.clear();
     _dateController.clear();
     _categoryController.clear();
@@ -503,14 +536,24 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             content: SizedBox(
               width: 650,
-              height: 560,
+              height: 620, // Increased height for both fields
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Invoice Number Field
+                    _buildTextField(
+                      controller: _invoiceNumberController,
+                      label: 'شماره بل )',
+                      icon: Icons.receipt_outlined,
+                      hint: 'شماره بل را وارد کنید',
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
+                    // Registration Number Field
                     _buildTextField(
                       controller: _registrationNumberController,
-                      label: 'شماره ثبت',
+                      label: 'شماره ثبت ',
                       icon: Icons.numbers_outlined,
                       hint: 'شماره ثبت را وارد کنید',
                       l10n: l10n,
@@ -653,8 +696,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  if (_registrationNumberController.text.isEmpty) {
-                    _showSnackBar('لطفاً شماره ثبت را وارد کنید', Colors.red);
+                  // At least one number field is required
+                  if (_invoiceNumberController.text.isEmpty && _registrationNumberController.text.isEmpty) {
+                    _showSnackBar('لطفاً شماره بل یا شماره ثبت را وارد کنید', Colors.red);
                     return;
                   }
                   if (_dateController.text.isEmpty) {
@@ -678,7 +722,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   }
                   
                   final insertPayload = {
-                    'registration_number': _registrationNumberController.text.trim(),
+                    'invoice_number': _invoiceNumberController.text.isNotEmpty ? _invoiceNumberController.text.trim() : null,
+                    'registration_number': _registrationNumberController.text.isNotEmpty ? _registrationNumberController.text.trim() : null,
                     'date': _dateController.text,
                     'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                     'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
@@ -694,7 +739,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     await _loadExpenses();
                     _showSnackBar(l10n.expenseAddedSuccess, Colors.green);
                   } else {
-                    _showSnackBar('شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
+                    _showSnackBar('شماره بل یا شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -715,6 +760,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   void _editExpense(Map<String, dynamic> expense) {
     final l10n = AppLocalizations.of(context)!;
+    _invoiceNumberController.text = expense['invoiceNumber'] ?? '';
     _registrationNumberController.text = expense['registrationNumber'] ?? '';
     _dateController.text = expense['date'];
     _categoryController.text = expense['category'] ?? '';
@@ -752,11 +798,19 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             content: SizedBox(
               width: 650,
-              height: 520,
+              height: 580,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    _buildTextField(
+                      controller: _invoiceNumberController,
+                      label: 'شماره بل',
+                      icon: Icons.receipt_outlined,
+                      hint: 'شماره بل را وارد کنید',
+                      l10n: l10n,
+                    ),
+                    const SizedBox(height: 12),
                     _buildTextField(
                       controller: _registrationNumberController,
                       label: 'شماره ثبت',
@@ -898,8 +952,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  if (_registrationNumberController.text.isEmpty) {
-                    _showSnackBar('لطفاً شماره ثبت را وارد کنید', Colors.red);
+                  if (_invoiceNumberController.text.isEmpty && _registrationNumberController.text.isEmpty) {
+                    _showSnackBar('لطفاً شماره بل یا شماره ثبت را وارد کنید', Colors.red);
                     return;
                   }
                   if (_dateController.text.isEmpty) {
@@ -918,7 +972,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   }
 
                   final payload = {
-                    'registration_number': _registrationNumberController.text.trim(),
+                    'invoice_number': _invoiceNumberController.text.isNotEmpty ? _invoiceNumberController.text.trim() : null,
+                    'registration_number': _registrationNumberController.text.isNotEmpty ? _registrationNumberController.text.trim() : null,
                     'date': _dateController.text,
                     'date_en': selectedEnglishDate ?? PersianDateConverter.getEnglishDate(DateTime.now()),
                     'category': _categoryController.text.isNotEmpty ? _categoryController.text : 'سایر',
@@ -935,7 +990,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     Navigator.pop(context);
                     _showSnackBar(l10n.expenseUpdatedSuccess, Colors.blue);
                   } else {
-                    _showSnackBar('شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
+                    _showSnackBar('شماره بل یا شماره ثبت تکراری است یا خطایی رخ داد', Colors.red);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -968,7 +1023,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           ),
         ),
         content: Text(
-          '${l10n.deleteConfirmation} "${expense['registrationNumber']}"؟',
+          '${l10n.deleteConfirmation} "${expense['invoiceNumber'] ?? expense['registrationNumber']}"؟',
           style: const TextStyle(fontSize: 14),
         ),
         shape: RoundedRectangleBorder(
@@ -1068,7 +1123,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     final isEnglish = languageProvider.isEnglish;
 
     final filteredData = _expensesData.where((expense) {
-      final matchesSearch = (expense['registrationNumber'] ?? '').toString().contains(_searchQuery) ||
+      final matchesSearch = 
+        (expense['invoiceNumber'] ?? '').toString().contains(_searchQuery) ||
+        (expense['registrationNumber'] ?? '').toString().contains(_searchQuery) ||
         (expense['description'] ?? '').toString().contains(_searchQuery) ||
         (expense['category'] ?? '').toString().contains(_searchQuery);
       final matchesCategory = _selectedCategory == 'همه' ||
@@ -1474,6 +1531,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             child: Row(
               children: [
+                // BOTH columns in table header
+                Expanded(flex: 1, child: Text('شماره بل', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text('شماره ثبت', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.persianDate, style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.englishDate, style: const TextStyle(fontWeight: FontWeight.w600))),
@@ -1518,11 +1577,19 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       ),
       child: Row(
         children: [
+          // BOTH columns in table rows
+          Expanded(
+            flex: 1,
+            child: Text(
+              expense['invoiceNumber'] ?? '-',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w700),
+            ),
+          ),
           Expanded(
             flex: 1,
             child: Text(
               expense['registrationNumber'] ?? '-',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w700),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ),
           Expanded(

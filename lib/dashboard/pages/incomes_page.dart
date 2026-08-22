@@ -1,4 +1,4 @@
-// lib/screens/pages/incomes_page.dart - Updated with internationalization
+// lib/dashboard/pages/incomes_page.dart - نسخه نهایی با اصلاح ضایعات و ارز
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -27,6 +27,7 @@ class _IncomesPageState extends State<IncomesPage>
   // Data
   List<Map<String, dynamic>> _sales = [];
   List<Map<String, dynamic>> _services = [];
+  List<Map<String, dynamic>> _wastes = [];
   List<Map<String, dynamic>> _rawMaterials = [];
   List<Map<String, dynamic>> _producedProducts = [];
   List<Map<String, dynamic>> _dailyExpenses = [];
@@ -34,6 +35,7 @@ class _IncomesPageState extends State<IncomesPage>
   // Calculated
   double _totalSales = 0;
   double _totalServices = 0;
+  double _totalWastes = 0;
   double _totalRawMaterialCost = 0;
   double _grossProfit = 0;
   double _profitMargin = 0;
@@ -97,6 +99,7 @@ class _IncomesPageState extends State<IncomesPage>
     try {
       final sales = await _db.getSalesInvoices();
       final services = await _db.getServiceInvoices();
+      final wastes = await _db.getWasteRecords();
       final rawMaterials = await _db.getRawMaterials();
       final producedProducts = await _db.getProducedProducts();
       final dailyExpenses = await _db.getDailyExpenses();
@@ -104,6 +107,7 @@ class _IncomesPageState extends State<IncomesPage>
       setState(() {
         _sales = sales;
         _services = services;
+        _wastes = wastes;
         _rawMaterials = rawMaterials;
         _producedProducts = producedProducts;
         _dailyExpenses = dailyExpenses;
@@ -119,9 +123,10 @@ class _IncomesPageState extends State<IncomesPage>
   void _calculateIncomes() {
     final filteredSales = _getFilteredSales();
     final filteredServices = _getFilteredServices();
+    final filteredWastes = _getFilteredWastes();
     final filteredExpenses = _getFilteredExpenses();
 
-    // Calculate Sales (Products) - STORE SEPARATELY
+    // ===== 1. TOTAL SALES (in USD) =====
     _totalSales = filteredSales.fold<double>(0, (sum, sale) {
       final price = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
       if (sale['currency'] == 'AFN' && _selectedCurrency == 'USD') {
@@ -134,7 +139,7 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    // Calculate Services - STORE SEPARATELY
+    // ===== 2. TOTAL SERVICES (in USD) =====
     _totalServices = filteredServices.fold<double>(0, (sum, service) {
       final price = double.tryParse(service['final_price']?.toString() ?? '0') ?? 0;
       if (service['currency'] == 'AFN' && _selectedCurrency == 'USD') {
@@ -147,15 +152,29 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    // Total Income = Sales + Services
-    final totalIncome = _totalSales + _totalServices;
+    // ===== 3. TOTAL WASTES (in USD) - FIXED =====
+    _totalWastes = filteredWastes.fold<double>(0, (sum, waste) {
+      final price = double.tryParse(waste['value']?.toString() ?? '0') ?? 0;
+      final currency = waste['currency']?.toString() ?? 'USD';
+      final exchangeRate = double.tryParse(waste['exchange_rate']?.toString() ?? '1') ?? 1;
+      
+      if (currency == 'USD' || currency == 'دلار' || currency == '\$') {
+        return sum + price;
+      } else if (currency == 'AFN' || currency == 'افغانی') {
+        return sum + (exchangeRate > 0 ? price / exchangeRate : 0);
+      }
+      return sum + price;
+    });
 
-    // Calculate Raw Material Cost (Only for products)
+    // ===== 4. TOTAL RAW MATERIAL COST (in USD) - FIXED =====
     _totalRawMaterialCost = _calculateRawMaterialCost(filteredSales);
+
+    // ===== 5. GROSS PROFIT = (Sales + Services) - Raw Material Cost =====
+    final totalIncome = _totalSales + _totalServices;
     _grossProfit = totalIncome - _totalRawMaterialCost;
     _profitMargin = totalIncome > 0 ? (_grossProfit / totalIncome) * 100 : 0;
 
-    // Calculate Expenses
+    // ===== 6. TOTAL DAILY EXPENSES (in USD) =====
     _totalExpenses = filteredExpenses.fold<double>(0, (sum, expense) {
       final price = (expense['price'] is int)
           ? (expense['price'] as int).toDouble()
@@ -171,87 +190,69 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    _netProfit = _grossProfit - _totalExpenses;
+    // ===== 7. NET PROFIT = Gross Profit - Wastes - Daily Expenses =====
+    _netProfit = _grossProfit - _totalWastes - _totalExpenses;
     _netProfitMargin = totalIncome > 0 ? (_netProfit / totalIncome) * 100 : 0;
   }
 
+  // ============ FIXED RAW MATERIAL COST CALCULATION ============
   double _calculateRawMaterialCost(List<Map<String, dynamic>> filteredSales) {
-    final Map<String, double> productCostMap = {};
-
-    for (var material in _rawMaterials) {
-      final rawCost = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
-      double cost = rawCost;
-      if (material['currency'] == 'AFN' && _selectedCurrency == 'USD') {
-        final rate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
-        cost = rate > 0 ? rawCost / rate : 0;
-      } else if (material['currency'] == 'USD' && _selectedCurrency == 'AFN') {
-        final rate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
-        cost = rawCost * rate;
-      }
-
-      final materialName = material['name']?.toString() ?? '';
-      if (materialName.isNotEmpty) {
-        productCostMap[materialName] = (productCostMap[materialName] ?? 0) + cost;
-      }
-    }
-
     double totalRawMaterialCost = 0;
-    for (var product in _producedProducts) {
-      final productName = product['product_name']?.toString() ?? '';
-      final productSales = filteredSales.where((sale) {
-        final saleProduct = sale['product_name']?.toString() ?? '';
-        return saleProduct.toLowerCase().contains(productName.toLowerCase()) ||
-               productName.toLowerCase().contains(saleProduct.toLowerCase());
-      }).toList();
 
-      if (productSales.isNotEmpty) {
-        final productWeight = double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0;
-        if (productWeight > 0) {
-          double totalCostForProduct = 0;
-          for (var material in _rawMaterials) {
-            final materialName = material['name']?.toString() ?? '';
-            if (materialName.isNotEmpty) {
-              if (materialName.toLowerCase().contains(productName.toLowerCase()) ||
-                  productName.toLowerCase().contains(materialName.toLowerCase())) {
-                final rawCost = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
-                double cost = rawCost;
-                if (material['currency'] == 'AFN' && _selectedCurrency == 'USD') {
-                  final rate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
-                  cost = rate > 0 ? rawCost / rate : 0;
-                } else if (material['currency'] == 'USD' && _selectedCurrency == 'AFN') {
-                  final rate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
-                  cost = rawCost * rate;
-                }
-                totalCostForProduct += cost;
-              }
-            }
-          }
-
-          final costPerUnit = totalCostForProduct / productWeight;
-          for (var sale in productSales) {
-            final saleWeight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
-            final saleCost = costPerUnit * saleWeight;
-            totalRawMaterialCost += saleCost;
-          }
+    // Get ALL raw materials and sum their final prices directly
+    for (var material in _rawMaterials) {
+      // Get the final_price from raw_materials table
+      double finalPrice = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
+      
+      // If there's no final_price, calculate from unit_price * weight
+      if (finalPrice == 0) {
+        double unitPrice = double.tryParse(material['unit_price']?.toString() ?? '0') ?? 0;
+        double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
+        
+        // Convert to tons if in kg
+        String unit = material['unit']?.toString() ?? '';
+        if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+          netWeight = netWeight / 1000;
+        }
+        
+        finalPrice = netWeight * unitPrice;
+        
+        // Add expenses (these are in AFN, but final_price is already in the currency)
+        double product = double.tryParse(material['product']?.toString() ?? '0') ?? 0;
+        double commission = double.tryParse(material['commission']?.toString() ?? '0') ?? 0;
+        double transferCost = double.tryParse(material['transfer_cost']?.toString() ?? '0') ?? 0;
+        double miscellaneous = double.tryParse(material['miscellaneous']?.toString() ?? '0') ?? 0;
+        double ghurfedari = double.tryParse(material['ghurfedari']?.toString() ?? '0') ?? 0;
+        double barchalani = double.tryParse(material['barchalani']?.toString() ?? '0') ?? 0;
+        
+        // Convert AFN expenses to selected currency
+        String currency = material['currency']?.toString() ?? 'AFN';
+        double exchangeRate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
+        
+        double totalAfnExpenses = product + commission + transferCost + miscellaneous + ghurfedari + barchalani;
+        
+        if (currency == 'USD' && _selectedCurrency == 'USD') {
+          // Expenses are in AFN, convert to USD
+          finalPrice += (exchangeRate > 0) ? (totalAfnExpenses / exchangeRate) : 0;
+        } else if (currency == 'AFN' && _selectedCurrency == 'AFN') {
+          // All in AFN
+          finalPrice += totalAfnExpenses;
+        } else if (currency == 'USD' && _selectedCurrency == 'AFN') {
+          // Material in USD, convert to AFN
+          finalPrice = (finalPrice * exchangeRate) + totalAfnExpenses;
+        } else if (currency == 'AFN' && _selectedCurrency == 'USD') {
+          // Material in AFN, convert to USD
+          finalPrice = (exchangeRate > 0) ? ((finalPrice + totalAfnExpenses) / exchangeRate) : 0;
         }
       }
+      
+      // Add directly to total - NO DIVISION
+      totalRawMaterialCost += finalPrice;
     }
 
-    if (totalRawMaterialCost == 0 && _rawMaterials.isNotEmpty) {
-      double totalRawCost = 0;
-      for (var material in _rawMaterials) {
-        final rawCost = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
-        double cost = rawCost;
-        if (material['currency'] == 'AFN' && _selectedCurrency == 'USD') {
-          final rate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
-          cost = rate > 0 ? rawCost / rate : 0;
-        } else if (material['currency'] == 'USD' && _selectedCurrency == 'AFN') {
-          final rate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
-          cost = rawCost * rate;
-        }
-        totalRawCost += cost;
-      }
-      totalRawMaterialCost = totalRawCost;
+    // If we have filtered sales and raw materials, use the total
+    if (filteredSales.isNotEmpty && totalRawMaterialCost > 0) {
+      return totalRawMaterialCost;
     }
 
     return totalRawMaterialCost;
@@ -366,6 +367,31 @@ class _IncomesPageState extends State<IncomesPage>
     }).toList();
   }
 
+  List<Map<String, dynamic>> _getFilteredWastes() {
+    final range = _getGregorianRangeForPersianMonth(_selectedYear, _selectedMonth);
+    final startDate = range[0];
+    final endDate = range[1];
+
+    return _wastes.where((waste) {
+      final dateStr = waste['date_en']?.toString() ?? '';
+      if (dateStr.isEmpty) return false;
+
+      try {
+        final parts = dateStr.split('-');
+        if (parts.length != 3) return false;
+        final year = int.tryParse(parts[0]) ?? 0;
+        final month = int.tryParse(parts[1]) ?? 0;
+        final day = int.tryParse(parts[2]) ?? 0;
+        final wasteDate = DateTime(year, month, day);
+
+        return wasteDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
+               wasteDate.isBefore(endDate.add(const Duration(days: 1)));
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+  }
+
   List<Map<String, dynamic>> _getFilteredExpenses() {
     final range = _getGregorianRangeForPersianMonth(_selectedYear, _selectedMonth);
     final startDate = range[0];
@@ -391,8 +417,10 @@ class _IncomesPageState extends State<IncomesPage>
     }).toList();
   }
 
+  // ============ FORMAT FUNCTIONS - NO DECIMAL POINTS ============
   String _formatCurrency(double amount) {
     final symbol = _selectedCurrency == 'USD' ? '\$' : '؋';
+    // Round to whole number - NO DECIMALS
     final formatted = amount.toStringAsFixed(0);
     final withCommas = formatted.replaceAllMapped(
       RegExp(r'(\d)(?=(\d{3})+(?!\d))'), 
@@ -403,6 +431,7 @@ class _IncomesPageState extends State<IncomesPage>
 
   String _formatNumber(dynamic value) {
     final parsed = double.tryParse(value?.toString() ?? '0') ?? 0;
+    // Round to whole number - NO DECIMALS
     return parsed.toStringAsFixed(0).replaceAllMapped(
       RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
       (m) => '${m[1]},'
@@ -421,19 +450,15 @@ class _IncomesPageState extends State<IncomesPage>
     );
   }
 
-  // ============ PDF REPORT GENERATION ============
-  
+  // ============ PDF REPORT ============
   Future<void> _generatePDFReport() async {
     setState(() => _isGeneratingPDF = true);
-    
     try {
       final pdf = await _buildPDF();
-      
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdf,
         name: 'Profit_Report_${_persianMonths[_selectedMonth - 1]}_$_selectedYear',
       );
-      
       setState(() => _isGeneratingPDF = false);
     } catch (e) {
       setState(() => _isGeneratingPDF = false);
@@ -445,7 +470,6 @@ class _IncomesPageState extends State<IncomesPage>
   Future<Uint8List> _buildPDF() async {
     final l10n = AppLocalizations.of(context)!;
     
-    // Load font
     pw.Font ttf;
     try {
       final fontData = await rootBundle.load('assets/fonts/Vazirmatn-Regular.ttf');
@@ -454,7 +478,6 @@ class _IncomesPageState extends State<IncomesPage>
       ttf = pw.Font.helvetica();
     }
 
-    // Load logo image
     pw.MemoryImage? logoImage;
     try {
       final logoData = await rootBundle.load('assets/images/companylogo.png');
@@ -465,32 +488,11 @@ class _IncomesPageState extends State<IncomesPage>
 
     final filteredSales = _getFilteredSales();
     final filteredServices = _getFilteredServices();
+    final filteredWastes = _getFilteredWastes();
     final filteredExpenses = _getFilteredExpenses();
     
     final monthName = _persianMonths[_selectedMonth - 1];
     final currencySymbol = _selectedCurrency == 'USD' ? '\$' : '؋';
-    
-    // Calculate expense breakdown
-    Map<String, double> expenseByCategory = {};
-    for (var expense in filteredExpenses) {
-      final category = expense['category']?.toString() ?? l10n.miscellaneous;
-      final price = (expense['price'] is int)
-          ? (expense['price'] as int).toDouble()
-          : double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
-      
-      double convertedPrice = price;
-      if (expense['currency'] == 'دالر' && _selectedCurrency == 'AFN') {
-        final rate = double.tryParse(expense['exchangeRate']?.toString() ?? '1') ?? 1;
-        convertedPrice = price * rate;
-      } else if (expense['currency'] == 'افغانی' && _selectedCurrency == 'USD') {
-        final rate = double.tryParse(expense['exchangeRate']?.toString() ?? '1') ?? 1;
-        convertedPrice = rate > 0 ? price / rate : 0;
-      }
-      
-      expenseByCategory[category] = (expenseByCategory[category] ?? 0) + convertedPrice;
-    }
-
-    final totalIncome = _totalSales + _totalServices;
 
     final pdf = pw.Document();
 
@@ -504,7 +506,7 @@ class _IncomesPageState extends State<IncomesPage>
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // ========== HEADER WITH LOGO ==========
+                // HEADER
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                   decoration: pw.BoxDecoration(
@@ -597,7 +599,7 @@ class _IncomesPageState extends State<IncomesPage>
                 
                 pw.SizedBox(height: 16),
 
-                // ========== SUMMARY CARDS ==========
+                // SUMMARY CARDS
                 pw.Container(
                   padding: const pw.EdgeInsets.all(12),
                   decoration: pw.BoxDecoration(
@@ -610,6 +612,7 @@ class _IncomesPageState extends State<IncomesPage>
                     children: [
                       _buildSummaryItem(ttf, l10n.productSales, _formatCurrency(_totalSales), PdfColors.blue),
                       _buildSummaryItem(ttf, l10n.serviceSales, _formatCurrency(_totalServices), PdfColors.green),
+                      _buildSummaryItem(ttf, 'ضایعات', _formatCurrency(_totalWastes), PdfColors.purple),
                       _buildSummaryItem(ttf, l10n.rawMaterialCost, _formatCurrency(_totalRawMaterialCost), PdfColors.orange),
                       _buildSummaryItem(ttf, l10n.grossProfitLabel, _formatCurrency(_grossProfit), _grossProfit >= 0 ? PdfColors.green : PdfColors.red),
                       _buildSummaryItem(ttf, l10n.dailyExpensesLabel, _formatCurrency(_totalExpenses), PdfColors.purple),
@@ -620,7 +623,60 @@ class _IncomesPageState extends State<IncomesPage>
                 
                 pw.SizedBox(height: 16),
 
-                // ========== SALES TABLE ==========
+                // GROSS PROFIT DETAIL
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey50,
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                  ),
+                  child: pw.Column(
+                    children: [
+                      pw.Text(
+                        '📊 ${l10n.grossProfitLabel}',
+                        style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
+                      ),
+                      pw.SizedBox(height: 8),
+                      _buildProfitRow(ttf, 'فروش', _formatCurrency(_totalSales)),
+                      _buildProfitRow(ttf, 'خدمات', _formatCurrency(_totalServices)),
+                      _buildProfitRow(ttf, 'جمع فروش و خدمات', _formatCurrency(_totalSales + _totalServices), isBold: true),
+                      _buildProfitRow(ttf, '(-) هزینه مواد خام', _formatCurrency(_totalRawMaterialCost), isRed: true),
+                      pw.Divider(),
+                      _buildProfitRow(ttf, '= سود ناخالص', _formatCurrency(_grossProfit), isBold: true, isGreen: _grossProfit >= 0),
+                    ],
+                  ),
+                ),
+                
+                pw.SizedBox(height: 16),
+
+                // NET PROFIT DETAIL
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey50,
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                  ),
+                  child: pw.Column(
+                    children: [
+                      pw.Text(
+                        '📊 ${l10n.netProfitLabel}',
+                        style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
+                      ),
+                      pw.SizedBox(height: 8),
+                      _buildProfitRow(ttf, 'سود ناخالص', _formatCurrency(_grossProfit)),
+                      _buildProfitRow(ttf, '(-) ضایعات', _formatCurrency(_totalWastes), isRed: true),
+                      _buildProfitRow(ttf, '(-) مخارج روزانه', _formatCurrency(_totalExpenses), isRed: true),
+                      pw.Divider(),
+                      _buildProfitRow(ttf, '= سود خالص', _formatCurrency(_netProfit), isBold: true, isGreen: _netProfit >= 0),
+                    ],
+                  ),
+                ),
+                
+                pw.SizedBox(height: 16),
+
+                // SALES TABLE
                 pw.Text(
                   '📦 ${l10n.productSales}',
                   style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
@@ -630,7 +686,7 @@ class _IncomesPageState extends State<IncomesPage>
                 
                 pw.SizedBox(height: 12),
                 
-                // ========== SERVICES TABLE ==========
+                // SERVICES TABLE
                 pw.Text(
                   '🔧 ${l10n.serviceSales}',
                   style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
@@ -640,7 +696,17 @@ class _IncomesPageState extends State<IncomesPage>
                 
                 pw.SizedBox(height: 12),
                 
-                // ========== EXPENSES TABLE ==========
+                // WASTES TABLE
+                pw.Text(
+                  '♻️ ضایعات',
+                  style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 8),
+                _buildWastesTablePDF(ttf, filteredWastes, currencySymbol),
+                
+                pw.SizedBox(height: 12),
+                
+                // EXPENSES TABLE
                 pw.Text(
                   '🧾 ${l10n.dailyExpensesDetails}',
                   style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
@@ -648,21 +714,9 @@ class _IncomesPageState extends State<IncomesPage>
                 pw.SizedBox(height: 8),
                 _buildPDFExpensesTable(ttf, filteredExpenses, currencySymbol),
                 
-                pw.SizedBox(height: 12),
-                
-                // ========== EXPENSE BREAKDOWN ==========
-                if (expenseByCategory.isNotEmpty) ...[
-                  pw.Text(
-                    '📈 ${l10n.expenseBreakdown}',
-                    style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold),
-                  ),
-                  pw.SizedBox(height: 8),
-                  _buildExpenseBreakdown(ttf, expenseByCategory, currencySymbol),
-                ],
-                
                 pw.Spacer(),
                 
-                // ========== FOOTER ==========
+                // FOOTER
                 pw.Divider(color: PdfColors.grey300, thickness: 0.5),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -708,6 +762,31 @@ class _IncomesPageState extends State<IncomesPage>
     );
   }
 
+  pw.Widget _buildProfitRow(pw.Font font, String label, String value, {bool isBold = false, bool isRed = false, bool isGreen = false}) {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            font: font,
+            fontSize: isBold ? 14 : 12,
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
+        ),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            font: font,
+            fontSize: isBold ? 14 : 12,
+            fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: isRed ? PdfColors.red : (isGreen ? PdfColors.green : PdfColors.black),
+          ),
+        ),
+      ],
+    );
+  }
+
   pw.Widget _buildSalesTablePDF(pw.Font font, List<Map<String, dynamic>> sales, String currencySymbol) {
     final l10n = AppLocalizations.of(context)!;
     
@@ -730,11 +809,20 @@ class _IncomesPageState extends State<IncomesPage>
     List<List<String>> tableData = [];
     for (var sale in sales) {
       final amount = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+      double displayAmount = amount;
+      if (sale['currency'] == 'AFN' && _selectedCurrency == 'USD') {
+        final rate = double.tryParse(sale['price_rate']?.toString() ?? '1') ?? 1;
+        displayAmount = rate > 0 ? amount / rate : 0;
+      } else if (sale['currency'] == 'USD' && _selectedCurrency == 'AFN') {
+        final rate = double.tryParse(sale['price_rate']?.toString() ?? '1') ?? 1;
+        displayAmount = amount * rate;
+      }
+      
       tableData.add([
         sale['invoice_number']?.toString() ?? '-',
         sale['customer_name']?.toString() ?? '-',
         sale['product_name']?.toString() ?? '-',
-        '${_formatNumber(amount)} $currencySymbol',
+        '${_formatNumber(displayAmount)} $currencySymbol',
       ]);
     }
 
@@ -754,12 +842,6 @@ class _IncomesPageState extends State<IncomesPage>
         outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
         inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
       ),
-      columnWidths: {
-        0: const pw.FixedColumnWidth(80),
-        1: const pw.FixedColumnWidth(120),
-        2: const pw.FixedColumnWidth(140),
-        3: const pw.FixedColumnWidth(120),
-      },
     );
   }
 
@@ -785,11 +867,20 @@ class _IncomesPageState extends State<IncomesPage>
     List<List<String>> tableData = [];
     for (var service in services) {
       final amount = double.tryParse(service['final_price']?.toString() ?? '0') ?? 0;
+      double displayAmount = amount;
+      if (service['currency'] == 'AFN' && _selectedCurrency == 'USD') {
+        final rate = double.tryParse(service['exchange_rate']?.toString() ?? '1') ?? 1;
+        displayAmount = rate > 0 ? amount / rate : 0;
+      } else if (service['currency'] == 'USD' && _selectedCurrency == 'AFN') {
+        final rate = double.tryParse(service['exchange_rate']?.toString() ?? '1') ?? 1;
+        displayAmount = amount * rate;
+      }
+      
       tableData.add([
         service['invoice_number']?.toString() ?? '-',
         service['customer_name']?.toString() ?? '-',
         service['service_title']?.toString() ?? service['service_type']?.toString() ?? '-',
-        '${_formatNumber(amount)} $currencySymbol',
+        '${_formatNumber(displayAmount)} $currencySymbol',
       ]);
     }
 
@@ -809,12 +900,67 @@ class _IncomesPageState extends State<IncomesPage>
         outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
         inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
       ),
-      columnWidths: {
-        0: const pw.FixedColumnWidth(80),
-        1: const pw.FixedColumnWidth(120),
-        2: const pw.FixedColumnWidth(140),
-        3: const pw.FixedColumnWidth(120),
-      },
+    );
+  }
+
+  pw.Widget _buildWastesTablePDF(pw.Font font, List<Map<String, dynamic>> wastes, String currencySymbol) {
+    final l10n = AppLocalizations.of(context)!;
+    
+    if (wastes.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(16),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.grey50,
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Center(
+          child: pw.Text(
+            'هیچ ضایعاتی در این ماه ثبت نشده است',
+            style: pw.TextStyle(font: font, fontSize: 11, color: PdfColors.grey700),
+          ),
+        ),
+      );
+    }
+
+    List<List<String>> tableData = [];
+    for (var waste in wastes) {
+      final value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0;
+      final currency = waste['currency']?.toString() ?? 'USD';
+      final exchangeRate = double.tryParse(waste['exchange_rate']?.toString() ?? '1') ?? 1;
+      
+      double displayAmount;
+      if (_selectedCurrency == 'USD') {
+        displayAmount = currency == 'AFN' ? (exchangeRate > 0 ? value / exchangeRate : 0) : value;
+      } else {
+        displayAmount = currency == 'AFN' ? value : value * exchangeRate;
+      }
+      
+      final weight = double.tryParse(waste['weight']?.toString() ?? '0') ?? 0;
+      tableData.add([
+        waste['invoice_number']?.toString() ?? '-',
+        waste['date']?.toString() ?? '-',
+        waste['waste_type']?.toString() ?? '-',
+        '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 2)}',
+        '${_formatNumber(displayAmount)} $currencySymbol',
+      ]);
+    }
+
+    return pw.Table.fromTextArray(
+      headers: ['شماره', 'تاریخ', 'نوع ضایعات', 'وزن', 'مبلغ'],
+      data: tableData,
+      headerStyle: pw.TextStyle(
+        font: font,
+        fontSize: 9,
+        fontWeight: pw.FontWeight.bold,
+        color: PdfColors.white,
+      ),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.purple),
+      cellStyle: pw.TextStyle(font: font, fontSize: 8),
+      cellAlignment: pw.Alignment.centerRight,
+      border: pw.TableBorder.symmetric(
+        outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+        inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+      ),
     );
   }
 
@@ -877,60 +1023,6 @@ class _IncomesPageState extends State<IncomesPage>
         outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
         inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
       ),
-      columnWidths: {
-        0: const pw.FixedColumnWidth(70),
-        1: const pw.FixedColumnWidth(70),
-        2: const pw.FixedColumnWidth(80),
-        3: const pw.FixedColumnWidth(120),
-        4: const pw.FixedColumnWidth(100),
-      },
-    );
-  }
-
-  pw.Widget _buildExpenseBreakdown(pw.Font font, Map<String, double> expenses, String currencySymbol) {
-    final l10n = AppLocalizations.of(context)!;
-    
-    List<List<String>> tableData = [];
-    double total = 0;
-    
-    final sortedEntries = expenses.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    
-    for (var entry in sortedEntries) {
-      tableData.add([
-        entry.key,
-        '${_formatNumber(entry.value)} $currencySymbol',
-        '${((entry.value / _totalExpenses) * 100).toStringAsFixed(1)}%',
-      ]);
-      total += entry.value;
-    }
-    
-    tableData.add([
-      l10n.totalLabel,
-      '${_formatNumber(total)} $currencySymbol',
-      '100%',
-    ]);
-
-    return pw.Table.fromTextArray(
-      headers: [l10n.category, l10n.amount, l10n.percentage],
-      data: tableData,
-      headerStyle: pw.TextStyle(
-        font: font,
-        fontSize: 9,
-        fontWeight: pw.FontWeight.bold,
-        color: PdfColors.white,
-      ),
-      headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
-      cellStyle: pw.TextStyle(font: font, fontSize: 8),
-      cellAlignment: pw.Alignment.centerRight,
-      border: pw.TableBorder.symmetric(
-        outside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-        inside: const pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-      ),
-      columnWidths: {
-        0: const pw.FixedColumnWidth(120),
-        1: const pw.FixedColumnWidth(120),
-        2: const pw.FixedColumnWidth(80),
-      },
     );
   }
 
@@ -1000,7 +1092,7 @@ class _IncomesPageState extends State<IncomesPage>
                   ),
                 ),
                 Text(
-                  l10n.incomesManagementSubtitle,
+                  '${l10n.incomesManagementSubtitle} (شامل کالا، خدمات و ضایعات)',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey.shade600,
@@ -1144,7 +1236,7 @@ class _IncomesPageState extends State<IncomesPage>
                 const Icon(Icons.calendar_today, size: 14, color: Color(0xFFCB001D)),
                 const SizedBox(width: 6),
                 Text(
-                  '${_getFilteredSales().length} ${l10n.sales} | ${_getFilteredServices().length} ${l10n.services} | ${_getFilteredExpenses().length} ${l10n.expenses}',
+                  '${_getFilteredSales().length} ${l10n.sales} | ${_getFilteredServices().length} ${l10n.services} | ${_getFilteredWastes().length} ضایعات | ${_getFilteredExpenses().length} ${l10n.expenses}',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFCB001D)),
                 ),
               ],
@@ -1210,59 +1302,53 @@ class _IncomesPageState extends State<IncomesPage>
     );
   }
 
+  // ============ TAB 1: GROSS PROFIT ============
   Widget _buildGrossProfitView(AppLocalizations l10n) {
-    final totalIncome = _totalSales + _totalServices;
+    final totalSalesAndServices = _totalSales + _totalServices;
     final isProfit = _grossProfit >= 0;
-    final profitColor = isProfit ? Colors.green.shade700 : Colors.red.shade700;
 
     return Column(
       children: [
-        // SEPARATE CARDS FOR SALES AND SERVICES
         Row(
           children: [
-            // Sales Card
             _buildIncomeCard(
-              title: l10n.productSales,
+              title: 'فروش',
               amount: _totalSales,
               icon: Icons.shopping_bag_outlined,
               color: Colors.blue.shade700,
-              subtitle: '${_getFilteredSales().length} ${l10n.invoices}',
+              subtitle: '${_getFilteredSales().length} فاکتور',
             ),
             const SizedBox(width: 12),
-            // Services Card
             _buildIncomeCard(
-              title: l10n.serviceSales,
+              title: 'خدمات',
               amount: _totalServices,
               icon: Icons.design_services_outlined,
               color: Colors.green.shade700,
-              subtitle: '${_getFilteredServices().length} ${l10n.invoices}',
+              subtitle: '${_getFilteredServices().length} فاکتور',
             ),
             const SizedBox(width: 12),
-            // Raw Material Cost
             _buildIncomeCard(
-              title: l10n.rawMaterialCost,
+              title: 'هزینه مواد خام',
               amount: _totalRawMaterialCost,
               icon: Icons.warehouse_outlined,
               color: Colors.orange.shade700,
-              subtitle: l10n.totalCost,
+              subtitle: 'بهای تمام شده',
             ),
             const SizedBox(width: 12),
-            // Gross Profit
             _buildIncomeCard(
-              title: l10n.grossProfitLabel,
+              title: 'سود ناخالص',
               amount: _grossProfit,
               icon: Icons.account_balance_rounded,
-              color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-              subtitle: '${_profitMargin.toStringAsFixed(1)}% ${l10n.profitMargin}',
+              color: isProfit ? Colors.green.shade700 : Colors.red.shade700,
+              subtitle: '${_profitMargin.toStringAsFixed(1)}% حاشیه سود',
             ),
           ],
         ),
         const SizedBox(height: 12),
-        _buildProfitSummary(isProfit, profitColor, _grossProfit, _profitMargin,
-            totalIncome, _totalRawMaterialCost, l10n.grossProfitLabel, l10n.rawMaterialCost, l10n),
+        _buildGrossProfitDetail(totalSalesAndServices),
         const SizedBox(height: 12),
         Expanded(
-          child: _buildSalesTable(l10n),
+          child: _buildCombinedTable(l10n),
         ),
       ],
     );
@@ -1335,53 +1421,7 @@ class _IncomesPageState extends State<IncomesPage>
     );
   }
 
-  Widget _buildNetProfitView(AppLocalizations l10n) {
-    final totalIncome = _totalSales + _totalServices;
-    final isProfit = _netProfit >= 0;
-    final profitColor = isProfit ? Colors.green.shade700 : Colors.red.shade700;
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            _buildIncomeCard(
-              title: l10n.grossProfitLabel,
-              amount: _grossProfit,
-              icon: Icons.trending_up_rounded,
-              color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-              subtitle: l10n.beforeExpenses,
-            ),
-            const SizedBox(width: 12),
-            _buildIncomeCard(
-              title: l10n.dailyExpensesLabel,
-              amount: _totalExpenses,
-              icon: Icons.account_balance_wallet_outlined,
-              color: Colors.orange.shade700,
-              subtitle: '${_getFilteredExpenses().length} ${l10n.items}',
-            ),
-            const SizedBox(width: 12),
-            _buildIncomeCard(
-              title: l10n.netProfitLabel,
-              amount: _netProfit,
-              icon: Icons.account_balance_rounded,
-              color: _netProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-              subtitle: '${_netProfitMargin.toStringAsFixed(1)}% ${l10n.netProfitMargin}',
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _buildProfitSummary(isProfit, profitColor, _netProfit, _netProfitMargin,
-            totalIncome, _totalExpenses, l10n.netProfitLabel, l10n.dailyExpensesLabel, l10n),
-        const SizedBox(height: 12),
-        Expanded(
-          child: _buildExpensesTable(l10n),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProfitSummary(bool isProfit, Color profitColor, double profit,
-      double margin, double total, double cost, String profitLabel, String costLabel, AppLocalizations l10n) {
+  Widget _buildGrossProfitDetail(double totalSalesAndServices) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1395,145 +1435,195 @@ class _IncomesPageState extends State<IncomesPage>
           ),
         ],
         border: Border.all(
-          color: profitColor.withOpacity(0.2),
+          color: _grossProfit >= 0 ? Colors.green.shade200 : Colors.red.shade200,
           width: 1.5,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: profitColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  isProfit ? '💰 $profitLabel' : '📉 $profitLabel',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: profitColor,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCB001D).withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    Text('${l10n.profitMargin}: ', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    Text(
-                      '${margin.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: profitColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          _buildProfitDetailItem(
+            label: 'فروش + خدمات',
+            value: _formatCurrency(totalSalesAndServices),
+            color: Colors.blue.shade700,
           ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final maxWidth = constraints.maxWidth;
-              final costRatio = total > 0 ? (cost / total) : 0.0;
-              final profitRatio = total > 0 ? (profit / total) : 0.0;
-              
-              final costWidth = (costRatio * maxWidth).clamp(0.0, maxWidth);
-              final profitWidth = (profitRatio * maxWidth).clamp(0.0, maxWidth);
-              
-              return Container(
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  children: [
-                    if (total > 0) ...[
-                      Container(
-                        width: costWidth,
-                        decoration: const BoxDecoration(
-                          color: Colors.orange,
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(4),
-                            bottomLeft: Radius.circular(4),
-                          ),
-                        ),
-                      ),
-                      Container(
-                        width: profitWidth,
-                        decoration: BoxDecoration(
-                          color: isProfit ? Colors.green : Colors.red,
-                          borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(4),
-                            bottomRight: Radius.circular(4),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.grey.shade200,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: Colors.orange,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text('$costLabel: ${_formatCurrency(cost)}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                ],
-              ),
-              const SizedBox(width: 20),
-              Row(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: isProfit ? Colors.green : Colors.red,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text('${l10n.profit}: ${_formatCurrency(profit)}', style: TextStyle(fontSize: 10, color: profitColor)),
-                ],
-              ),
-            ],
+          _buildProfitDetailItem(
+            label: '(-) هزینه مواد خام',
+            value: _formatCurrency(_totalRawMaterialCost),
+            color: Colors.orange.shade700,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.grey.shade200,
+          ),
+          _buildProfitDetailItem(
+            label: '= سود ناخالص',
+            value: _formatCurrency(_grossProfit),
+            color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+            isBold: true,
           ),
         ],
       ),
     );
   }
 
-  // ============ SALES TABLE (Combined Sales + Services) ============
-  Widget _buildSalesTable(AppLocalizations l10n) {
+  Widget _buildProfitDetailItem({
+    required String label,
+    required String value,
+    required Color color,
+    bool isBold = false,
+  }) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: isBold ? 18 : 14,
+            fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============ TAB 2: NET PROFIT ============
+  Widget _buildNetProfitView(AppLocalizations l10n) {
+    final isProfit = _netProfit >= 0;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            _buildIncomeCard(
+              title: 'سود ناخالص',
+              amount: _grossProfit,
+              icon: Icons.trending_up_rounded,
+              color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+              subtitle: 'قبل از کسورات',
+            ),
+            const SizedBox(width: 12),
+            _buildIncomeCard(
+              title: 'ضایعات',
+              amount: _totalWastes,
+              icon: Icons.recycling_outlined,
+              color: Colors.purple.shade700,
+              subtitle: '${_getFilteredWastes().length} فاکتور',
+            ),
+            const SizedBox(width: 12),
+            _buildIncomeCard(
+              title: 'مخارج روزانه',
+              amount: _totalExpenses,
+              icon: Icons.account_balance_wallet_outlined,
+              color: Colors.orange.shade700,
+              subtitle: '${_getFilteredExpenses().length} مورد',
+            ),
+            const SizedBox(width: 12),
+            _buildIncomeCard(
+              title: 'سود خالص',
+              amount: _netProfit,
+              icon: Icons.account_balance_rounded,
+              color: isProfit ? Colors.green.shade700 : Colors.red.shade700,
+              subtitle: '${_netProfitMargin.toStringAsFixed(1)}% حاشیه سود',
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildNetProfitDetail(),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _buildCombinedTable(l10n),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNetProfitDetail() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: _netProfit >= 0 ? Colors.green.shade200 : Colors.red.shade200,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildProfitDetailItem(
+            label: 'سود ناخالص',
+            value: _formatCurrency(_grossProfit),
+            color: _grossProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.grey.shade200,
+          ),
+          _buildProfitDetailItem(
+            label: '(-) ضایعات',
+            value: _formatCurrency(_totalWastes),
+            color: Colors.purple.shade700,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.grey.shade200,
+          ),
+          _buildProfitDetailItem(
+            label: '(-) مخارج روزانه',
+            value: _formatCurrency(_totalExpenses),
+            color: Colors.orange.shade700,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.grey.shade200,
+          ),
+          _buildProfitDetailItem(
+            label: '= سود خالص',
+            value: _formatCurrency(_netProfit),
+            color: _netProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+            isBold: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============ COMBINED TABLE ============
+  Widget _buildCombinedTable(AppLocalizations l10n) {
     final filteredSales = _getFilteredSales();
     final filteredServices = _getFilteredServices();
+    final filteredWastes = _getFilteredWastes();
 
     List<Map<String, dynamic>> combinedItems = [
       ...filteredSales.map((s) => {...s, '_type': 'sale'}),
       ...filteredServices.map((s) => {...s, '_type': 'service'}),
+      ...filteredWastes.map((s) => {...s, '_type': 'waste'}),
     ];
     
     combinedItems.sort((a, b) => (a['id'] ?? 0).compareTo(b['id'] ?? 0));
@@ -1570,7 +1660,7 @@ class _IncomesPageState extends State<IncomesPage>
                 const Expanded(flex: 1, child: Text('نوع', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
                 const Expanded(flex: 1, child: Text('شماره', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
                 const Expanded(flex: 2, child: Text('مشتری', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
-                const Expanded(flex: 2, child: Text('محصول/خدمت', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
+                const Expanded(flex: 2, child: Text('شرح', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
                 const Expanded(flex: 1, child: Text('مبلغ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11), textAlign: TextAlign.center)),
                 const Expanded(flex: 1, child: Text('تاریخ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11), textAlign: TextAlign.center)),
               ],
@@ -1578,13 +1668,58 @@ class _IncomesPageState extends State<IncomesPage>
           ),
           Expanded(
             child: paged.isEmpty
-                ? Center(child: Text(l10n.noInvoicesFound, style: const TextStyle(color: Colors.grey)))
+                ? Center(child: Text('هیچ موردی یافت نشد', style: const TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: paged.length,
                     itemBuilder: (context, index) {
                       final item = paged[index];
-                      final isService = item['_type'] == 'service';
-                      final amount = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0;
+                      final type = item['_type'];
+                      final isService = type == 'service';
+                      final isWaste = type == 'waste';
+                      
+                      double amount = 0;
+                      if (isWaste) {
+                        final value = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
+                        final currency = item['currency']?.toString() ?? 'USD';
+                        final exchangeRate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+                        if (_selectedCurrency == 'USD') {
+                          amount = currency == 'AFN' ? (exchangeRate > 0 ? value / exchangeRate : 0) : value;
+                        } else {
+                          amount = currency == 'AFN' ? value : value * exchangeRate;
+                        }
+                      } else {
+                        final price = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0;
+                        final currency = item['currency']?.toString() ?? 'USD';
+                        final exchangeRate = double.tryParse(item['price_rate']?.toString() ?? '1') ?? 1;
+                        if (currency == 'AFN' && _selectedCurrency == 'USD') {
+                          amount = exchangeRate > 0 ? price / exchangeRate : 0;
+                        } else if (currency == 'USD' && _selectedCurrency == 'AFN') {
+                          amount = price * exchangeRate;
+                        } else {
+                          amount = price;
+                        }
+                      }
+
+                      String typeLabel = 'فروش';
+                      Color bgColor = Colors.green.shade100;
+                      Color textColor = Colors.green.shade800;
+                      
+                      if (isService) {
+                        typeLabel = 'خدمات';
+                        bgColor = Colors.blue.shade100;
+                        textColor = Colors.blue.shade800;
+                      } else if (isWaste) {
+                        typeLabel = 'ضایعات';
+                        bgColor = Colors.purple.shade100;
+                        textColor = Colors.purple.shade800;
+                      }
+
+                      String description = item['product_name']?.toString() ?? '-';
+                      if (isService) {
+                        description = item['service_title']?.toString() ?? item['service_type']?.toString() ?? '-';
+                      } else if (isWaste) {
+                        description = '${item['waste_type']?.toString() ?? ''} - ${item['party_details']?.toString() ?? ''}';
+                      }
 
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -1599,125 +1734,57 @@ class _IncomesPageState extends State<IncomesPage>
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: isService ? Colors.blue.shade100 : Colors.green.shade100,
+                                  color: bgColor,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
-                                  isService ? l10n.services : l10n.sale,
+                                  typeLabel,
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
-                                    color: isService ? Colors.blue.shade800 : Colors.green.shade800,
+                                    color: textColor,
                                   ),
                                   textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
                             Expanded(flex: 1, child: Text(item['invoice_number']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11))),
-                            Expanded(flex: 2, child: Text(item['customer_name']?.toString() ?? '-', style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis)),
+                            Expanded(flex: 2, child: Text(
+                              item['customer_name']?.toString() ?? item['party_details']?.toString() ?? '-', 
+                              style: const TextStyle(fontSize: 11), 
+                              overflow: TextOverflow.ellipsis
+                            )),
                             Expanded(
                               flex: 2,
                               child: Text(
-                                isService 
-                                    ? (item['service_title']?.toString() ?? item['service_type']?.toString() ?? '-') 
-                                    : (item['product_name']?.toString() ?? '-'),
+                                description,
                                 style: const TextStyle(fontSize: 11),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            Expanded(flex: 1, child: Text(_formatCurrency(amount), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue), textAlign: TextAlign.center)),
-                            Expanded(flex: 1, child: Text(item['date']?.toString() ?? '-', style: const TextStyle(fontSize: 10, color: Colors.grey), textAlign: TextAlign.center)),
+                            Expanded(flex: 1, child: Text(
+                              _formatCurrency(amount), 
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue), 
+                              textAlign: TextAlign.center
+                            )),
+                            Expanded(flex: 1, child: Text(
+                              item['date']?.toString() ?? '-', 
+                              style: const TextStyle(fontSize: 10, color: Colors.grey), 
+                              textAlign: TextAlign.center
+                            )),
                           ],
                         ),
                       );
                     },
                   ),
           ),
-          _buildPagination(combinedItems.length, totalPages, l10n),
+          _buildPagination(combinedItems.length, totalPages),
         ],
       ),
     );
   }
 
-  // ============ EXPENSES TABLE ============
-  Widget _buildExpensesTable(AppLocalizations l10n) {
-    final filteredExpenses = _getFilteredExpenses();
-    final totalPages = (filteredExpenses.length / _rowsPerPage).ceil();
-    final start = (_currentPage * _rowsPerPage).clamp(0, filteredExpenses.length);
-    final paged = filteredExpenses.skip(start).take(_rowsPerPage).toList();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: const BoxDecoration(
-              color: Color(0xFFCB001D),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Expanded(flex: 1, child: Text('شماره ثبت', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
-                const Expanded(flex: 1, child: Text('تاریخ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
-                const Expanded(flex: 1, child: Text('دسته', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
-                const Expanded(flex: 2, child: Text('شرح', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11))),
-                const Expanded(flex: 1, child: Text('مبلغ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11), textAlign: TextAlign.center)),
-                const Expanded(flex: 1, child: Text('ارز', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11), textAlign: TextAlign.center)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: paged.isEmpty
-                ? Center(child: Text(l10n.noExpensesFound, style: const TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: paged.length,
-                    itemBuilder: (context, index) {
-                      final expense = paged[index];
-                      final price = (expense['price'] is int) 
-                          ? (expense['price'] as int).toDouble() 
-                          : double.tryParse(expense['price']?.toString() ?? '0') ?? 0;
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
-                          color: index % 2 == 0 ? Colors.grey.shade50 : Colors.white,
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(flex: 1, child: Text(expense['registrationNumber']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11))),
-                            Expanded(flex: 1, child: Text(expense['date']?.toString() ?? '-', style: const TextStyle(fontSize: 11))),
-                            Expanded(flex: 1, child: Text(expense['category']?.toString() ?? '-', style: const TextStyle(fontSize: 11))),
-                            Expanded(flex: 2, child: Text(expense['description']?.toString() ?? '-', style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis)),
-                            Expanded(flex: 1, child: Text(_formatCurrency(price), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.red), textAlign: TextAlign.center)),
-                            Expanded(flex: 1, child: Text(expense['currency']?.toString() ?? '-', style: const TextStyle(fontSize: 10, color: Colors.grey), textAlign: TextAlign.center)),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          _buildPagination(filteredExpenses.length, totalPages, l10n),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPagination(int totalItems, int totalPages, AppLocalizations l10n) {
+  Widget _buildPagination(int totalItems, int totalPages) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -1733,7 +1800,7 @@ class _IncomesPageState extends State<IncomesPage>
         children: [
           Row(
             children: [
-              Text('${l10n.page} ${_currentPage + 1} ${l10n.pageOf} ${totalPages == 0 ? 1 : totalPages}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text('صفحه ${_currentPage + 1} از ${totalPages == 0 ? 1 : totalPages}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(width: 8),
               IconButton(
                 onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
@@ -1747,7 +1814,7 @@ class _IncomesPageState extends State<IncomesPage>
           ),
           Row(
             children: [
-              Text('$totalItems ${l10n.items}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text('$totalItems مورد', style: const TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6),

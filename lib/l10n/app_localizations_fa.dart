@@ -19,6 +19,7 @@ Map<String, String> faTranslations = {
   'customerLoans': 'قرضه مشتریان',
   'supplierLoans': 'قرضه تأمین‌کنندگان',
   'noUsdLoans': 'بدون قرضه دلاری',
+  'incomesManagement': 'مدیریت عواید',
   'totalCapital': 'سرمایه کل',
   'assets': 'دارایی',
   'activeCustomers': 'مشتری فعال',

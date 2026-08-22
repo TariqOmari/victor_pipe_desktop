@@ -593,34 +593,38 @@ class _ServicesPageState extends State<ServicesPage> {
         PersianDateConverter.getEnglishDate(DateTime.now());
     String selectedCurrency = service?['currency']?.toString() ?? 'USD';
 
-    void updateTotals() {
-      double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
-      bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
-      double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
-      
-      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
-      double loadingCost = double.tryParse(loadingController.text) ?? 0;
-      double transferCost = double.tryParse(transferController.text) ?? 0;
-      double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-      double discount = double.tryParse(discountController.text) ?? 0;
-      
-      double totalPrice = totalWeightInTons * unitPrice;
-      totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
-      
-      double finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-      finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(0) : '';
-      
-      if (selectedCurrency == 'USD') {
-        equivalentController.text = finalPrice > 0 
-            ? (finalPrice * (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(0) 
-            : '';
-      } else {
-        equivalentController.text = finalPrice > 0 
-            ? (finalPrice / (exchangeRate <= 0 ? 1 : exchangeRate)).toStringAsFixed(2) 
-            : '';
-      }
-    }
+   void updateTotals() {
+  double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+  bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
+  double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
+  
+  double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+  double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+  double loadingCost = double.tryParse(loadingController.text) ?? 0;
+  double transferCost = double.tryParse(transferController.text) ?? 0;
+  double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+  double discount = double.tryParse(discountController.text) ?? 0;
+  
+  // Calculate base total price in USD
+  double totalPrice = totalWeightInTons * unitPrice;
+  totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(2) : '';
+  
+  // Convert ALL costs to USD first (since base is in USD)
+  double loadingCostUSD = loadingCost / (exchangeRate <= 0 ? 1 : exchangeRate);
+  double transferCostUSD = transferCost / (exchangeRate <= 0 ? 1 : exchangeRate);
+  double clearanceCostUSD = clearanceCost / (exchangeRate <= 0 ? 1 : exchangeRate);
+  double discountUSD = discount / (exchangeRate <= 0 ? 1 : exchangeRate);
+  
+  // Calculate final price in USD with 2 decimal precision
+  double finalPriceUSD = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
+  
+  // Show with 2 decimal places to see exact amount
+  finalPriceController.text = finalPriceUSD > 0 ? finalPriceUSD.toStringAsFixed(2) : '';
+  
+  // Calculate AFN equivalent (maintains precision)
+  double afnEquivalent = finalPriceUSD * exchangeRate;
+  equivalentController.text = afnEquivalent > 0 ? afnEquivalent.toStringAsFixed(0) : '';
+}
 
     await showDialog(
       context: context,

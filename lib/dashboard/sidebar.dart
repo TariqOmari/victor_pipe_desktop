@@ -189,7 +189,7 @@ class Sidebar extends StatelessWidget {
   context: context,
   index: 17,  // 👈 ADD THIS - points to IncomesPage
   icon: Icons.monetization_on,  // Money icon
-  title: 'عواید',  // Hardcoded Persian // or 'عواید' if you have it in localization
+  title: l10n.incomesManagement,  // ✅ Uses localization  // Hardcoded Persian // or 'عواید' if you have it in localization
   isSelected: selectedIndex == 17,
 ),
                 

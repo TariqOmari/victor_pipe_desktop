@@ -1224,31 +1224,101 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> _ensureWasteMaterialsTable(Database db) async {
+Future<void> _ensureWasteMaterialsTable(Database db) async {
+  try {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS waste_material_losses(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT UNIQUE,
+        party_details TEXT,
+        waste_type TEXT,
+        weight REAL,
+        quantity REAL,
+        value REAL,
+        currency TEXT,
+        exchange_rate REAL,
+        afn_equivalent REAL,
+        description TEXT,
+        date TEXT,
+        date_en TEXT,
+        is_sold INTEGER DEFAULT 0,
+        sell_currency TEXT,
+        sell_price REAL,
+        sell_date TEXT,
+        sell_date_en TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    // Add new columns if they don't exist (for existing databases)
     try {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS waste_material_losses(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          invoice_number TEXT UNIQUE,
-          party_details TEXT,
-          waste_type TEXT,
-          weight REAL,
-          quantity REAL,
-          value REAL,
-          currency TEXT,
-          exchange_rate REAL,
-          afn_equivalent REAL,
-          description TEXT,
-          date TEXT,
-          date_en TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''');
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN is_sold INTEGER DEFAULT 0');
     } catch (e) {
-      print('❌ Error ensuring waste_material_losses table: $e');
-      rethrow;
+      print('⚠️ is_sold column already exists: $e');
     }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_currency TEXT');
+    } catch (e) {
+      print('⚠️ sell_currency column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_price REAL');
+    } catch (e) {
+      print('⚠️ sell_price column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_date TEXT');
+    } catch (e) {
+      print('⚠️ sell_date column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_date_en TEXT');
+    } catch (e) {
+      print('⚠️ sell_date_en column already exists: $e');
+    }
+  } catch (e) {
+    print('❌ Error ensuring waste_material_losses table: $e');
+    rethrow;
   }
+}
+
+
+Future<int> updateWasteSellInfo(int id, String currency, double price, String date, String dateEn) async {
+  try {
+    final db = await database;
+    return await db.update(
+      'waste_material_losses',
+      {
+        'is_sold': 1,
+        'sell_currency': currency,
+        'sell_price': price,
+        'sell_date': date,
+        'sell_date_en': dateEn,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  } catch (e) {
+    print('❌ Error updating waste sell info: $e');
+    return -1;
+  }
+}
+
+Future<Map<String, dynamic>?> getWasteRecordById(int id) async {
+  try {
+    final db = await database;
+    final result = await db.query(
+      'waste_material_losses',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return result.isNotEmpty ? result.first : null;
+  } catch (e) {
+    print('❌ Error getting waste record by id: $e');
+    return null;
+  }
+}
+
 
   Future<void> _ensureServiceInvoicesTable(Database db) async {
     try {

@@ -1,4 +1,4 @@
-// lib/dashboard/pages/incomes_page.dart - نسخه نهایی با اصلاح ضایعات و ارز
+// lib/dashboard/pages/incomes_page.dart - نسخه نهایی با اضافه شدن قیمت فروش ضایعات به سود خالص
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -36,6 +36,7 @@ class _IncomesPageState extends State<IncomesPage>
   double _totalSales = 0;
   double _totalServices = 0;
   double _totalWastes = 0;
+  double _totalSoldWastes = 0; // NEW: total sold waste prices
   double _totalRawMaterialCost = 0;
   double _grossProfit = 0;
   double _profitMargin = 0;
@@ -74,19 +75,35 @@ class _IncomesPageState extends State<IncomesPage>
     _loadData();
   }
 
-  void _setCurrentPersianDate() {
-    final now = DateTime.now();
-    int persianYear = now.year - 621;
-    int persianMonth = now.month + 9;
-    if (persianMonth > 12) {
-      persianMonth = persianMonth - 12;
-      persianYear = persianYear + 1;
-    }
-    if (persianMonth < 1) persianMonth = 1;
-    
-    _selectedYear = persianYear;
-    _selectedMonth = persianMonth;
+void _setCurrentPersianDate() {
+  final now = DateTime.now();
+  
+  // Persian calendar: year starts on March 21
+  // Formula: PersianYear = GregorianYear - 621 (if date >= March 21)
+  //          PersianYear = GregorianYear - 622 (if date < March 21)
+  
+  int persianYear;
+  int persianMonth = now.month + 9;
+  
+  if (persianMonth > 12) {
+    persianMonth = persianMonth - 12;
+    persianYear = now.year - 621;
+  } else {
+    persianYear = now.year - 622;
   }
+  
+  // If we're before March 21, it's still the previous Persian year
+  if (now.month < 3 || (now.month == 3 && now.day < 21)) {
+    persianYear = persianYear - 1;
+  }
+  
+  // Ensure month is in valid range
+  if (persianMonth < 1) persianMonth = 1;
+  if (persianMonth > 12) persianMonth = 12;
+  
+  _selectedYear = persianYear;
+  _selectedMonth = persianMonth;
+}
 
   @override
   void dispose() {
@@ -126,7 +143,7 @@ class _IncomesPageState extends State<IncomesPage>
     final filteredWastes = _getFilteredWastes();
     final filteredExpenses = _getFilteredExpenses();
 
-    // ===== 1. TOTAL SALES (in USD) =====
+    // ===== 1. TOTAL SALES (in selected currency) =====
     _totalSales = filteredSales.fold<double>(0, (sum, sale) {
       final price = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
       if (sale['currency'] == 'AFN' && _selectedCurrency == 'USD') {
@@ -139,7 +156,7 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    // ===== 2. TOTAL SERVICES (in USD) =====
+    // ===== 2. TOTAL SERVICES (in selected currency) =====
     _totalServices = filteredServices.fold<double>(0, (sum, service) {
       final price = double.tryParse(service['final_price']?.toString() ?? '0') ?? 0;
       if (service['currency'] == 'AFN' && _selectedCurrency == 'USD') {
@@ -152,7 +169,7 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    // ===== 3. TOTAL WASTES (in USD) - FIXED =====
+    // ===== 3. TOTAL WASTES (in selected currency) =====
     _totalWastes = filteredWastes.fold<double>(0, (sum, waste) {
       final price = double.tryParse(waste['value']?.toString() ?? '0') ?? 0;
       final currency = waste['currency']?.toString() ?? 'USD';
@@ -166,7 +183,24 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    // ===== 4. TOTAL RAW MATERIAL COST (in USD) - FIXED =====
+    // ===== 3.5 TOTAL SOLD WASTES (in selected currency) - NEW =====
+    _totalSoldWastes = filteredWastes.fold<double>(0, (sum, waste) {
+      // Only add if the waste is sold (is_sold == 1)
+      if (waste['is_sold'] != 1) return sum;
+      
+      final sellPrice = double.tryParse(waste['sell_price']?.toString() ?? '0') ?? 0;
+      final sellCurrency = waste['sell_currency']?.toString() ?? 'USD';
+      final exchangeRate = double.tryParse(waste['exchange_rate']?.toString() ?? '1') ?? 1;
+      
+      if (sellCurrency == 'USD' || sellCurrency == 'دلار' || sellCurrency == '\$') {
+        return sum + sellPrice;
+      } else if (sellCurrency == 'AFN' || sellCurrency == 'افغانی') {
+        return sum + (exchangeRate > 0 ? sellPrice / exchangeRate : 0);
+      }
+      return sum + sellPrice;
+    });
+
+    // ===== 4. TOTAL RAW MATERIAL COST (in selected currency) =====
     _totalRawMaterialCost = _calculateRawMaterialCost(filteredSales);
 
     // ===== 5. GROSS PROFIT = (Sales + Services) - Raw Material Cost =====
@@ -174,7 +208,7 @@ class _IncomesPageState extends State<IncomesPage>
     _grossProfit = totalIncome - _totalRawMaterialCost;
     _profitMargin = totalIncome > 0 ? (_grossProfit / totalIncome) * 100 : 0;
 
-    // ===== 6. TOTAL DAILY EXPENSES (in USD) =====
+    // ===== 6. TOTAL DAILY EXPENSES (in selected currency) =====
     _totalExpenses = filteredExpenses.fold<double>(0, (sum, expense) {
       final price = (expense['price'] is int)
           ? (expense['price'] as int).toDouble()
@@ -190,8 +224,9 @@ class _IncomesPageState extends State<IncomesPage>
       return sum + price;
     });
 
-    // ===== 7. NET PROFIT = Gross Profit - Wastes - Daily Expenses =====
-    _netProfit = _grossProfit - _totalWastes - _totalExpenses;
+    // ===== 7. NET PROFIT = Gross Profit - Wastes - Daily Expenses + Sold Wastes =====
+    // Sold wastes are ADDED back to net profit because they are income from selling wastes
+    _netProfit = _grossProfit - _totalWastes - _totalExpenses + _totalSoldWastes;
     _netProfitMargin = totalIncome > 0 ? (_netProfit / totalIncome) * 100 : 0;
   }
 
@@ -199,17 +234,13 @@ class _IncomesPageState extends State<IncomesPage>
   double _calculateRawMaterialCost(List<Map<String, dynamic>> filteredSales) {
     double totalRawMaterialCost = 0;
 
-    // Get ALL raw materials and sum their final prices directly
     for (var material in _rawMaterials) {
-      // Get the final_price from raw_materials table
       double finalPrice = double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
       
-      // If there's no final_price, calculate from unit_price * weight
       if (finalPrice == 0) {
         double unitPrice = double.tryParse(material['unit_price']?.toString() ?? '0') ?? 0;
         double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
         
-        // Convert to tons if in kg
         String unit = material['unit']?.toString() ?? '';
         if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
           netWeight = netWeight / 1000;
@@ -217,7 +248,6 @@ class _IncomesPageState extends State<IncomesPage>
         
         finalPrice = netWeight * unitPrice;
         
-        // Add expenses (these are in AFN, but final_price is already in the currency)
         double product = double.tryParse(material['product']?.toString() ?? '0') ?? 0;
         double commission = double.tryParse(material['commission']?.toString() ?? '0') ?? 0;
         double transferCost = double.tryParse(material['transfer_cost']?.toString() ?? '0') ?? 0;
@@ -225,34 +255,23 @@ class _IncomesPageState extends State<IncomesPage>
         double ghurfedari = double.tryParse(material['ghurfedari']?.toString() ?? '0') ?? 0;
         double barchalani = double.tryParse(material['barchalani']?.toString() ?? '0') ?? 0;
         
-        // Convert AFN expenses to selected currency
         String currency = material['currency']?.toString() ?? 'AFN';
         double exchangeRate = double.tryParse(material['exchange_rate']?.toString() ?? '1') ?? 1;
         
         double totalAfnExpenses = product + commission + transferCost + miscellaneous + ghurfedari + barchalani;
         
         if (currency == 'USD' && _selectedCurrency == 'USD') {
-          // Expenses are in AFN, convert to USD
           finalPrice += (exchangeRate > 0) ? (totalAfnExpenses / exchangeRate) : 0;
         } else if (currency == 'AFN' && _selectedCurrency == 'AFN') {
-          // All in AFN
           finalPrice += totalAfnExpenses;
         } else if (currency == 'USD' && _selectedCurrency == 'AFN') {
-          // Material in USD, convert to AFN
           finalPrice = (finalPrice * exchangeRate) + totalAfnExpenses;
         } else if (currency == 'AFN' && _selectedCurrency == 'USD') {
-          // Material in AFN, convert to USD
           finalPrice = (exchangeRate > 0) ? ((finalPrice + totalAfnExpenses) / exchangeRate) : 0;
         }
       }
       
-      // Add directly to total - NO DIVISION
       totalRawMaterialCost += finalPrice;
-    }
-
-    // If we have filtered sales and raw materials, use the total
-    if (filteredSales.isNotEmpty && totalRawMaterialCost > 0) {
-      return totalRawMaterialCost;
     }
 
     return totalRawMaterialCost;
@@ -420,7 +439,6 @@ class _IncomesPageState extends State<IncomesPage>
   // ============ FORMAT FUNCTIONS - NO DECIMAL POINTS ============
   String _formatCurrency(double amount) {
     final symbol = _selectedCurrency == 'USD' ? '\$' : '؋';
-    // Round to whole number - NO DECIMALS
     final formatted = amount.toStringAsFixed(0);
     final withCommas = formatted.replaceAllMapped(
       RegExp(r'(\d)(?=(\d{3})+(?!\d))'), 
@@ -431,7 +449,6 @@ class _IncomesPageState extends State<IncomesPage>
 
   String _formatNumber(dynamic value) {
     final parsed = double.tryParse(value?.toString() ?? '0') ?? 0;
-    // Round to whole number - NO DECIMALS
     return parsed.toStringAsFixed(0).replaceAllMapped(
       RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
       (m) => '${m[1]},'
@@ -613,6 +630,7 @@ class _IncomesPageState extends State<IncomesPage>
                       _buildSummaryItem(ttf, l10n.productSales, _formatCurrency(_totalSales), PdfColors.blue),
                       _buildSummaryItem(ttf, l10n.serviceSales, _formatCurrency(_totalServices), PdfColors.green),
                       _buildSummaryItem(ttf, 'ضایعات', _formatCurrency(_totalWastes), PdfColors.purple),
+                      _buildSummaryItem(ttf, 'فروش ضایعات', _formatCurrency(_totalSoldWastes), PdfColors.teal),
                       _buildSummaryItem(ttf, l10n.rawMaterialCost, _formatCurrency(_totalRawMaterialCost), PdfColors.orange),
                       _buildSummaryItem(ttf, l10n.grossProfitLabel, _formatCurrency(_grossProfit), _grossProfit >= 0 ? PdfColors.green : PdfColors.red),
                       _buildSummaryItem(ttf, l10n.dailyExpensesLabel, _formatCurrency(_totalExpenses), PdfColors.purple),
@@ -667,6 +685,7 @@ class _IncomesPageState extends State<IncomesPage>
                       pw.SizedBox(height: 8),
                       _buildProfitRow(ttf, 'سود ناخالص', _formatCurrency(_grossProfit)),
                       _buildProfitRow(ttf, '(-) ضایعات', _formatCurrency(_totalWastes), isRed: true),
+                      _buildProfitRow(ttf, '(+) فروش ضایعات', _formatCurrency(_totalSoldWastes), isGreen: true),
                       _buildProfitRow(ttf, '(-) مخارج روزانه', _formatCurrency(_totalExpenses), isRed: true),
                       pw.Divider(),
                       _buildProfitRow(ttf, '= سود خالص', _formatCurrency(_netProfit), isBold: true, isGreen: _netProfit >= 0),
@@ -936,17 +955,32 @@ class _IncomesPageState extends State<IncomesPage>
       }
       
       final weight = double.tryParse(waste['weight']?.toString() ?? '0') ?? 0;
+      final isSold = waste['is_sold'] == 1;
+      final sellPrice = double.tryParse(waste['sell_price']?.toString() ?? '0') ?? 0;
+      final sellCurrency = waste['sell_currency']?.toString() ?? 'USD';
+      
+      double displaySellPrice = 0;
+      if (isSold && sellPrice > 0) {
+        if (_selectedCurrency == 'USD') {
+          displaySellPrice = sellCurrency == 'AFN' ? (exchangeRate > 0 ? sellPrice / exchangeRate : 0) : sellPrice;
+        } else {
+          displaySellPrice = sellCurrency == 'AFN' ? sellPrice : sellPrice * exchangeRate;
+        }
+      }
+      
       tableData.add([
         waste['invoice_number']?.toString() ?? '-',
         waste['date']?.toString() ?? '-',
         waste['waste_type']?.toString() ?? '-',
         '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 2)}',
         '${_formatNumber(displayAmount)} $currencySymbol',
+        isSold ? '✅ فروخته شده' : '⬜️ فروخته نشده',
+        isSold ? '${_formatNumber(displaySellPrice)} $currencySymbol' : '-',
       ]);
     }
 
     return pw.Table.fromTextArray(
-      headers: ['شماره', 'تاریخ', 'نوع ضایعات', 'وزن', 'مبلغ'],
+      headers: ['شماره', 'تاریخ', 'نوع ضایعات', 'وزن', 'مبلغ', 'وضعیت', 'قیمت فروش'],
       data: tableData,
       headerStyle: pw.TextStyle(
         font: font,
@@ -1526,6 +1560,14 @@ class _IncomesPageState extends State<IncomesPage>
             ),
             const SizedBox(width: 12),
             _buildIncomeCard(
+              title: 'فروش ضایعات',
+              amount: _totalSoldWastes,
+              icon: Icons.sell_outlined,
+              color: Colors.teal.shade700,
+              subtitle: 'از ضایعات فروخته شده',
+            ),
+            const SizedBox(width: 12),
+            _buildIncomeCard(
               title: 'مخارج روزانه',
               amount: _totalExpenses,
               icon: Icons.account_balance_wallet_outlined,
@@ -1587,6 +1629,16 @@ class _IncomesPageState extends State<IncomesPage>
             label: '(-) ضایعات',
             value: _formatCurrency(_totalWastes),
             color: Colors.purple.shade700,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.grey.shade200,
+          ),
+          _buildProfitDetailItem(
+            label: '(+) فروش ضایعات',
+            value: _formatCurrency(_totalSoldWastes),
+            color: Colors.teal.shade700,
           ),
           Container(
             width: 1,
@@ -1796,7 +1848,7 @@ class _IncomesPageState extends State<IncomesPage>
         border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+       mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [

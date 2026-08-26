@@ -1224,6 +1224,8 @@ class DatabaseHelper {
     }
   }
 
+// In DatabaseHelper class, add these columns to waste_material_losses table:
+
 Future<void> _ensureWasteMaterialsTable(Database db) async {
   try {
     await db.execute('''
@@ -1246,11 +1248,54 @@ Future<void> _ensureWasteMaterialsTable(Database db) async {
         sell_price REAL,
         sell_date TEXT,
         sell_date_en TEXT,
+        sell_customer_name TEXT,
+        driver_name TEXT,
+        number_plate TEXT,
+        raw_material_id INTEGER,
+        waste_unit_price REAL,
+        waste_final_price REAL,
+        waste_raw_material_pure_weight REAL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
 
-    // Add new columns if they don't exist (for existing databases)
+    // Add new columns if they don't exist
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_customer_name TEXT');
+    } catch (e) {
+      print('⚠️ sell_customer_name column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN driver_name TEXT');
+    } catch (e) {
+      print('⚠️ driver_name column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN number_plate TEXT');
+    } catch (e) {
+      print('⚠️ number_plate column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN raw_material_id INTEGER');
+    } catch (e) {
+      print('⚠️ raw_material_id column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN waste_unit_price REAL');
+    } catch (e) {
+      print('⚠️ waste_unit_price column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN waste_final_price REAL');
+    } catch (e) {
+      print('⚠️ waste_final_price column already exists: $e');
+    }
+    try {
+      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN waste_raw_material_pure_weight REAL');
+    } catch (e) {
+      print('⚠️ waste_raw_material_pure_weight column already exists: $e');
+    }
+    
     try {
       await db.execute('ALTER TABLE waste_material_losses ADD COLUMN is_sold INTEGER DEFAULT 0');
     } catch (e) {

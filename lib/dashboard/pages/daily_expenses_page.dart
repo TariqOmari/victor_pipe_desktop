@@ -109,7 +109,35 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     }
   }
 
-  // ==================== EXCEL IMPORT ====================
+  // ============================================================
+  // HELPER: Detect Currency Type
+  // ============================================================
+  bool _isUSD(String? currency) {
+    if (currency == null) return false;
+    final c = currency.trim().toLowerCase();
+    return c == 'usd' || 
+           c == 'دالر' || 
+           c == 'دلار' || 
+           c == '\$' || 
+           c.contains('usd') ||
+           c.contains('دالر') ||
+           c.contains('دلار');
+  }
+
+  bool _isAFN(String? currency) {
+    if (currency == null) return false;
+    final c = currency.trim().toLowerCase();
+    return c == 'afn' || 
+           c == 'افغانی' || 
+           c == 'افغاني' || 
+           c.contains('afn') ||
+           c.contains('افغانی') ||
+           c.contains('افغاني');
+  }
+
+  // ============================================================
+  // EXCEL IMPORT
+  // ============================================================
   Future<void> _importExcel() async {
     final l10n = AppLocalizations.of(context)!;
     
@@ -180,7 +208,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     }
   }
 
-  // ============ PERSIAN DIGIT CONVERSION ============
   String _convertPersianToEnglishDigits(String value) {
     if (value.isEmpty) return value;
     
@@ -247,7 +274,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       print('📋 Headers: $headers');
 
-      // BOTH INDEXES - Invoice Number AND Registration Number
       int invoiceNumberIndex = -1;
       int registrationNumberIndex = -1;
       int dateIndex = -1;
@@ -259,15 +285,11 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       for (int i = 0; i < headers.length; i++) {
         String h = headers[i];
-        // Check for invoice number
-        if (h.contains('شماره بل') || h.contains('شماره بل') || h.contains('invoice') || h.contains('بل')) {
+        if (h.contains('شماره بل') || h.contains('invoice') || h.contains('بل')) {
           invoiceNumberIndex = i;
-        }
-        // Check for registration number
-        else if (h.contains('شماره ثبت') || h.contains('ثبت') || h.contains('registration')) {
+        } else if (h.contains('شماره ثبت') || h.contains('ثبت') || h.contains('registration')) {
           registrationNumberIndex = i;
-        }
-        else if (h.contains('تاریخ') || h.contains('date')) {
+        } else if (h.contains('تاریخ') || h.contains('date')) {
           dateIndex = i;
         } else if (h.contains('دسته') || h.contains('گروه') || h.contains('category')) {
           categoryIndex = i;
@@ -284,7 +306,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       print('📋 InvoiceNumber Index: $invoiceNumberIndex, RegistrationNumber Index: $registrationNumberIndex');
 
-      // Check if at least one number field exists
       if (invoiceNumberIndex == -1 && registrationNumberIndex == -1) {
         return {
           'success': false,
@@ -299,7 +320,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         };
       }
 
-      // Process rows (from second row)
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
         
@@ -316,7 +336,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         if (!hasData) continue;
 
         try {
-          // Read data - BOTH fields
           String invoiceNumber = invoiceNumberIndex != -1 ? _getCellValue(row, invoiceNumberIndex) : '';
           String registrationNumber = registrationNumberIndex != -1 ? _getCellValue(row, registrationNumberIndex) : '';
           String date = _getCellValue(row, dateIndex);
@@ -328,7 +347,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
           print('📝 Row ${i+1}: Invoice="$invoiceNumber", Registration="$registrationNumber", Date="$date", Price="$priceStr"');
 
-          // At least one number field is required
           if ((invoiceNumber.isEmpty && registrationNumber.isEmpty) || date.isEmpty || priceStr.isEmpty) {
             skippedCount++;
             errors.add('ردیف ${i+1}: داده‌ها کامل نیستند');
@@ -344,15 +362,23 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             continue;
           }
 
-          // Calculate USD equivalent
+          // ============================================================
+          // ✅ FIXED: Calculate USD equivalent correctly
+          // ============================================================
           int usdEquivalent;
-          if (currency == 'دالر') {
+          if (_isAFN(currency)) {
+            // AFN → USD: divide by rate
+            usdEquivalent = exchangeRate > 0 ? (price / exchangeRate).round() : 0;
+          } else if (_isUSD(currency)) {
+            // USD → AFN: multiply by rate
             usdEquivalent = (price * exchangeRate).round();
           } else {
+            // Default: treat as AFN
             usdEquivalent = exchangeRate > 0 ? (price / exchangeRate).round() : 0;
           }
 
-          // Check for duplicate - BOTH fields
+          print('💰 USD Equivalent: $price $currency @ $exchangeRate = $usdEquivalent USD');
+
           final existing = await _db.getDailyExpenses();
           bool duplicate = false;
           String duplicateField = '';
@@ -373,7 +399,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             continue;
           }
 
-          // Build data - BOTH fields
           Map<String, dynamic> expense = {
             'invoice_number': invoiceNumber.isNotEmpty ? invoiceNumber : null,
             'registration_number': registrationNumber.isNotEmpty ? registrationNumber : null,
@@ -493,8 +518,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     );
   }
 
-  // ==================== END EXCEL IMPORT ====================
-
+  // ============================================================
+  // ADD EXPENSE - ✅ FIXED
+  // ============================================================
   Future<void> _addExpense() async {
     final l10n = AppLocalizations.of(context)!;
     _invoiceNumberController.clear();
@@ -514,10 +540,14 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       final price = double.tryParse(_priceController.text) ?? 0;
       final rate = double.tryParse(_exchangeRateController.text) ?? 1;
       
-      if (selectedCurrency == 'دالر') {
+      if (_isAFN(selectedCurrency)) {
+        // AFN → USD: divide
+        _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
+      } else if (_isUSD(selectedCurrency)) {
+        // USD → AFN: multiply
         _equivalentController.text = (price * rate).toStringAsFixed(0);
       } else {
-        _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
+        _equivalentController.text = '0';
       }
     }
     
@@ -536,24 +566,22 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             content: SizedBox(
               width: 650,
-              height: 620, // Increased height for both fields
+              height: 620,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Invoice Number Field
                     _buildTextField(
                       controller: _invoiceNumberController,
-                      label: 'شماره بل )',
+                      label: 'شماره بل',
                       icon: Icons.receipt_outlined,
                       hint: 'شماره بل را وارد کنید',
                       l10n: l10n,
                     ),
                     const SizedBox(height: 12),
-                    // Registration Number Field
                     _buildTextField(
                       controller: _registrationNumberController,
-                      label: 'شماره ثبت ',
+                      label: 'شماره ثبت',
                       icon: Icons.numbers_outlined,
                       hint: 'شماره ثبت را وارد کنید',
                       l10n: l10n,
@@ -655,11 +683,11 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                         Expanded(
                           child: _buildTextField(
                             controller: _exchangeRateController,
-                            label: selectedCurrency == 'دالر' 
-                                ? 'نرخ ارز (USD به AFN) *' 
-                                : 'نرخ ارز (AFN به USD) *',
+                            label: _isAFN(selectedCurrency) 
+                                ? 'نرخ ارز (AFN به USD) *' 
+                                : 'نرخ ارز (USD به AFN) *',
                             icon: Icons.trending_up_outlined,
-                            hint: selectedCurrency == 'دالر' ? '70' : '0.015',
+                            hint: _isAFN(selectedCurrency) ? '0.015' : '66',
                             keyboardType: TextInputType.number,
                             onChanged: (_) => setDialogState(updateEquivalent),
                             l10n: l10n,
@@ -670,9 +698,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     const SizedBox(height: 12),
                     _buildTextField(
                       controller: _equivalentController,
-                      label: selectedCurrency == 'دالر' 
-                          ? 'معادل به افغانی (AFN)' 
-                          : 'معادل به دالر (USD)',
+                      label: _isAFN(selectedCurrency) 
+                          ? 'معادل به دالر (USD)' 
+                          : 'معادل به افغانی (AFN)',
                       icon: Icons.attach_money_outlined,
                       hint: '0',
                       keyboardType: TextInputType.number,
@@ -696,7 +724,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  // At least one number field is required
                   if (_invoiceNumberController.text.isEmpty && _registrationNumberController.text.isEmpty) {
                     _showSnackBar('لطفاً شماره بل یا شماره ثبت را وارد کنید', Colors.red);
                     return;
@@ -714,12 +741,22 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   final price = double.tryParse(_priceController.text) ?? 0;
                   final rate = double.tryParse(_exchangeRateController.text) ?? 1;
                   
+                  // ============================================================
+                  // ✅ FIXED: Calculate USD equivalent correctly
+                  // ============================================================
                   int usdEquivalent;
-                  if (selectedCurrency == 'دالر') {
+                  if (_isAFN(selectedCurrency)) {
+                    // AFN → USD: divide by rate
+                    usdEquivalent = rate > 0 ? (price / rate).round() : 0;
+                  } else if (_isUSD(selectedCurrency)) {
+                    // USD → AFN: multiply by rate
                     usdEquivalent = (price * rate).round();
                   } else {
+                    // Default: treat as AFN
                     usdEquivalent = rate > 0 ? (price / rate).round() : 0;
                   }
+
+                  print('💰 SAVING: price=$price, currency=$selectedCurrency, rate=$rate, usdEquivalent=$usdEquivalent');
                   
                   final insertPayload = {
                     'invoice_number': _invoiceNumberController.text.isNotEmpty ? _invoiceNumberController.text.trim() : null,
@@ -758,6 +795,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     );
   }
 
+  // ============================================================
+  // EDIT EXPENSE - ✅ FIXED
+  // ============================================================
   void _editExpense(Map<String, dynamic> expense) {
     final l10n = AppLocalizations.of(context)!;
     _invoiceNumberController.text = expense['invoiceNumber'] ?? '';
@@ -776,10 +816,12 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       final price = double.tryParse(_priceController.text) ?? 0;
       final rate = double.tryParse(_exchangeRateController.text) ?? 1;
       
-      if (selectedCurrency == 'دالر') {
+      if (_isAFN(selectedCurrency)) {
+        _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
+      } else if (_isUSD(selectedCurrency)) {
         _equivalentController.text = (price * rate).toStringAsFixed(0);
       } else {
-        _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
+        _equivalentController.text = '0';
       }
     }
 
@@ -913,9 +955,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                         Expanded(
                           child: _buildTextField(
                             controller: _exchangeRateController,
-                            label: selectedCurrency == 'دالر' 
-                                ? 'نرخ ارز (USD به AFN) *' 
-                                : 'نرخ ارز (AFN به USD) *',
+                            label: _isAFN(selectedCurrency) 
+                                ? 'نرخ ارز (AFN به USD) *' 
+                                : 'نرخ ارز (USD به AFN) *',
                             icon: Icons.trending_up_outlined,
                             keyboardType: TextInputType.number,
                             onChanged: (_) => setDialogState(updateEquivalent),
@@ -927,9 +969,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     const SizedBox(height: 12),
                     _buildTextField(
                       controller: _equivalentController,
-                      label: selectedCurrency == 'دالر' 
-                          ? 'معادل به افغانی (AFN)' 
-                          : 'معادل به دالر (USD)',
+                      label: _isAFN(selectedCurrency) 
+                          ? 'معادل به دالر (USD)' 
+                          : 'معادل به افغانی (AFN)',
                       icon: Icons.attach_money_outlined,
                       keyboardType: TextInputType.number,
                       readOnly: true,
@@ -965,11 +1007,15 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                   final rate = double.tryParse(_exchangeRateController.text) ?? 1;
                   
                   int usdEquivalent;
-                  if (selectedCurrency == 'دالر') {
+                  if (_isAFN(selectedCurrency)) {
+                    usdEquivalent = rate > 0 ? (price / rate).round() : 0;
+                  } else if (_isUSD(selectedCurrency)) {
                     usdEquivalent = (price * rate).round();
                   } else {
                     usdEquivalent = rate > 0 ? (price / rate).round() : 0;
                   }
+
+                  print('💰 UPDATING: price=$price, currency=$selectedCurrency, rate=$rate, usdEquivalent=$usdEquivalent');
 
                   final payload = {
                     'invoice_number': _invoiceNumberController.text.isNotEmpty ? _invoiceNumberController.text.trim() : null,
@@ -1234,7 +1280,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         ),
         Row(
           children: [
-            // Import Excel Button
             OutlinedButton.icon(
               onPressed: _importExcel,
               icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
@@ -1246,7 +1291,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               ),
             ),
             const SizedBox(width: 10),
-            // Add Expense Button
             ElevatedButton.icon(
               onPressed: _addExpense,
               style: ElevatedButton.styleFrom(
@@ -1531,7 +1575,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             child: Row(
               children: [
-                // BOTH columns in table header
                 Expanded(flex: 1, child: Text('شماره بل', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text('شماره ثبت', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.persianDate, style: const TextStyle(fontWeight: FontWeight.w600))),
@@ -1577,7 +1620,6 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       ),
       child: Row(
         children: [
-          // BOTH columns in table rows
           Expanded(
             flex: 1,
             child: Text(

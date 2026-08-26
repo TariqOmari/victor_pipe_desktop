@@ -1,3 +1,7 @@
+// ============================================
+// BACK_RETURNED_SALES_PAGE - COMPLETE FIXED VERSION
+// ============================================
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -44,30 +48,27 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     return weight;
   }
 
-  // Format weight for display - ALWAYS shows in tons for weight units (for total weight)
-  String _formatWeightWithConversion(String unit, double weight) {
+  // Convert weight to KG
+  double _convertToKg(String unit, double weight) {
+    if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
+      return weight;
+    } else if (unit == 'تن' || unit == 'ton' || unit == 'Ton') {
+      return weight * 1000;
+    }
+    return weight;
+  }
+
+  // Format weight for display
+  String _formatWeight(String unit, double weight, {bool showUnit = true}) {
+    if (weight == 0) return '0';
+    String formatted = weight.toStringAsFixed(weight % 1 == 0 ? 0 : 2);
+    if (!showUnit) return formatted;
+    
     if (_isWeightUnit(unit)) {
       double tons = _convertToTons(unit, weight);
       return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
     }
-    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
-  }
-
-  // Format raw weight - ALWAYS in KG
-  String _formatRawWeight(String unit, double weight) {
-    if (_isWeightUnit(unit)) {
-      // Always show raw weight in kg
-      return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} کیلوگرم';
-    }
-    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
-  }
-
-  // Format weight per unit - ALWAYS in KG
-  String _formatWeightPerUnit(String unit, double weight) {
-    if (_isWeightUnit(unit)) {
-      return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} کیلوگرم';
-    }
-    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
+    return '$formatted $unit';
   }
 
   // Get total tons of all returned sales
@@ -75,7 +76,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     double totalTons = 0;
     for (var sale in _returnedSales) {
       String unit = sale['unit']?.toString() ?? '';
-      double weight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
+      double weight = double.tryParse(sale['returned_weight']?.toString() ?? '0') ?? 0;
       
       if (_isWeightUnit(unit)) {
         totalTons += _convertToTons(unit, weight);
@@ -93,9 +94,14 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
   double _getTotalValue() {
     double total = 0;
     for (var sale in _returnedSales) {
-      total += double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+      total += double.tryParse(sale['returned_price']?.toString() ?? '0') ?? 0;
     }
     return total;
+  }
+
+  String _formatCurrency(dynamic value) {
+    final number = value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '0') ?? 0;
+    return number.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
   }
 
   // ============ PERSIAN DIGIT CONVERSION HELPERS ============
@@ -224,7 +230,6 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
       int skippedCount = 0;
       List<String> errors = [];
 
-      // گرفتن هدرها از ردیف اول
       final headersRow = sheet.rows.first;
       List<String> headers = [];
       for (var cell in headersRow) {
@@ -235,7 +240,6 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
 
       print('📋 Headers: $headers');
 
-      // پیدا کردن ایندکس فیلدها
       int invoiceNumberIndex = -1;
       int customerNameIndex = -1;
       int customerCompanyIndex = -1;
@@ -243,7 +247,6 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
       int genderIndex = -1;
       int sizeIndex = -1;
       int thicknessIndex = -1;
-      int weightIndex = -1;
       int weightPerUnitIndex = -1;
       int unitCountIndex = -1;
       int totalWeightIndex = -1;
@@ -257,6 +260,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
       int returnReasonIndex = -1;
       int customerPhoneIndex = -1;
       int customerAddressIndex = -1;
+      int returnedCountIndex = -1;
 
       for (int i = 0; i < headers.length; i++) {
         String h = headers[i];
@@ -276,11 +280,9 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           sizeIndex = i;
         } else if (hLower.contains('ضخامت') || hLower.contains('thickness')) {
           thicknessIndex = i;
-        } else if (hLower.contains('وزن') && !hLower.contains('فی') && !hLower.contains('کل') || hLower.contains('weight')) {
-          weightIndex = i;
         } else if (hLower.contains('وزن فی') || hLower.contains('weight per unit')) {
           weightPerUnitIndex = i;
-        } else if (hLower.contains('تعداد') || hLower.contains('unit count')) {
+        } else if (hLower.contains('تعداد') || hLower.contains('unit count') || hLower.contains('خاده')) {
           unitCountIndex = i;
         } else if (hLower.contains('وزن کل') || hLower.contains('total weight')) {
           totalWeightIndex = i;
@@ -304,19 +306,20 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           customerPhoneIndex = i;
         } else if (hLower.contains('آدرس') || hLower.contains('address')) {
           customerAddressIndex = i;
+        } else if (hLower.contains('تعداد برگشت') || hLower.contains('returned count')) {
+          returnedCountIndex = i;
         }
       }
 
-      print('📋 Invoice: $invoiceNumberIndex, Customer: $customerNameIndex, Return Date: $returnDateIndex');
+      print('📋 Invoice: $invoiceNumberIndex, Customer: $customerNameIndex');
 
-      if (invoiceNumberIndex == -1 || customerNameIndex == -1 || returnDateIndex == -1) {
+      if (invoiceNumberIndex == -1 || customerNameIndex == -1) {
         return {
           'success': false,
-          'message': 'فیلدهای مورد نیاز پیدا نشد: شماره فاکتور، مشتری، تاریخ برگشت'
+          'message': 'فیلدهای مورد نیاز پیدا نشد: شماره فاکتور، مشتری'
         };
       }
 
-      // پردازش ردیف‌ها
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
         
@@ -335,100 +338,104 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         try {
           String invoiceNumber = _getCellValueDirect(row, invoiceNumberIndex);
           String customerName = _getCellValueDirect(row, customerNameIndex);
-          String returnDate = _getCellValueDirect(row, returnDateIndex);
           
-          String customerCompany = customerCompanyIndex != -1 ? _getCellValueDirect(row, customerCompanyIndex) : '';
-          String productName = productNameIndex != -1 ? _getCellValueDirect(row, productNameIndex) : '';
-          String gender = genderIndex != -1 ? _getCellValueDirect(row, genderIndex) : '';
-          String size = sizeIndex != -1 ? _getCellValueDirect(row, sizeIndex) : '';
-          String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
-          String weightStr = weightIndex != -1 ? _getCellValueDirect(row, weightIndex) : '0';
-          String weightPerUnitStr = weightPerUnitIndex != -1 ? _getCellValueDirect(row, weightPerUnitIndex) : '0';
-          String unitCountStr = unitCountIndex != -1 ? _getCellValueDirect(row, unitCountIndex) : '0';
-          String totalWeightStr = totalWeightIndex != -1 ? _getCellValueDirect(row, totalWeightIndex) : '0';
-          String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
-          String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
-          String totalPriceStr = totalPriceIndex != -1 ? _getCellValueDirect(row, totalPriceIndex) : '0';
-          String discountStr = discountIndex != -1 ? _getCellValueDirect(row, discountIndex) : '0';
-          String finalPriceStr = finalPriceIndex != -1 ? _getCellValueDirect(row, finalPriceIndex) : '0';
-          String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'USD';
-          String returnReason = returnReasonIndex != -1 ? _getCellValueDirect(row, returnReasonIndex) : '';
-          String phone = customerPhoneIndex != -1 ? _getCellValueDirect(row, customerPhoneIndex) : '';
-          String address = customerAddressIndex != -1 ? _getCellValueDirect(row, customerAddressIndex) : '';
-
-          // پاک کردن علامت‌های اضافی
-          weightStr = weightStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          weightPerUnitStr = weightPerUnitStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          unitCountStr = unitCountStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          totalWeightStr = totalWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          unitPriceStr = unitPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          totalPriceStr = totalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          discountStr = discountStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          finalPriceStr = finalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
-
-          print('📝 Row ${i+1}: Invoice="$invoiceNumber", Customer="$customerName", Return Date="$returnDate"');
-
-          if (invoiceNumber.isEmpty || customerName.isEmpty || returnDate.isEmpty) {
+          if (invoiceNumber.isEmpty || customerName.isEmpty) {
             skippedCount++;
             errors.add('ردیف ' + (i+1).toString() + ': فیلدهای مورد نیاز کامل نیستند');
             continue;
           }
 
-          double weight = _parseNumber(weightStr);
-          double weightPerUnit = _parseNumber(weightPerUnitStr);
-          double unitCount = _parseNumber(unitCountStr);
-          double totalWeight = _parseNumber(totalWeightStr);
-          double unitPrice = _parseNumber(unitPriceStr);
-          double totalPrice = _parseNumber(totalPriceStr);
-          double discount = _parseNumber(discountStr);
-          double finalPrice = _parseNumber(finalPriceStr);
-
-          // اگر وزن کل خالی بود محاسبه کن
-          if (totalWeight <= 0 && weightPerUnit > 0 && unitCount > 0) {
-            totalWeight = weightPerUnit * unitCount;
+          // Get the existing sale
+          final existingSale = await _db.getSalesInvoiceByNumber(invoiceNumber);
+          if (existingSale == null) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': فاکتور "' + invoiceNumber + '" در سیستم وجود ندارد');
+            continue;
           }
 
-          // تاریخ برگشت میلادی
+          // Check if already returned
+          if ((existingSale['is_back_returned'] ?? 0) == 1) {
+            skippedCount++;
+            errors.add('ردیف ' + (i+1).toString() + ': فاکتور "' + invoiceNumber + '" قبلاً برگشت داده شده است');
+            continue;
+          }
+
+          String returnDate = returnDateIndex != -1 ? _getCellValueDirect(row, returnDateIndex) : PersianDateConverter.getCurrentPersianDate();
+          String returnReason = returnReasonIndex != -1 ? _getCellValueDirect(row, returnReasonIndex) : '';
           String returnDateEn = PersianDateConverter.getEnglishDate(DateTime.now());
 
-          // ساخت داده
-          Map<String, dynamic> sale = {
-            'invoice_number': invoiceNumber,
-            'customer_name': customerName,
-            'customer_phone': phone,
-            'customer_address': address,
-            'customer_company': customerCompany,
-            'product_name': productName,
-            'gender': gender,
-            'size': size,
-            'thickness': thickness,
-            'weight': weight.toString(),
-            'weight_per_unit': weightPerUnit.toString(),
-            'unit_count': unitCount.toString(),
-            'total_weight': totalWeight.toString(),
-            'unit': unit.isNotEmpty ? unit : 'کیلوگرم',
-            'unit_price': unitPrice,
-            'total_price': totalPrice > 0 ? totalPrice : finalPrice,
-            'currency': currency == 'دلار' || currency == '\$' ? 'USD' : 'AFN',
-            'discount': discount,
-            'final_price': finalPrice > 0 ? finalPrice : totalPrice,
+          // Get original values
+          String unit = existingSale['unit']?.toString() ?? 'کیلوگرم';
+          double originalUnitCount = double.tryParse(existingSale['unit_count']?.toString() ?? '0') ?? 0;
+          double weightPerUnit = double.tryParse(existingSale['weight_per_unit']?.toString() ?? '0') ?? 0;
+          double originalTotalWeight = double.tryParse(existingSale['total_weight']?.toString() ?? '0') ?? 0;
+          double originalFinalPrice = double.tryParse(existingSale['final_price']?.toString() ?? '0') ?? 0;
+          double originalUnitPrice = double.tryParse(existingSale['unit_price']?.toString() ?? '0') ?? 0;
+
+          // Get returned count (how many units to return)
+          double returnedCount = originalUnitCount;
+          if (returnedCountIndex != -1) {
+            String returnedCountStr = _getCellValueDirect(row, returnedCountIndex);
+            double parsed = _parseNumber(returnedCountStr);
+            if (parsed > 0 && parsed <= originalUnitCount) {
+              returnedCount = parsed;
+            }
+          }
+
+          // Calculate returned weight and price based on returned count
+          double weightPerUnitInKg = _convertToKg(unit, weightPerUnit);
+          double returnedWeightKg = weightPerUnitInKg * returnedCount;
+          double pricePerUnit = originalUnitCount > 0 ? originalFinalPrice / originalUnitCount : 0;
+          double returnedPrice = pricePerUnit * returnedCount;
+
+          // Remaining counts
+          double remainingCount = originalUnitCount - returnedCount;
+          double remainingWeightKg = weightPerUnitInKg * remainingCount;
+          double remainingPrice = pricePerUnit * remainingCount;
+
+          // Update the original sale with remaining values
+          final updatePayload = {
+            'unit_count': remainingCount > 0 ? remainingCount.toString() : '0',
+            'total_weight': remainingWeightKg > 0 ? remainingWeightKg.toString() : '0',
+            'final_price': remainingPrice > 0 ? remainingPrice : 0,
             'is_back_returned': 1,
             'back_return_reason': returnReason,
             'back_return_date': returnDate,
             'back_return_date_en': returnDateEn,
+            'returned_count': returnedCount,
+            'returned_weight': returnedWeightKg,
+            'returned_price': returnedPrice,
+            'original_unit_count': originalUnitCount,
+            'original_total_weight': originalTotalWeight,
+            'original_final_price': originalFinalPrice,
           };
 
-          print('📦 Inserting: ${sale['invoice_number']}');
-          
-          int result = await _db.insertSalesInvoice(sale);
-          if (result != -1) {
-            successCount++;
-            importedData.add(sale);
-            print('✅ Row ${i+1} imported!');
-          } else {
+          // Update the sale
+          final result = await _db.updateSalesInvoice(existingSale['id'], updatePayload);
+          if (result == -1) {
             skippedCount++;
-            errors.add('ردیف ' + (i+1).toString() + ': خطا در ذخیره‌سازی');
+            errors.add('ردیف ' + (i+1).toString() + ': خطا در به‌روزرسانی فاکتور');
+            continue;
           }
+
+          // If product exists, update stock
+          final productId = existingSale['produced_product_id'];
+          if (productId != null && returnedWeightKg > 0) {
+            await _db.addProductStock(productId, returnedWeightKg, 'kg');
+          }
+
+          successCount++;
+          importedData.add({
+            ...existingSale,
+            ...updatePayload,
+            'returned_count': returnedCount,
+            'returned_weight': returnedWeightKg,
+            'returned_price': returnedPrice,
+            'remaining_count': remainingCount,
+            'remaining_weight': remainingWeightKg,
+            'remaining_price': remainingPrice,
+          });
+          print('✅ Row ${i+1} imported! Returned: $returnedCount units, ${returnedWeightKg}kg');
 
         } catch (e) {
           skippedCount++;
@@ -536,7 +543,11 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     setState(() => _isLoading = true);
     try {
       final allSales = await _db.getSalesInvoices();
+      // Filter only returned sales
       final returnedSales = allSales.where((sale) => (sale['is_back_returned'] ?? 0) == 1).toList();
+      
+      print('📊 Loaded ${returnedSales.length} returned sales out of ${allSales.length} total');
+      
       if (!mounted) return;
       setState(() {
         _allSales = allSales;
@@ -544,6 +555,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ Error loading data: $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
       final l10n = AppLocalizations.of(context)!;
@@ -551,149 +563,536 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     }
   }
 
+  // ============================================
+  // ADD RETURN DIALOG - COMPLETE WITH ALL FIELDS
+  // ============================================
   Future<void> _showAddReturnedSaleDialog() async {
     final l10n = AppLocalizations.of(context)!;
     final reasonController = TextEditingController();
     final dateController = TextEditingController(text: PersianDateConverter.getCurrentPersianDate());
     String selectedEnglishDate = PersianDateConverter.getEnglishDate(DateTime.now());
     Map<String, dynamic>? selectedSale;
+    double returnedCount = 0;
+    double maxCount = 0;
+    
+    // Get available sales (not returned yet)
     final availableSales = _allSales.where((sale) => (sale['is_back_returned'] ?? 0) != 1).toList();
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          // Update max count when sale changes
+          if (selectedSale != null) {
+            maxCount = double.tryParse(selectedSale!['unit_count']?.toString() ?? '0') ?? 0;
+            if (returnedCount > maxCount) {
+              returnedCount = maxCount;
+            }
+          }
+
+          // Calculate values based on returned count
+          double weightPerUnit = 0;
+          double originalTotalWeight = 0;
+          double originalFinalPrice = 0;
+          double originalUnitCount = 0;
+          String unit = 'کیلوگرم';
+          String productName = '';
+          String customerName = '';
+          String company = '';
+          String invoiceNumber = '';
+          String gender = '';
+          String size = '';
+          String thickness = '';
+          String weightPerUnitStr = '';
+          String unitCountStr = '';
+          String totalWeightStr = '';
+          String unitPriceStr = '';
+          String totalPriceStr = '';
+          String finalPriceStr = '';
+          String currency = 'USD';
+          String customerPhone = '';
+          String customerAddress = '';
+
+          if (selectedSale != null) {
+            unit = selectedSale!['unit']?.toString() ?? 'کیلوگرم';
+            weightPerUnit = double.tryParse(selectedSale!['weight_per_unit']?.toString() ?? '0') ?? 0;
+            originalTotalWeight = double.tryParse(selectedSale!['total_weight']?.toString() ?? '0') ?? 0;
+            originalFinalPrice = double.tryParse(selectedSale!['final_price']?.toString() ?? '0') ?? 0;
+            originalUnitCount = double.tryParse(selectedSale!['unit_count']?.toString() ?? '0') ?? 0;
+            productName = selectedSale!['product_name']?.toString() ?? '-';
+            customerName = selectedSale!['customer_name']?.toString() ?? '-';
+            company = selectedSale!['customer_company']?.toString() ?? '-';
+            invoiceNumber = selectedSale!['invoice_number']?.toString() ?? '-';
+            gender = selectedSale!['gender']?.toString() ?? '-';
+            size = selectedSale!['size']?.toString() ?? '-';
+            thickness = selectedSale!['thickness']?.toString() ?? '-';
+            weightPerUnitStr = selectedSale!['weight_per_unit']?.toString() ?? '0';
+            unitCountStr = selectedSale!['unit_count']?.toString() ?? '0';
+            totalWeightStr = selectedSale!['total_weight']?.toString() ?? '0';
+            unitPriceStr = selectedSale!['unit_price']?.toString() ?? '0';
+            totalPriceStr = selectedSale!['total_price']?.toString() ?? '0';
+            finalPriceStr = selectedSale!['final_price']?.toString() ?? '0';
+            currency = selectedSale!['currency']?.toString() ?? 'USD';
+            customerPhone = selectedSale!['customer_phone']?.toString() ?? '';
+            customerAddress = selectedSale!['customer_address']?.toString() ?? '';
+          }
+
+          // Calculate returned values
+          double weightPerUnitInKg = _convertToKg(unit, weightPerUnit);
+          double returnedWeightKg = weightPerUnitInKg * returnedCount;
+          double returnedWeightTons = _convertToTons(unit, returnedWeightKg);
+          double pricePerUnit = originalUnitCount > 0 ? originalFinalPrice / originalUnitCount : 0;
+          double returnedPrice = pricePerUnit * returnedCount;
+
+          // Remaining values
+          double remainingCount = originalUnitCount - returnedCount;
+          double remainingWeightKg = weightPerUnitInKg * remainingCount;
+          double remainingWeightTons = _convertToTons(unit, remainingWeightKg);
+          double remainingPrice = pricePerUnit * remainingCount;
+
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              title: Text(l10n.addReturnedSale, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A))),
+              title: Text(
+                l10n.addReturnedSale,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF1A1A1A)),
+              ),
               content: SizedBox(
-                width: 720,
+                width: 750,
+                height: MediaQuery.of(context).size.height * 0.75,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Select Sale
                       DropdownButtonFormField<Map<String, dynamic>>(
                         value: selectedSale,
-                        decoration: InputDecoration(labelText: l10n.selectSaleInvoice, border: const OutlineInputBorder()),
+                        decoration: InputDecoration(
+                          labelText: l10n.selectSaleInvoice,
+                          border: const OutlineInputBorder(),
+                        ),
                         items: availableSales.map((sale) {
                           return DropdownMenuItem<Map<String, dynamic>>(
                             value: sale,
-                            child: Text('${sale['invoice_number'] ?? '-'} | ${sale['customer_name'] ?? '-'} | ${sale['product_name'] ?? '-'}'),
+                            child: Text(
+                              '${sale['invoice_number'] ?? '-'} | ${sale['customer_name'] ?? '-'} | ${sale['product_name'] ?? '-'}',
+                            ),
                           );
                         }).toList(),
                         onChanged: (sale) {
                           setDialogState(() {
                             selectedSale = sale;
+                            returnedCount = 0;
+                            if (sale != null) {
+                              maxCount = double.tryParse(sale!['unit_count']?.toString() ?? '0') ?? 0;
+                            }
                           });
                         },
                       ),
                       const SizedBox(height: 16),
+
+                      // ALL SALE DETAILS - ZERO TO HERO
                       if (selectedSale != null) ...[
-                        _buildReadOnlyField(l10n.invoiceNumberLabel, selectedSale!['invoice_number']?.toString() ?? '-', l10n),
-                        const SizedBox(height: 12),
-                        _buildReadOnlyField(l10n.customerName, selectedSale!['customer_name']?.toString() ?? '-', l10n),
-                        const SizedBox(height: 12),
-                        _buildReadOnlyField(l10n.company, selectedSale!['customer_company']?.toString() ?? '-', l10n),
-                        const SizedBox(height: 12),
-                        _buildReadOnlyField(l10n.productName, selectedSale!['product_name']?.toString() ?? '-', l10n),
-                        const SizedBox(height: 12),
-                        _buildReadOnlyField(
-                          'وزن فی خاده', 
-                          _formatWeightPerUnit(
-                            selectedSale!['unit']?.toString() ?? '',
-                            double.tryParse(selectedSale!['weight_per_unit']?.toString() ?? '0') ?? 0
-                          ), 
-                          l10n
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '📋 اطلاعات کامل فاکتور',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFCB001D)),
+                              ),
+                              const SizedBox(height: 12),
+                              
+                              // Row 1: Invoice & Customer
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildReadOnlyField('شماره فاکتور', invoiceNumber, l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.customerName, customerName, l10n),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              // Row 2: Company & Phone
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.company, company, l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.phoneNumber, customerPhone, l10n),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              // Row 3: Address
+                              _buildReadOnlyField(l10n.address, customerAddress, l10n),
+                              const SizedBox(height: 8),
+                              
+                              const Divider(),
+                              const SizedBox(height: 8),
+                              
+                              // Row 4: Product Details
+                              const Text(
+                                '📦 جزئیات محصول',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.productName, productName, l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.gender, gender, l10n),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.size, size, l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField(l10n.thickness, thickness, l10n),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              // Row 5: Weight Details
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildReadOnlyField('وزن فی خاده (kg)', weightPerUnitStr, l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField('تعداد خاده', unitCountStr, l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField('وزن کل', _formatWeight(unit, originalTotalWeight), l10n),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              // Row 6: Price Details
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildReadOnlyField('قیمت واحد', _formatCurrency(unitPriceStr), l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField('قیمت کل', _formatCurrency(totalPriceStr), l10n),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildReadOnlyField('قیمت نهایی', '${_formatCurrency(finalPriceStr)} $currency', l10n),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Return Count Input
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '🔄 تعداد برگشت (خاده)',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      initialValue: returnedCount > 0 ? returnedCount.toString() : '',
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        labelText: 'تعداد خاده برای برگشت',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        suffixText: '(حداکثر ${maxCount.toStringAsFixed(maxCount % 1 == 0 ? 0 : 2)})',
+                                      ),
+                                      onChanged: (value) {
+                                        setDialogState(() {
+                                          double val = _parseNumber(value);
+                                          if (val < 0) val = 0;
+                                          if (val > maxCount) val = maxCount;
+                                          returnedCount = val;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.grey.shade300),
+                                    ),
+                                    child: Text(
+                                      'از ${originalUnitCount.toStringAsFixed(originalUnitCount % 1 == 0 ? 0 : 2)}',
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.green.shade200),
+                                      ),
+                                      child: Text(
+                                        '✅ باقی‌مانده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)} خاده',
+                                        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.green),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.red.shade200),
+                                      ),
+                                      child: Text(
+                                        '🔴 برگشت: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)} خاده',
+                                        style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.red),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Return Details with Calculations
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '📊 محاسبات برگشت',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFCB001D)),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.shade50,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: Colors.red.shade200),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('🔄 برگشت', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                                          Text('خاده: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)}', style: const TextStyle(fontSize: 12)),
+                                          Text('وزن: ${_formatWeight(unit, returnedWeightKg)}', style: const TextStyle(fontSize: 12)),
+                                          Text('قیمت: ${_formatCurrency(returnedPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: Colors.green.shade200),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('✅ باقی‌مانده', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                          Text('خاده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)}', style: const TextStyle(fontSize: 12)),
+                                          Text('وزن: ${_formatWeight(unit, remainingWeightKg)}', style: const TextStyle(fontSize: 12)),
+                                          Text('قیمت: ${_formatCurrency(remainingPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Return Reason
+                        TextField(
+                          controller: reasonController,
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            labelText: l10n.returnReason,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        _buildReadOnlyField(
-                          'وزن کل', 
-                          _formatWeightWithConversion(
-                            selectedSale!['unit']?.toString() ?? '',
-                            double.tryParse(selectedSale!['total_weight']?.toString() ?? '0') ?? 0
-                          ), 
-                          l10n
+
+                        // Return Date
+                        TextField(
+                          controller: dateController,
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: l10n.returnDatePersian,
+                            prefixIcon: const Icon(Icons.date_range_outlined, color: Color(0xFFCB001D)),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2035),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                dateController.text = PersianDateConverter.gregorianToJalali(picked);
+                                selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
+                              });
+                            }
+                          },
                         ),
-                        const SizedBox(height: 12),
-                        _buildReadOnlyField(l10n.finalPrice, _formatCurrency(selectedSale!['final_price']), l10n),
-                        const SizedBox(height: 12),
                       ],
-                      TextField(
-                        controller: reasonController,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          labelText: l10n.returnReason,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: dateController,
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: l10n.returnDatePersian,
-                          prefixIcon: const Icon(Icons.date_range_outlined, color: Color(0xFFCB001D)),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2035),
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              dateController.text = PersianDateConverter.gregorianToJalali(picked);
-                              selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
-                            });
-                          }
-                        },
-                      ),
                     ],
                   ),
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey))),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(l10n.cancel, style: const TextStyle(color: Colors.grey)),
+                ),
                 ElevatedButton(
-                  onPressed: selectedSale == null || reasonController.text.trim().isEmpty
+                  onPressed: selectedSale == null || returnedCount <= 0 || reasonController.text.trim().isEmpty
                       ? null
                       : () async {
-                          final productId = selectedSale!['produced_product_id'];
-                          final totalWeight = double.tryParse(selectedSale!['total_weight']?.toString() ?? '0') ?? 0;
-                          final unit = selectedSale!['unit']?.toString() ?? '';
+                          // Get original values
+                          final originalUnitCount = double.tryParse(selectedSale!['unit_count']?.toString() ?? '0') ?? 0;
+                          final originalTotalWeight = double.tryParse(selectedSale!['total_weight']?.toString() ?? '0') ?? 0;
+                          final originalFinalPrice = double.tryParse(selectedSale!['final_price']?.toString() ?? '0') ?? 0;
+                          final unit = selectedSale!['unit']?.toString() ?? 'کیلوگرم';
+                          final weightPerUnit = double.tryParse(selectedSale!['weight_per_unit']?.toString() ?? '0') ?? 0;
                           
-                          if (productId != null && totalWeight > 0) {
-                            final stockRestored = await _db.addProductStock(
-                              productId,
-                              totalWeight,
-                              unit
-                            );
-                            if (!stockRestored) {
-                              _showSnackbar('⚠️ خطا در بازگرداندن موجودی به انبار', Colors.orange);
-                            } else {
-                              _showSnackbar('✅ موجودی به انبار بازگردانده شد', Colors.green);
-                            }
-                          }
+                          // Calculate returned values
+                          double weightPerUnitInKg = _convertToKg(unit, weightPerUnit);
+                          double returnedWeightKg = weightPerUnitInKg * returnedCount;
+                          double pricePerUnit = originalUnitCount > 0 ? originalFinalPrice / originalUnitCount : 0;
+                          double returnedPrice = pricePerUnit * returnedCount;
+                          
+                          // Remaining values
+                          double remainingCount = originalUnitCount - returnedCount;
+                          double remainingWeightKg = weightPerUnitInKg * remainingCount;
+                          double remainingPrice = pricePerUnit * remainingCount;
 
-                          final payload = {
+                          // Product ID for stock
+                          final productId = selectedSale!['produced_product_id'];
+
+                          // Update the sale with partial return
+                          final updatePayload = {
+                            'unit_count': remainingCount > 0 ? remainingCount.toString() : '0',
+                            'total_weight': remainingWeightKg > 0 ? remainingWeightKg.toString() : '0',
+                            'final_price': remainingPrice > 0 ? remainingPrice : 0,
                             'is_back_returned': 1,
                             'back_return_reason': reasonController.text.trim(),
                             'back_return_date': dateController.text.trim(),
                             'back_return_date_en': selectedEnglishDate,
+                            'returned_count': returnedCount,
+                            'returned_weight': returnedWeightKg,
+                            'returned_price': returnedPrice,
+                            'original_unit_count': originalUnitCount,
+                            'original_total_weight': originalTotalWeight,
+                            'original_final_price': originalFinalPrice,
                           };
-                          final result = await _db.updateSalesInvoice(selectedSale!['id'], payload);
+
+                          print('📝 Updating sale with payload: $updatePayload');
+
+                          final result = await _db.updateSalesInvoice(selectedSale!['id'], updatePayload);
                           if (result == -1) {
                             _showSnackbar(l10n.errorSavingReturnedSale, Colors.red);
                             return;
                           }
+
+                          // Restore stock for returned items
+                          if (productId != null && returnedWeightKg > 0) {
+                            final stockRestored = await _db.addProductStock(
+                              productId,
+                              returnedWeightKg,
+                              'kg'
+                            );
+                            if (!stockRestored) {
+                              _showSnackbar('⚠️ خطا در بازگرداندن موجودی به انبار', Colors.orange);
+                            } else {
+                              _showSnackbar('✅ ${returnedCount} خاده (${_formatWeight(unit, returnedWeightKg, showUnit: false)} تن) به انبار بازگردانده شد', Colors.green);
+                            }
+                          }
+
+                          // IMPORTANT: Reload data to refresh the table
                           await _loadData();
+                          
                           Navigator.pop(context);
-                          _showSnackbar(l10n.returnedSaleSavedSuccess, Colors.green);
+                          _showSnackbar(
+                            '✅ ${returnedCount} خاده برگشت داده شد. باقی‌مانده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)} خاده',
+                            Colors.green
+                          );
                         },
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCB001D),
+                    foregroundColor: Colors.white,
+                  ),
                   child: Text(l10n.saveReturnedSale),
                 ),
               ],
@@ -710,11 +1109,18 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
       controller: TextEditingController(text: value),
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        labelStyle: const TextStyle(fontSize: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        isDense: true,
       ),
+      style: const TextStyle(fontSize: 12),
     );
   }
 
+  // ============================================
+  // PDF GENERATION - FIXED
+  // ============================================
   Future<void> _generatePdfReturnInvoice(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) async {
     late final pw.Font ttf;
     try {
@@ -725,16 +1131,11 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     }
 
     String unit = invoice['unit']?.toString() ?? '';
-    double weightRaw = double.tryParse(invoice['weight']?.toString() ?? '0') ?? 0;
-    double weightPerUnitRaw = double.tryParse(invoice['weight_per_unit']?.toString() ?? '0') ?? 0;
-    double totalWeightRaw = double.tryParse(invoice['total_weight']?.toString() ?? '0') ?? 0;
-    
-    // وزن - always in kg
-    String displayWeight = _formatRawWeight(unit, weightRaw);
-    // وزن فی خاده - always in kg
-    String displayWeightPerUnit = _formatWeightPerUnit(unit, weightPerUnitRaw);
-    // وزن کل - always in tons
-    String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
+    double returnedCount = double.tryParse(invoice['returned_count']?.toString() ?? '0') ?? 0;
+    double returnedWeight = double.tryParse(invoice['returned_weight']?.toString() ?? '0') ?? 0;
+    double returnedPrice = double.tryParse(invoice['returned_price']?.toString() ?? '0') ?? 0;
+    double originalCount = double.tryParse(invoice['original_unit_count']?.toString() ?? '0') ?? 0;
+    double remainingCount = originalCount - returnedCount;
 
     final pdf = pw.Document();
     pdf.addPage(
@@ -747,55 +1148,107 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                    pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold)),
-                    pw.SizedBox(height: 4),
-                    pw.Text(l10n.returnReceipt, style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
-                  ]),
-                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: pw.BoxDecoration(color: PdfColors.red, borderRadius: pw.BorderRadius.circular(6)),
-                      child: pw.Text('RETURN', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(l10n.companyName, style: pw.TextStyle(font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                        pw.SizedBox(height: 4),
+                        pw.Text('رسید برگشت', style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
+                      ],
                     ),
-                    pw.SizedBox(height: 6),
-                    pw.Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('${l10n.returnDate}: ${invoice['back_return_date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                    pw.Text('Date (EN): ${invoice['back_return_date_en'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                  ]),
-                ]),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.red,
+                            borderRadius: pw.BorderRadius.circular(6),
+                          ),
+                          child: pw.Text(
+                            'RETURN',
+                            style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                          ),
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text('${l10n.invoiceNumberLabel}: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('${l10n.returnDate}: ${invoice['back_return_date'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                      ],
+                    ),
+                  ],
+                ),
                 pw.SizedBox(height: 16),
+                
+                // Customer Info
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(8)),
-                  child: pw.Row(children: [
-                    pw.Expanded(child: pw.Text('${l10n.customer}: ${invoice['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('${l10n.company}: ${invoice['customer_company'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                    pw.Expanded(child: pw.Text('${l10n.address}: ${invoice['customer_address'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
-                  ]),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: pw.BorderRadius.circular(8),
+                  ),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(child: pw.Text('${l10n.customer}: ${invoice['customer_name'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                      pw.Expanded(child: pw.Text('${l10n.company}: ${invoice['customer_company'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                      pw.Expanded(child: pw.Text('${l10n.address}: ${invoice['customer_address'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10))),
+                    ],
+                  ),
                 ),
                 pw.SizedBox(height: 12),
+                
+                // Return Details - FIXED: No withOpacity
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: pw.BorderRadius.circular(8),
+                    color: PdfColor.fromInt(0x0DCB001D), // Red with ~5% opacity
+                  ),
+                  child: pw.Column(
+                    children: [
+                      pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+                        children: [
+                          pw.Text('تعداد برگشت: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                          pw.Text('وزن برگشت: ${_formatWeight(unit, returnedWeight)}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                          pw.Text('قیمت برگشت: ${_formatCurrency(returnedPrice)}', style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                        ],
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+                        children: [
+                          pw.Text('کل خاده: ${originalCount.toStringAsFixed(originalCount % 1 == 0 ? 0 : 2)}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
+                          pw.Text('باقی‌مانده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.green700)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                pw.SizedBox(height: 12),
+                
+                // Return Reason
                 pw.Text('${l10n.returnReason}: ${invoice['back_return_reason'] ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10)),
                 pw.SizedBox(height: 12),
+                
+                // Product Table
                 pw.Table.fromTextArray(
                   headers: [
-                    l10n.customerName, l10n.company, l10n.productName, 
-                    l10n.gender, l10n.size, 'وزن (kg)', 
-                    'وزن فی خاده (kg)', 'تعداد خاده', 'وزن کل (ton)', 
-                    l10n.finalPrice
+                    l10n.productName, l10n.gender, l10n.size, l10n.thickness,
+                    'وزن فی (kg)', 'تعداد خاده', 'وزن کل', l10n.finalPrice
                   ],
                   data: [
                     [
-                      invoice['customer_name'] ?? '-',
-                      invoice['customer_company'] ?? '-',
                       invoice['product_name'] ?? '-',
                       invoice['gender'] ?? '-',
                       invoice['size'] ?? '-',
-                      displayWeight,
-                      displayWeightPerUnit,
+                      invoice['thickness'] ?? '-',
+                      _formatWeight(unit, double.tryParse(invoice['weight_per_unit']?.toString() ?? '0') ?? 0, showUnit: true),
                       invoice['unit_count']?.toString() ?? '-',
-                      displayTotalWeight,
+                      _formatWeight(unit, double.tryParse(invoice['total_weight']?.toString() ?? '0') ?? 0, showUnit: true),
                       '${_formatCurrency(invoice['final_price'])} ${invoice['currency'] ?? ''}',
                     ],
                   ],
@@ -805,10 +1258,13 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                   cellAlignment: pw.Alignment.center,
                 ),
                 pw.Spacer(),
-                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                  pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                ]),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(l10n.signature, style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                    pw.Text('${l10n.printDate}: ${DateTime.now().year}/${DateTime.now().month}/${DateTime.now().day}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                  ],
+                ),
               ],
             ),
           );
@@ -817,11 +1273,6 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
 
     await Printing.layoutPdf(onLayout: (format) async => pdf.save());
-  }
-
-  String _formatCurrency(dynamic value) {
-    final number = value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '0') ?? 0;
-    return number.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
   }
 
   void _showSnackbar(String message, Color color) {
@@ -835,6 +1286,9 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
+  // ============================================
+  // UI BUILD METHODS
+  // ============================================
   Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -870,7 +1324,11 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
               onPressed: _showAddReturnedSaleDialog,
               icon: const Icon(Icons.add_circle_outline),
               label: Text(l10n.addReturnedSale),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCB001D), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -886,7 +1344,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     double totalUSD = 0;
     
     for (var sale in _returnedSales) {
-      double price = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+      double price = double.tryParse(sale['returned_price']?.toString() ?? '0') ?? 0;
       String currency = sale['currency']?.toString() ?? 'USD';
       
       if (currency == 'USD') {
@@ -962,7 +1420,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'مجموع وزن (تن)',
+                        'مجموع وزن برگشت (تن)',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 4),
@@ -1002,7 +1460,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'مجموع ارزش',
+                        'مجموع ارزش برگشت',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 4),
@@ -1052,7 +1510,11 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
   Widget _buildFilterAndSearch(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
+      ),
       child: Row(children: [
         Expanded(
           child: TextField(
@@ -1094,30 +1556,44 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
               child: Row(
                 children: [
                   _buildHeaderCell('شماره', 80),
-                  _buildHeaderCell('مشتری', 100),
-                  _buildHeaderCell('شرکت', 100),
-                  _buildHeaderCell('محصول', 90),
-                  _buildHeaderCell('جنسیت', 60),
-                  _buildHeaderCell('سایز', 60),
-                  _buildHeaderCell('ضخامت', 60),
-                  _buildHeaderCell('وزن (kg)', 75),
-                  _buildHeaderCell('وزن فی (kg)', 85),
-                  _buildHeaderCell('تعداد', 60),
-                  _buildHeaderCell('وزن کل (ton)', 85),
-                  _buildHeaderCell('قیمت واحد', 80),
-                  _buildHeaderCell('قیمت کل', 80),
-                  _buildHeaderCell('تخفیف', 60),
-                  _buildHeaderCell('قیمت نهایی', 80),
-                  _buildHeaderCell('تاریخ برگشت', 80),
-                  _buildHeaderCell('دلیل برگشت', 90),
-                  _buildHeaderCell('عملیات', 70),
+                  _buildHeaderCell('مشتری', 90),
+                  _buildHeaderCell('شرکت', 90),
+                  _buildHeaderCell('محصول', 80),
+                  _buildHeaderCell('جنسیت', 50),
+                  _buildHeaderCell('سایز', 50),
+                  _buildHeaderCell('کل خاده', 60),
+                  _buildHeaderCell('برگشت (خاده)', 80),
+                  _buildHeaderCell('وزن برگشت', 80),
+                  _buildHeaderCell('قیمت برگشت', 80),
+                  _buildHeaderCell('باقی‌مانده (خاده)', 90),
+                  _buildHeaderCell('وزن باقی‌مانده', 90),
+                  _buildHeaderCell('قیمت باقی‌مانده', 90),
+                  _buildHeaderCell('تاریخ برگشت', 70),
+                  _buildHeaderCell('عملیات', 60),
                 ],
               ),
             ),
           ),
           Expanded(
             child: paged.isEmpty
-                ? Center(child: Text(l10n.noReturnedSales, style: const TextStyle(color: Colors.grey)))
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade300),
+                        const SizedBox(height: 12),
+                        Text(
+                          'هیچ برگشتی ثبت نشده است',
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'برای ثبت برگشت روی دکمه "افزودن برگشت" کلیک کنید',
+                          style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: paged.length,
                     itemBuilder: (context, index) {
@@ -1125,16 +1601,13 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       final isEven = index % 2 == 0;
                       
                       String unit = sale['unit']?.toString() ?? '';
-                      double weightRaw = double.tryParse(sale['weight']?.toString() ?? '0') ?? 0;
-                      double weightPerUnitRaw = double.tryParse(sale['weight_per_unit']?.toString() ?? '0') ?? 0;
-                      double totalWeightRaw = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
-                      
-                      // وزن - always in kg
-                      String displayWeight = _formatRawWeight(unit, weightRaw);
-                      // وزن فی خاده - always in kg
-                      String displayWeightPerUnit = _formatWeightPerUnit(unit, weightPerUnitRaw);
-                      // وزن کل - always in tons
-                      String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
+                      double returnedCount = double.tryParse(sale['returned_count']?.toString() ?? '0') ?? 0;
+                      double returnedWeight = double.tryParse(sale['returned_weight']?.toString() ?? '0') ?? 0;
+                      double returnedPrice = double.tryParse(sale['returned_price']?.toString() ?? '0') ?? 0;
+                      double originalCount = double.tryParse(sale['original_unit_count']?.toString() ?? '0') ?? 0;
+                      double remainingCount = originalCount - returnedCount;
+                      double remainingWeight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
+                      double remainingPrice = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
                       
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1154,89 +1627,67 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                               ),
                               _buildDataCell(
                                 sale['customer_name']?.toString() ?? '-',
-                                100,
+                                90,
                                 isBold: true,
                               ),
                               _buildDataCell(
                                 sale['customer_company']?.toString() ?? '-',
-                                100,
-                              ),
-                              _buildDataCell(
-                                sale['product_name']?.toString() ?? '-',
                                 90,
                               ),
                               _buildDataCell(
+                                sale['product_name']?.toString() ?? '-',
+                                80,
+                              ),
+                              _buildDataCell(
                                 sale['gender']?.toString() ?? '-',
-                                60,
+                                50,
                               ),
                               _buildDataCell(
                                 sale['size']?.toString() ?? '-',
-                                60,
+                                50,
                               ),
                               _buildDataCell(
-                                sale['thickness']?.toString() ?? '-',
+                                originalCount.toStringAsFixed(originalCount % 1 == 0 ? 0 : 2),
                                 60,
-                              ),
-                              _buildDataCell(
-                                displayWeight,
-                                75,
                                 isBold: true,
                               ),
                               _buildDataCell(
-                                displayWeightPerUnit,
-                                85,
-                              ),
-                              _buildDataCell(
-                                sale['unit_count']?.toString() ?? '-',
-                                60,
-                              ),
-                              _buildDataCell(
-                                displayTotalWeight,
-                                85,
-                                isBold: true,
-                                color: const Color(0xFFCB001D),
-                              ),
-                              _buildDataCell(
-                                _formatCurrency(sale['unit_price']),
-                                80,
-                              ),
-                              _buildDataCell(
-                                _formatCurrency(sale['total_price']),
-                                80,
-                              ),
-                              _buildDataCell(
-                                _formatCurrency(sale['discount']),
-                                60,
-                              ),
-                              _buildDataCell(
-                                '${_formatCurrency(sale['final_price'])} ${sale['currency'] ?? ''}',
+                                returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2),
                                 80,
                                 isBold: true,
-                                color: const Color(0xFFCB001D),
+                                color: Colors.red,
+                              ),
+                              _buildDataCell(
+                                _formatWeight(unit, returnedWeight),
+                                80,
+                                isBold: true,
+                                color: Colors.red,
+                              ),
+                              _buildDataCell(
+                                '${_formatCurrency(returnedPrice)}',
+                                80,
+                                isBold: true,
+                                color: Colors.red,
+                              ),
+                              _buildDataCell(
+                                remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2),
+                                90,
+                                isBold: true,
+                                color: Colors.green,
+                              ),
+                              _buildDataCell(
+                                _formatWeight(unit, remainingWeight),
+                                90,
+                                color: Colors.green,
+                              ),
+                              _buildDataCell(
+                                '${_formatCurrency(remainingPrice)}',
+                                90,
+                                color: Colors.green,
                               ),
                               _buildDataCell(
                                 sale['back_return_date']?.toString() ?? '-',
-                                80,
-                              ),
-                              Container(
-                                width: 90,
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: Colors.orange.shade200),
-                                ),
-                                child: Text(
-                                  sale['back_return_reason']?.toString() ?? '-',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.orange.shade800,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                ),
+                                70,
                               ),
                               Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -1309,7 +1760,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
-          fontSize: 10,
+          fontSize: 9,
         ),
         textAlign: TextAlign.center,
         maxLines: 1,
@@ -1326,7 +1777,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         style: TextStyle(
           fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
           color: color ?? const Color(0xFF1A1A2E),
-          fontSize: 10,
+          fontSize: 9,
         ),
         textAlign: TextAlign.center,
         maxLines: 2,
@@ -1337,16 +1788,13 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
 
   void _showReturnDetailsDialog(Map<String, dynamic> sale, AppLocalizations l10n) {
     String unit = sale['unit']?.toString() ?? '';
-    double weightRaw = double.tryParse(sale['weight']?.toString() ?? '0') ?? 0;
-    double weightPerUnitRaw = double.tryParse(sale['weight_per_unit']?.toString() ?? '0') ?? 0;
-    double totalWeightRaw = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
-    
-    // وزن - always in kg
-    String displayWeight = _formatRawWeight(unit, weightRaw);
-    // وزن فی خاده - always in kg
-    String displayWeightPerUnit = _formatWeightPerUnit(unit, weightPerUnitRaw);
-    // وزن کل - always in tons
-    String displayTotalWeight = _formatWeightWithConversion(unit, totalWeightRaw);
+    double returnedCount = double.tryParse(sale['returned_count']?.toString() ?? '0') ?? 0;
+    double returnedWeight = double.tryParse(sale['returned_weight']?.toString() ?? '0') ?? 0;
+    double returnedPrice = double.tryParse(sale['returned_price']?.toString() ?? '0') ?? 0;
+    double originalCount = double.tryParse(sale['original_unit_count']?.toString() ?? '0') ?? 0;
+    double remainingCount = originalCount - returnedCount;
+    double remainingWeight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
+    double remainingPrice = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
     
     showDialog(
       context: context,
@@ -1363,7 +1811,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
               child: const Icon(Icons.assignment_return, color: Color(0xFFCB001D)),
             ),
             const SizedBox(width: 12),
-            Text('${l10n.returnedSales} - ${sale['invoice_number'] ?? '-'}'),
+            Text('جزئیات برگشت - ${sale['invoice_number'] ?? '-'}'),
           ],
         ),
         content: Container(
@@ -1371,19 +1819,23 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildDetailRow('شماره بل', sale['invoice_number']?.toString() ?? '-'),
+              _buildDetailRow('شماره فاکتور', sale['invoice_number']?.toString() ?? '-'),
               _buildDetailRow(l10n.customerName, sale['customer_name'] ?? '-'),
               _buildDetailRow(l10n.company, sale['customer_company'] ?? '-'),
               _buildDetailRow(l10n.productName, sale['product_name'] ?? '-'),
-              _buildDetailRow(l10n.gender, sale['gender'] ?? '-'),
-              _buildDetailRow(l10n.size, sale['size'] ?? '-'),
+              _buildDetailRow('جنسیت', sale['gender'] ?? '-'),
+              _buildDetailRow('سایز', sale['size'] ?? '-'),
               _buildDetailRow('ضخامت', sale['thickness'] ?? '-'),
-              _buildDetailRow('وزن (kg)', displayWeight),
-              _buildDetailRow('وزن فی خاده (kg)', displayWeightPerUnit),
-              _buildDetailRow('تعداد خاده', sale['unit_count']?.toString() ?? '-'),
-              _buildDetailRow('وزن کل (ton)', displayTotalWeight),
-              _buildDetailRow('واحد', sale['unit']?.toString() ?? '-'),
-              _buildDetailRow(l10n.finalPrice, '${_formatCurrency(sale['final_price'])} ${sale['currency'] ?? ''}'),
+              const Divider(),
+              _buildDetailRow('کل خاده', originalCount.toStringAsFixed(originalCount % 1 == 0 ? 0 : 2), isHighlight: true),
+              _buildDetailRow('تعداد برگشت', returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2), isHighlight: true, color: Colors.red),
+              _buildDetailRow('وزن برگشت', _formatWeight(unit, returnedWeight), isHighlight: true, color: Colors.red),
+              _buildDetailRow('قیمت برگشت', '${_formatCurrency(returnedPrice)} ${sale['currency'] ?? ''}', isHighlight: true, color: Colors.red),
+              const Divider(),
+              _buildDetailRow('باقی‌مانده (خاده)', remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2), isHighlight: true, color: Colors.green),
+              _buildDetailRow('وزن باقی‌مانده', _formatWeight(unit, remainingWeight), isHighlight: true, color: Colors.green),
+              _buildDetailRow('قیمت باقی‌مانده', '${_formatCurrency(remainingPrice)} ${sale['currency'] ?? ''}', isHighlight: true, color: Colors.green),
+              const Divider(),
               _buildDetailRow(l10n.returnDate, sale['back_return_date']?.toString() ?? '-'),
               _buildDetailRow(l10n.returnReason, sale['back_return_reason']?.toString() ?? '-', isReason: true),
             ],
@@ -1408,22 +1860,27 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {bool isReason = false}) {
+  Widget _buildDetailRow(String label, String value, {bool isReason = false, bool isHighlight = false, Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 120,
+            width: 140,
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: isHighlight ? Colors.grey.shade200 : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(4),
+              border: isHighlight ? Border.all(color: color ?? Colors.grey, width: 1) : null,
             ),
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+              style: TextStyle(
+                fontWeight: isHighlight ? FontWeight.w700 : FontWeight.w600,
+                fontSize: 11,
+                color: color ?? Colors.black87,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -1439,8 +1896,8 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                 value,
                 style: TextStyle(
                   fontSize: 11,
-                  color: isReason ? Colors.orange.shade800 : Colors.black87,
-                  fontWeight: isReason ? FontWeight.w500 : FontWeight.normal,
+                  color: isReason ? Colors.orange.shade800 : (color ?? Colors.black87),
+                  fontWeight: isHighlight ? FontWeight.w700 : FontWeight.normal,
                 ),
               ),
             ),

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as excel;
 import 'dart:io';
+import 'dart:typed_data';
 import '../../database/database_helper.dart';
 import '../../utils/date_converter.dart';
 import '../../providers/language_provider.dart';
@@ -173,7 +174,6 @@ class _ServicesPageState extends State<ServicesPage> {
       int skippedCount = 0;
       List<String> errors = [];
 
-      // گرفتن هدرها از ردیف اول
       final headersRow = sheet.rows.first;
       List<String> headers = [];
       for (var cell in headersRow) {
@@ -184,7 +184,6 @@ class _ServicesPageState extends State<ServicesPage> {
 
       print('📋 Headers: $headers');
 
-      // پیدا کردن ایندکس فیلدها
       int invoiceNumberIndex = -1;
       int customerNameIndex = -1;
       int customerPhoneIndex = -1;
@@ -262,7 +261,6 @@ class _ServicesPageState extends State<ServicesPage> {
         };
       }
 
-      // پردازش ردیف‌ها
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
         
@@ -300,7 +298,6 @@ class _ServicesPageState extends State<ServicesPage> {
           String afnEquivalentStr = afnEquivalentIndex != -1 ? _getCellValueDirect(row, afnEquivalentIndex) : '0';
           String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
 
-          // پاک کردن علامت‌های اضافی
           totalWeightStr = totalWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
           unitPriceStr = unitPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
           totalPriceStr = totalPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
@@ -320,7 +317,6 @@ class _ServicesPageState extends State<ServicesPage> {
             continue;
           }
 
-          // چک کردن تکراری بودن شماره فاکتور
           final existing = await _db.getServiceInvoiceByNumber(invoiceNumber);
           if (existing != null) {
             skippedCount++;
@@ -339,12 +335,10 @@ class _ServicesPageState extends State<ServicesPage> {
           double afnEquivalent = _parseNumber(afnEquivalentStr);
           double exchangeRate = _parseNumber(exchangeRateStr);
 
-          // اگر قیمت نهایی محاسبه نشده بود
           if (finalPrice <= 0 && totalPrice > 0) {
             finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
           }
 
-          // اگر معادل افغانی محاسبه نشده بود
           String currencyFinal = currency == 'AFN' || currency == 'افغانی' ? 'AFN' : 'USD';
           if (afnEquivalent <= 0 && finalPrice > 0) {
             if (currencyFinal == 'USD') {
@@ -354,19 +348,16 @@ class _ServicesPageState extends State<ServicesPage> {
             }
           }
 
-          // تاریخ
           if (date.isEmpty) {
             date = PersianDateConverter.gregorianToJalali(DateTime.now());
           }
           String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
 
-          // تبدیل واحد
           String unitFinal = 'TON';
           if (unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم' || unit == 'کیلو') {
             unitFinal = 'KG';
           }
 
-          // ساخت داده
           Map<String, dynamic> service = {
             'invoice_number': invoiceNumber,
             'customer_name': customerName,
@@ -529,7 +520,7 @@ class _ServicesPageState extends State<ServicesPage> {
   }
 
   // ============================================
-  // SERVICE DIALOG - EXISTING CODE
+  // SERVICE DIALOG
   // ============================================
   Future<void> _showServiceDialog({Map<String, dynamic>? service}) async {
     final l10n = AppLocalizations.of(context)!;
@@ -593,38 +584,38 @@ class _ServicesPageState extends State<ServicesPage> {
         PersianDateConverter.getEnglishDate(DateTime.now());
     String selectedCurrency = service?['currency']?.toString() ?? 'USD';
 
-   void updateTotals() {
-  double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
-  bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
-  double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
-  
-  double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-  double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
-  double loadingCost = double.tryParse(loadingController.text) ?? 0;
-  double transferCost = double.tryParse(transferController.text) ?? 0;
-  double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
-  double discount = double.tryParse(discountController.text) ?? 0;
-  
-  // Calculate base total price in USD
-  double totalPrice = totalWeightInTons * unitPrice;
-  totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(2) : '';
-  
-  // Convert ALL costs to USD first (since base is in USD)
-  double loadingCostUSD = loadingCost / (exchangeRate <= 0 ? 1 : exchangeRate);
-  double transferCostUSD = transferCost / (exchangeRate <= 0 ? 1 : exchangeRate);
-  double clearanceCostUSD = clearanceCost / (exchangeRate <= 0 ? 1 : exchangeRate);
-  double discountUSD = discount / (exchangeRate <= 0 ? 1 : exchangeRate);
-  
-  // Calculate final price in USD with 2 decimal precision
-  double finalPriceUSD = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
-  
-  // Show with 2 decimal places to see exact amount
-  finalPriceController.text = finalPriceUSD > 0 ? finalPriceUSD.toStringAsFixed(2) : '';
-  
-  // Calculate AFN equivalent (maintains precision)
-  double afnEquivalent = finalPriceUSD * exchangeRate;
-  equivalentController.text = afnEquivalent > 0 ? afnEquivalent.toStringAsFixed(0) : '';
-}
+    void updateTotals() {
+      double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
+      bool isKg = selectedUnit == 'KG' || selectedUnit == 'kg' || selectedUnit == 'کیلوگرم';
+      double totalWeightInTons = isKg ? totalWeight / 1000 : totalWeight;
+      
+      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+      double loadingCost = double.tryParse(loadingController.text) ?? 0;
+      double transferCost = double.tryParse(transferController.text) ?? 0;
+      double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
+      double discount = double.tryParse(discountController.text) ?? 0;
+      
+      // Calculate base total price in USD
+      double totalPrice = totalWeightInTons * unitPrice;
+      totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(2) : '';
+      
+      // Convert ALL costs to USD first (since base is in USD)
+      double loadingCostUSD = loadingCost / (exchangeRate <= 0 ? 1 : exchangeRate);
+      double transferCostUSD = transferCost / (exchangeRate <= 0 ? 1 : exchangeRate);
+      double clearanceCostUSD = clearanceCost / (exchangeRate <= 0 ? 1 : exchangeRate);
+      double discountUSD = discount / (exchangeRate <= 0 ? 1 : exchangeRate);
+      
+      // Calculate final price in USD with 2 decimal precision
+      double finalPriceUSD = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
+      
+      // Show with 2 decimal places to see exact amount
+      finalPriceController.text = finalPriceUSD > 0 ? finalPriceUSD.toStringAsFixed(2) : '';
+      
+      // Calculate AFN equivalent (maintains precision)
+      double afnEquivalent = finalPriceUSD * exchangeRate;
+      equivalentController.text = afnEquivalent > 0 ? afnEquivalent.toStringAsFixed(0) : '';
+    }
 
     await showDialog(
       context: context,
@@ -1095,6 +1086,11 @@ class _ServicesPageState extends State<ServicesPage> {
                       }
                     }
                     
+                    // ===== FIX: Use the EXACT value from the UI controller =====
+                    final finalPrice = double.tryParse(finalPriceController.text) ?? 0;
+                    final afnEquivalent = double.tryParse(equivalentController.text) ?? 0;
+                    // ===== END FIX =====
+                    
                     final payload = {
                       'invoice_number': invoiceNumber,
                       'customer_name': customerNameController.text.trim(),
@@ -1113,8 +1109,8 @@ class _ServicesPageState extends State<ServicesPage> {
                       'transfer_cost': double.tryParse(transferController.text) ?? 0,
                       'clearance_cost': double.tryParse(clearanceController.text) ?? 0,
                       'discount': double.tryParse(discountController.text) ?? 0,
-                      'final_price': double.tryParse(finalPriceController.text) ?? 0,
-                      'afn_equivalent': double.tryParse(equivalentController.text) ?? 0,
+                      'final_price': finalPrice,
+                      'afn_equivalent': afnEquivalent,
                       'date': dateController.text.trim(),
                       'date_en': selectedEnglishDate,
                     };
@@ -1341,13 +1337,13 @@ class _ServicesPageState extends State<ServicesPage> {
                   headers: [l10n.descriptionLabel, l10n.amountLabel],
                   data: [
                     ['${l10n.totalWeight} (${service['unit'] ?? 'TON'})', displayWeight],
-                    [l10n.unitPrice, '${_formatNumber(service['unit_price'])} ${service['currency'] ?? 'USD'}'],
-                    [l10n.totalPrice, '${_formatNumber(service['total_price'])} ${service['currency'] ?? 'USD'}'],
-                    [l10n.loadingCost, '${_formatNumber(service['loading_cost'])} ${service['currency'] ?? 'USD'}'],
-                    [l10n.transferCost, '${_formatNumber(service['transfer_cost'])} ${service['currency'] ?? 'USD'}'],
-                    [l10n.clearanceCost, '${_formatNumber(service['clearance_cost'])} ${service['currency'] ?? 'USD'}'],
-                    [l10n.discount, '-${_formatNumber(service['discount'])} ${service['currency'] ?? 'USD'}'],
-                    [l10n.finalPrice, '${_formatNumber(service['final_price'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.unitPrice, '${_formatNumberWithDecimals(service['unit_price'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.totalPrice, '${_formatNumberWithDecimals(service['total_price'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.loadingCost, '${_formatNumberWithDecimals(service['loading_cost'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.transferCost, '${_formatNumberWithDecimals(service['transfer_cost'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.clearanceCost, '${_formatNumberWithDecimals(service['clearance_cost'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.discount, '-${_formatNumberWithDecimals(service['discount'])} ${service['currency'] ?? 'USD'}'],
+                    [l10n.finalPrice, '${_formatNumberWithDecimals(service['final_price'])} ${service['currency'] ?? 'USD'}'],
                   ],
                   headerStyle: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
                   headerDecoration: const pw.BoxDecoration(color: PdfColors.red),
@@ -1379,7 +1375,7 @@ class _ServicesPageState extends State<ServicesPage> {
                         style: pw.TextStyle(font: ttf, fontSize: 10)
                       ),
                       pw.Text(
-                        '${l10n.afnEquivalent}: ${_formatNumber(service['afn_equivalent'])} AFN', 
+                        '${l10n.afnEquivalent}: ${_formatNumberWithDecimals(service['afn_equivalent'])} AFN', 
                         style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)
                       ),
                     ],
@@ -1493,11 +1489,11 @@ class _ServicesPageState extends State<ServicesPage> {
     
     return Row(
       children: [
-        _buildStatCard(l10n.totalRevenue, _formatNumber(totalRevenue), Icons.attach_money_outlined, const Color(0xFFCB001D)),
+        _buildStatCard(l10n.totalRevenue, _formatNumberWithDecimals(totalRevenue), Icons.attach_money_outlined, const Color(0xFFCB001D)),
         const SizedBox(width: 12),
         _buildStatCard(l10n.totalServicesCount, totalServices.toString(), Icons.design_services_outlined, Colors.blue.shade700),
         const SizedBox(width: 12),
-        _buildStatCard(l10n.usdTotalServices, _formatNumber(_services.fold<double>(0, (sum, item) => sum + ((item['currency'] == 'USD' ? (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0) : 0)))), Icons.currency_exchange, Colors.green.shade700),
+        _buildStatCard(l10n.usdTotalServices, _formatNumberWithDecimals(_services.fold<double>(0, (sum, item) => sum + ((item['currency'] == 'USD' ? (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0) : 0)))), Icons.currency_exchange, Colors.green.shade700),
         const SizedBox(width: 12),
         _buildStatCard('مجموع وزن', '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
@@ -1687,9 +1683,9 @@ class _ServicesPageState extends State<ServicesPage> {
                                   _buildDataCell(service['thickness'] ?? '-', 70),
                                   _buildDataCell(displayWeight, 80),
                                   _buildDataCell(displayUnit, 50),
-                                  _buildDataCell(_formatNumber(service['unit_price']), 80),
-                                  _buildDataCell(_formatNumber(service['total_price']), 90),
-                                  _buildDataCell(_formatNumber(service['final_price']), 90, isBold: true, color: const Color(0xFFCB001D)),
+                                  _buildDataCell(_formatNumberWithDecimals(service['unit_price']), 80),
+                                  _buildDataCell(_formatNumberWithDecimals(service['total_price']), 90),
+                                  _buildDataCell(_formatNumberWithDecimals(service['final_price']), 90, isBold: true, color: const Color(0xFFCB001D)),
                                   _buildDataCell(service['currency'] ?? '-', 60),
                                   _buildDataCell(service['date'] ?? '-', 90),
                                   SizedBox(
@@ -1855,9 +1851,22 @@ class _ServicesPageState extends State<ServicesPage> {
     );
   }
 
+  // ===== FIX: Format numbers with decimal places properly =====
+  String _formatNumberWithDecimals(dynamic value) {
+    if (value == null) return '0';
+    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
+    
+    // Show 2 decimal places for ALL values
+    return number.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'), 
+      (m) => '${m[1]},'
+    );
+  }
+  // ===== END FIX =====
+
+  // Keep old format for backward compatibility but with decimals
   String _formatNumber(dynamic value) {
-    final parsed = double.tryParse(value?.toString() ?? '0') ?? 0;
-    return parsed.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+    return _formatNumberWithDecimals(value);
   }
 
   void _showSnackbar(String message, Color color) {

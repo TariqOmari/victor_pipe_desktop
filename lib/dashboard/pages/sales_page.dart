@@ -743,7 +743,7 @@ class _SalesPageState extends State<SalesPage> {
   double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
   double priceRate = double.tryParse(priceRateController.text) ?? 1;
   
-  // ✅ THESE ARE ALWAYS IN AFN - NOT USD!
+  // THESE ARE ALWAYS IN AFN - NOT USD!
   double loadingCost = double.tryParse(loadingController.text) ?? 0;
   double transferCost = double.tryParse(transferController.text) ?? 0;
   double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
@@ -757,17 +757,17 @@ class _SalesPageState extends State<SalesPage> {
   totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
   totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
 
-  // ✅ CONVERT AFN EXPENSES TO USD BEFORE ADDING
+  // CONVERT AFN EXPENSES TO USD BEFORE ADDING
   double loadingCostUSD = loadingCost / (priceRate <= 0 ? 1 : priceRate);
   double transferCostUSD = transferCost / (priceRate <= 0 ? 1 : priceRate);
   double clearanceCostUSD = clearanceCost / (priceRate <= 0 ? 1 : priceRate);
   double discountUSD = discount / (priceRate <= 0 ? 1 : priceRate);
 
-  // ✅ Final price in USD with proper precision
+  // Final price in USD with proper precision
   double finalPrice = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
   finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(2) : '';
 
-  // ✅ AFN equivalent with proper rounding
+  // AFN equivalent with proper rounding
   if (selectedCurrency == 'USD') {
     equivalentController.text = totalPrice > 0 
         ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) 
@@ -1613,7 +1613,10 @@ class _SalesPageState extends State<SalesPage> {
                     final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
                     final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
 
-                    final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+                    // ===== FIX: Use the EXACT value from the UI controller =====
+                    final finalPrice = double.tryParse(finalPriceController.text) ?? 0;
+                    // ===== END FIX =====
+
                     final currencyType = selectedCurrency;
                     final usdEquivalent = currencyType == 'USD' ? finalPrice : (priceRate <= 0 ? finalPrice : finalPrice / priceRate);
                     final afnEquivalent = currencyType == 'AFN' ? finalPrice : (finalPrice * (priceRate <= 0 ? 1 : priceRate));
@@ -1622,7 +1625,8 @@ class _SalesPageState extends State<SalesPage> {
                         : (finalPrice - paidAmount) < 0
                             ? 0
                             : finalPrice - paidAmount;
-                    
+
+    
                     final existingInvoice = await _db.getSalesInvoiceByNumber(invoiceNumber);
                     if (existingInvoice != null && existingInvoice['id'] != sale['id']) {
                       _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
@@ -1754,7 +1758,7 @@ Future<void> _showAddSaleDialog() async {
   String? selectedProductThickness;
   String? selectedProductSize;
 
-  void updateTotals() {
+ void updateTotals() {
   double weightPerUnit = double.tryParse(weightPerUnitController.text) ?? 0;
   String currentUnit = unitController.text;
   
@@ -1768,7 +1772,7 @@ Future<void> _showAddSaleDialog() async {
   double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
   double priceRate = double.tryParse(priceRateController.text) ?? 1;
   
-  // ✅ THESE ARE ALWAYS IN AFN - NOT USD!
+  // THESE ARE ALWAYS IN AFN - NOT USD!
   double loadingCost = double.tryParse(loadingController.text) ?? 0;
   double transferCost = double.tryParse(transferController.text) ?? 0;
   double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
@@ -1782,17 +1786,17 @@ Future<void> _showAddSaleDialog() async {
   totalWeightController.text = totalWeight > 0 ? totalWeight.toStringAsFixed(2) : '';
   totalPriceController.text = totalPrice > 0 ? totalPrice.toStringAsFixed(0) : '';
 
-  // ✅ CONVERT AFN EXPENSES TO USD BEFORE ADDING
+  // CONVERT AFN EXPENSES TO USD BEFORE ADDING
   double loadingCostUSD = loadingCost / (priceRate <= 0 ? 1 : priceRate);
   double transferCostUSD = transferCost / (priceRate <= 0 ? 1 : priceRate);
   double clearanceCostUSD = clearanceCost / (priceRate <= 0 ? 1 : priceRate);
   double discountUSD = discount / (priceRate <= 0 ? 1 : priceRate);
 
-  // ✅ Final price in USD with proper precision
+  // Final price in USD with proper precision
   double finalPrice = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
   finalPriceController.text = finalPrice > 0 ? finalPrice.toStringAsFixed(2) : '';
 
-  // ✅ AFN equivalent with proper rounding
+  // AFN equivalent with proper rounding
   if (selectedCurrency == 'USD') {
     equivalentController.text = totalPrice > 0 
         ? (totalPrice * (priceRate <= 0 ? 1 : priceRate)).toStringAsFixed(0) 
@@ -1803,6 +1807,7 @@ Future<void> _showAddSaleDialog() async {
         : '';
   }
 }
+
 
   await showDialog(
     context: context,
@@ -2600,7 +2605,10 @@ Future<void> _showAddSaleDialog() async {
                   final totalWeight = double.tryParse(totalWeightController.text) ?? 0;
                   final paidAmount = double.tryParse(paidAmountController.text) ?? 0;
 
-                  final finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
+                  // ===== FIX: Use the EXACT value from the UI controller =====
+                  final finalPrice = double.tryParse(finalPriceController.text) ?? 0;
+                  // ===== END FIX =====
+
                   final currencyType = selectedCurrency;
                   final usdEquivalent = currencyType == 'USD' ? finalPrice : (priceRate <= 0 ? finalPrice : finalPrice / priceRate);
                   final afnEquivalent = currencyType == 'AFN' ? finalPrice : (finalPrice * (priceRate <= 0 ? 1 : priceRate));
@@ -4024,11 +4032,16 @@ Widget _buildSaleFinancialItem(String label, String value, String currency, {boo
     );
   }
 
-  String _formatCurrency(dynamic value) {
-    if (value == null) return '0';
-    final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
-    return number.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
-  }
+String _formatCurrency(dynamic value) {
+  if (value == null) return '0';
+  final number = value is num ? value.toDouble() : double.tryParse(value.toString()) ?? 0;
+  
+  // Show 2 decimal places for ALL values
+  return number.toStringAsFixed(2).replaceAllMapped(
+    RegExp(r'(\d)(?=(\d{3})+(?!\d))'), 
+    (m) => '${m[1]},'
+  );
+}
 
   Widget _buildReturnStatusCell(Map<String, dynamic> sale, AppLocalizations l10n) {
     final isReturned = sale['is_back_returned'] == 1 || sale['is_back_returned']?.toString() == '1';

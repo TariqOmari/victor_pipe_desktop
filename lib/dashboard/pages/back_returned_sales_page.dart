@@ -382,29 +382,49 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
             }
           }
 
-          // Calculate returned weight and price based on returned count
+          // ============ FIXED CALCULATIONS ============
+          // وزن فی خاده in KG
           double weightPerUnitInKg = _convertToKg(unit, weightPerUnit);
+          
+          // وزن کل برگشتی = وزن فی خاده * تعداد برگشت
           double returnedWeightKg = weightPerUnitInKg * returnedCount;
+          
+          // قیمت هر خاده = قیمت نهایی / تعداد کل خاده
           double pricePerUnit = originalUnitCount > 0 ? originalFinalPrice / originalUnitCount : 0;
+          
+          // ارزش برگشتی = قیمت هر خاده * تعداد برگشت
           double returnedPrice = pricePerUnit * returnedCount;
 
-          // Remaining counts
+          // محاسبات باقی‌مانده
           double remainingCount = originalUnitCount - returnedCount;
           double remainingWeightKg = weightPerUnitInKg * remainingCount;
           double remainingPrice = pricePerUnit * remainingCount;
 
           // Update the original sale with remaining values
           final updatePayload = {
+            // بروزرسانی تعداد خاده باقی‌مانده
             'unit_count': remainingCount > 0 ? remainingCount.toString() : '0',
+            
+            // بروزرسانی وزن کل باقی‌مانده
             'total_weight': remainingWeightKg > 0 ? remainingWeightKg.toString() : '0',
+            
+            // بروزرسانی قیمت نهایی باقی‌مانده
             'final_price': remainingPrice > 0 ? remainingPrice : 0,
+            
+            // علامت‌گذاری به عنوان برگشتی
             'is_back_returned': 1,
+            
+            // اطلاعات برگشت
             'back_return_reason': returnReason,
             'back_return_date': returnDate,
             'back_return_date_en': returnDateEn,
-            'returned_count': returnedCount,
-            'returned_weight': returnedWeightKg,
-            'returned_price': returnedPrice,
+            
+            // ============ FIELDS FOR TRACKING RETURN ============
+            'returned_count': returnedCount,           // تعداد خاده برگشتی
+            'returned_weight': returnedWeightKg,      // وزن کل برگشتی (kg)
+            'returned_price': returnedPrice,          // ارزش برگشتی
+            
+            // ذخیره مقادیر اصلی برای مرجع
             'original_unit_count': originalUnitCount,
             'original_total_weight': originalTotalWeight,
             'original_final_price': originalFinalPrice,
@@ -543,10 +563,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     setState(() => _isLoading = true);
     try {
       final allSales = await _db.getSalesInvoices();
-      // Filter only returned sales
       final returnedSales = allSales.where((sale) => (sale['is_back_returned'] ?? 0) == 1).toList();
-      
-      print('📊 Loaded ${returnedSales.length} returned sales out of ${allSales.length} total');
       
       if (!mounted) return;
       setState(() {
@@ -564,7 +581,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
   }
 
   // ============================================
-  // ADD RETURN DIALOG - COMPLETE WITH ALL FIELDS
+  // ADD RETURN DIALOG - FIXED FOR PARTIAL RETURNS
   // ============================================
   Future<void> _showAddReturnedSaleDialog() async {
     final l10n = AppLocalizations.of(context)!;
@@ -575,8 +592,17 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     double returnedCount = 0;
     double maxCount = 0;
     
-    // Get available sales (not returned yet)
-    final availableSales = _allSales.where((sale) => (sale['is_back_returned'] ?? 0) != 1).toList();
+    // ✅ FIX: Get available sales - shows partially returned ones too
+    final availableSales = _allSales.where((sale) {
+      // Not returned at all
+      if ((sale['is_back_returned'] ?? 0) == 0) return true;
+      
+      // Partially returned but still has units left
+      final unitCount = double.tryParse(sale['unit_count']?.toString() ?? '0') ?? 0;
+      if (unitCount > 0) return true;
+      
+      return false;
+    }).toList();
 
     await showDialog(
       context: context,
@@ -637,14 +663,21 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
             customerAddress = selectedSale!['customer_address']?.toString() ?? '';
           }
 
-          // Calculate returned values
+          // ============ FIXED CALCULATIONS ============
+          // وزن فی خاده in KG
           double weightPerUnitInKg = _convertToKg(unit, weightPerUnit);
+          
+          // وزن کل برگشتی = وزن فی خاده * تعداد برگشت
           double returnedWeightKg = weightPerUnitInKg * returnedCount;
           double returnedWeightTons = _convertToTons(unit, returnedWeightKg);
+          
+          // قیمت هر خاده = قیمت نهایی / تعداد کل خاده
           double pricePerUnit = originalUnitCount > 0 ? originalFinalPrice / originalUnitCount : 0;
+          
+          // ارزش برگشتی = قیمت هر خاده * تعداد برگشت
           double returnedPrice = pricePerUnit * returnedCount;
 
-          // Remaining values
+          // محاسبات باقی‌مانده
           double remainingCount = originalUnitCount - returnedCount;
           double remainingWeightKg = weightPerUnitInKg * remainingCount;
           double remainingWeightTons = _convertToTons(unit, remainingWeightKg);
@@ -672,10 +705,16 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                           border: const OutlineInputBorder(),
                         ),
                         items: availableSales.map((sale) {
+                          final unitCount = double.tryParse(sale['unit_count']?.toString() ?? '0') ?? 0;
+                          final isPartiallyReturned = (sale['is_back_returned'] ?? 0) == 1;
+                          final statusText = isPartiallyReturned 
+                              ? ' (${unitCount.toStringAsFixed(unitCount % 1 == 0 ? 0 : 2)} خاده باقی‌مانده)'
+                              : '';
+                          
                           return DropdownMenuItem<Map<String, dynamic>>(
                             value: sale,
                             child: Text(
-                              '${sale['invoice_number'] ?? '-'} | ${sale['customer_name'] ?? '-'} | ${sale['product_name'] ?? '-'}',
+                              '${sale['invoice_number'] ?? '-'} | ${sale['customer_name'] ?? '-'} | ${sale['product_name'] ?? '-'}$statusText',
                             ),
                           );
                         }).toList(),
@@ -691,7 +730,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // ALL SALE DETAILS - ZERO TO HERO
+                      // ALL SALE DETAILS
                       if (selectedSale != null) ...[
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -775,19 +814,27 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                               ),
                               const SizedBox(height: 8),
                               
-                              // Row 5: Weight Details
+                              // Row 5: Weight Details - SHOW CURRENT REMAINING UNITS
                               Row(
                                 children: [
                                   Expanded(
-                                    child: _buildReadOnlyField('وزن فی خاده (kg)', weightPerUnitStr, l10n),
+                                    child: _buildReadOnlyField(
+                                      'وزن فی خاده', 
+                                      '${_formatWeight(unit, weightPerUnit, showUnit: true)}', 
+                                      l10n
+                                    ),
                                   ),
-                                  const SizedBox(width: 8),
                                   Expanded(
-                                    child: _buildReadOnlyField('تعداد خاده', unitCountStr, l10n),
+                                    child: _buildReadOnlyField('تعداد خاده (باقی‌مانده)', 
+                                      '${originalUnitCount.toStringAsFixed(originalUnitCount % 1 == 0 ? 0 : 2)} خاده', 
+                                      l10n
+                                    ),
                                   ),
-                                  const SizedBox(width: 8),
                                   Expanded(
-                                    child: _buildReadOnlyField('وزن کل', _formatWeight(unit, originalTotalWeight), l10n),
+                                    child: _buildReadOnlyField('وزن کل باقی‌مانده', 
+                                      _formatWeight(unit, originalTotalWeight), 
+                                      l10n
+                                    ),
                                   ),
                                 ],
                               ),
@@ -797,15 +844,24 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: _buildReadOnlyField('قیمت واحد', _formatCurrency(unitPriceStr), l10n),
+                                    child: _buildReadOnlyField('قیمت واحد (هر خاده)', 
+                                      '${_formatCurrency(pricePerUnit)}', 
+                                      l10n
+                                    ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
-                                    child: _buildReadOnlyField('قیمت کل', _formatCurrency(totalPriceStr), l10n),
+                                    child: _buildReadOnlyField('قیمت کل', 
+                                      _formatCurrency(totalPriceStr), 
+                                      l10n
+                                    ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
-                                    child: _buildReadOnlyField('قیمت نهایی', '${_formatCurrency(finalPriceStr)} $currency', l10n),
+                                    child: _buildReadOnlyField('قیمت نهایی', 
+                                      '${_formatCurrency(finalPriceStr)} $currency', 
+                                      l10n
+                                    ),
                                   ),
                                 ],
                               ),
@@ -826,7 +882,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                '🔄 تعداد برگشت (خاده)',
+                                '🔄 تعداد خاده برای برگشت',
                                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                               ),
                               const SizedBox(height: 8),
@@ -862,7 +918,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                                       border: Border.all(color: Colors.grey.shade300),
                                     ),
                                     child: Text(
-                                      'از ${originalUnitCount.toStringAsFixed(originalUnitCount % 1 == 0 ? 0 : 2)}',
+                                      'از ${originalUnitCount.toStringAsFixed(originalUnitCount % 1 == 0 ? 0 : 2)} خاده',
                                       style: const TextStyle(fontWeight: FontWeight.w600),
                                     ),
                                   ),
@@ -907,7 +963,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Return Details with Calculations
+                        // Return Details with Calculations - SHOW WEIGHT PER UNIT BREAKDOWN
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -919,8 +975,30 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                '📊 محاسبات برگشت',
+                                '📊 محاسبات برگشت (بر اساس وزن فی خاده)',
                                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFCB001D)),
+                              ),
+                              const SizedBox(height: 8),
+                              // Show weight per unit calculation
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'وزن فی خاده: ${_formatWeight(unit, weightPerUnit)} × تعداد برگشت: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)} = ',
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    Text(
+                                      _formatWeight(unit, returnedWeightKg),
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red),
+                                    ),
+                                  ],
+                                ),
                               ),
                               const SizedBox(height: 8),
                               Row(
@@ -937,9 +1015,9 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           const Text('🔄 برگشت', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                                          Text('خاده: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)}', style: const TextStyle(fontSize: 12)),
-                                          Text('وزن: ${_formatWeight(unit, returnedWeightKg)}', style: const TextStyle(fontSize: 12)),
-                                          Text('قیمت: ${_formatCurrency(returnedPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                                          Text('تعداد خاده: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)}', style: const TextStyle(fontSize: 12)),
+                                          Text('وزن برگشتی: ${_formatWeight(unit, returnedWeightKg)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                                          Text('ارزش برگشتی: ${_formatCurrency(returnedPrice)} $currency', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
                                         ],
                                       ),
                                     ),
@@ -957,9 +1035,9 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           const Text('✅ باقی‌مانده', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                                          Text('خاده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)}', style: const TextStyle(fontSize: 12)),
-                                          Text('وزن: ${_formatWeight(unit, remainingWeightKg)}', style: const TextStyle(fontSize: 12)),
-                                          Text('قیمت: ${_formatCurrency(remainingPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                                          Text('تعداد خاده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)}', style: const TextStyle(fontSize: 12)),
+                                          Text('وزن باقی‌مانده: ${_formatWeight(unit, remainingWeightKg)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                                          Text('ارزش باقی‌مانده: ${_formatCurrency(remainingPrice)} $currency', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                                         ],
                                       ),
                                     ),
@@ -1020,20 +1098,28 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                   onPressed: selectedSale == null || returnedCount <= 0 || reasonController.text.trim().isEmpty
                       ? null
                       : () async {
-                          // Get original values
+                          // ============ FIXED: GET ORIGINAL VALUES ============
                           final originalUnitCount = double.tryParse(selectedSale!['unit_count']?.toString() ?? '0') ?? 0;
                           final originalTotalWeight = double.tryParse(selectedSale!['total_weight']?.toString() ?? '0') ?? 0;
                           final originalFinalPrice = double.tryParse(selectedSale!['final_price']?.toString() ?? '0') ?? 0;
                           final unit = selectedSale!['unit']?.toString() ?? 'کیلوگرم';
                           final weightPerUnit = double.tryParse(selectedSale!['weight_per_unit']?.toString() ?? '0') ?? 0;
+                          final currency = selectedSale!['currency']?.toString() ?? 'USD';
                           
-                          // Calculate returned values
+                          // ============ FIXED CALCULATIONS ============
+                          // وزن فی خاده in KG
                           double weightPerUnitInKg = _convertToKg(unit, weightPerUnit);
+                          
+                          // وزن کل برگشتی = وزن فی خاده * تعداد برگشت
                           double returnedWeightKg = weightPerUnitInKg * returnedCount;
+                          
+                          // قیمت هر خاده = قیمت نهایی / تعداد کل خاده
                           double pricePerUnit = originalUnitCount > 0 ? originalFinalPrice / originalUnitCount : 0;
+                          
+                          // ارزش برگشتی = قیمت هر خاده * تعداد برگشت
                           double returnedPrice = pricePerUnit * returnedCount;
                           
-                          // Remaining values
+                          // محاسبات باقی‌مانده
                           double remainingCount = originalUnitCount - returnedCount;
                           double remainingWeightKg = weightPerUnitInKg * remainingCount;
                           double remainingPrice = pricePerUnit * remainingCount;
@@ -1041,24 +1127,45 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                           // Product ID for stock
                           final productId = selectedSale!['produced_product_id'];
 
-                          // Update the sale with partial return
+                          // ============ FIXED: UPDATE THE SALE ============
                           final updatePayload = {
+                            // بروزرسانی تعداد خاده باقی‌مانده
                             'unit_count': remainingCount > 0 ? remainingCount.toString() : '0',
+                            
+                            // بروزرسانی وزن کل باقی‌مانده
                             'total_weight': remainingWeightKg > 0 ? remainingWeightKg.toString() : '0',
+                            
+                            // بروزرسانی قیمت نهایی باقی‌مانده
                             'final_price': remainingPrice > 0 ? remainingPrice : 0,
+                            
+                            // علامت‌گذاری به عنوان برگشتی
                             'is_back_returned': 1,
+                            
+                            // اطلاعات برگشت
                             'back_return_reason': reasonController.text.trim(),
                             'back_return_date': dateController.text.trim(),
                             'back_return_date_en': selectedEnglishDate,
-                            'returned_count': returnedCount,
-                            'returned_weight': returnedWeightKg,
-                            'returned_price': returnedPrice,
+                            
+                            // ============ FIELDS FOR TRACKING RETURN ============
+                            'returned_count': returnedCount,           // تعداد خاده برگشتی
+                            'returned_weight': returnedWeightKg,      // وزن کل برگشتی (kg)
+                            'returned_price': returnedPrice,          // ارزش برگشتی
+                            
+                            // ذخیره مقادیر اصلی برای مرجع
                             'original_unit_count': originalUnitCount,
                             'original_total_weight': originalTotalWeight,
                             'original_final_price': originalFinalPrice,
                           };
 
-                          print('📝 Updating sale with payload: $updatePayload');
+                          print('📝 Updating sale with payload:');
+                          print('  - Original unit count: $originalUnitCount');
+                          print('  - Weight per unit: $weightPerUnit $unit');
+                          print('  - Returned count: $returnedCount');
+                          print('  - Returned weight: $returnedWeightKg kg');
+                          print('  - Returned price: $returnedPrice');
+                          print('  - Remaining count: $remainingCount');
+                          print('  - Remaining weight: $remainingWeightKg kg');
+                          print('  - Remaining price: $remainingPrice');
 
                           final result = await _db.updateSalesInvoice(selectedSale!['id'], updatePayload);
                           if (result == -1) {
@@ -1066,7 +1173,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                             return;
                           }
 
-                          // Restore stock for returned items
+                          // ============ FIXED: RESTORE STOCK ============
                           if (productId != null && returnedWeightKg > 0) {
                             final stockRestored = await _db.addProductStock(
                               productId,
@@ -1076,16 +1183,25 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                             if (!stockRestored) {
                               _showSnackbar('⚠️ خطا در بازگرداندن موجودی به انبار', Colors.orange);
                             } else {
-                              _showSnackbar('✅ ${returnedCount} خاده (${_formatWeight(unit, returnedWeightKg, showUnit: false)} تن) به انبار بازگردانده شد', Colors.green);
+                              // Show detailed success message
+                              String weightDisplay = _formatWeight(unit, returnedWeightKg);
+                              _showSnackbar(
+                                '✅ ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)} خاده (${weightDisplay}) به انبار بازگردانده شد',
+                                Colors.green
+                              );
                             }
                           }
 
-                          // IMPORTANT: Reload data to refresh the table
+                          // Reload data
                           await _loadData();
                           
                           Navigator.pop(context);
+                          
+                          // ============ FIXED: SHOW DETAILED SUMMARY ============
                           _showSnackbar(
-                            '✅ ${returnedCount} خاده برگشت داده شد. باقی‌مانده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)} خاده',
+                            '✅ برگشت با موفقیت ثبت شد!\n'
+                            '🔴 برگشت: ${returnedCount.toStringAsFixed(returnedCount % 1 == 0 ? 0 : 2)} خاده (${_formatWeight(unit, returnedWeightKg)}) - ${_formatCurrency(returnedPrice)} $currency\n'
+                            '✅ باقی‌مانده: ${remainingCount.toStringAsFixed(remainingCount % 1 == 0 ? 0 : 2)} خاده (${_formatWeight(unit, remainingWeightKg)}) - ${_formatCurrency(remainingPrice)} $currency',
                             Colors.green
                           );
                         },

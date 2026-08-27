@@ -192,7 +192,7 @@ class _IncomesPageState extends State<IncomesPage>
   }
 
   void _calculateIncomes() {
-    final filteredSales = _getFilteredSales();
+  final filteredSales = _getFilteredSales();
     final filteredServices = _getFilteredServices();
     final filteredWastes = _getFilteredWastes();
     final filteredExpenses = _getFilteredExpenses();
@@ -201,18 +201,27 @@ class _IncomesPageState extends State<IncomesPage>
     // 1. TOTAL SALES
     // ============================================================
     _totalSales = filteredSales.fold<double>(0, (sum, sale) {
-      final price = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
-      final currency = sale['currency']?.toString() ?? 'USD';
-      final rate = double.tryParse(sale['price_rate']?.toString() ?? '1') ?? 1;
-      
-      final converted = _convertCurrency(
-        amount: price,
-        fromCurrency: currency,
-        exchangeRate: rate,
-        toCurrency: _selectedCurrency,
-      );
-      return sum + converted;
-    });
+    final isReturned = sale['is_back_returned'] == 1 || sale['is_back_returned']?.toString() == '1';
+    double price;
+    
+    if (isReturned) {
+      // Use the remaining price (final_price is already updated)
+      price = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+    } else {
+      price = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+    }
+    
+    final currency = sale['currency']?.toString() ?? 'USD';
+    final rate = double.tryParse(sale['price_rate']?.toString() ?? '1') ?? 1;
+    
+    final converted = _convertCurrency(
+      amount: price,
+      fromCurrency: currency,
+      exchangeRate: rate,
+      toCurrency: _selectedCurrency,
+    );
+    return sum + converted;
+  });
 
     // ============================================================
     // 2. TOTAL SERVICES
@@ -434,34 +443,52 @@ class _IncomesPageState extends State<IncomesPage>
   // ============================================================
   // FILTER METHODS
   // ============================================================
-  List<Map<String, dynamic>> _getFilteredSales() {
-    final range = _getGregorianRangeForPersianMonth(_selectedYear, _selectedMonth);
-    final startDate = range[0];
-    final endDate = range[1];
+List<Map<String, dynamic>> _getFilteredSales() {
+  final range = _getGregorianRangeForPersianMonth(_selectedYear, _selectedMonth);
+  final startDate = range[0];
+  final endDate = range[1];
 
-    return _sales.where((sale) {
-      if (sale['is_back_returned'] == 1 || sale['is_back_returned']?.toString() == '1') {
+  return _sales.where((sale) {
+    // ✅ FIX: Include returned sales that still have remaining value
+    final isReturned = sale['is_back_returned'] == 1 || sale['is_back_returned']?.toString() == '1';
+    
+    if (isReturned) {
+      // Check if there's any remaining value (partial return)
+      final remainingAmount = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+      final returnedCount = double.tryParse(sale['returned_count']?.toString() ?? '0') ?? 0;
+      final originalCount = double.tryParse(sale['original_unit_count']?.toString() ?? '0') ?? 0;
+      
+      // If all units were returned (full return), skip it
+      if (returnedCount >= originalCount && originalCount > 0) {
         return false;
       }
-
-      final dateStr = sale['date_en']?.toString() ?? '';
-      if (dateStr.isEmpty) return false;
-
-      try {
-        final parts = dateStr.split('-');
-        if (parts.length != 3) return false;
-        final year = int.tryParse(parts[0]) ?? 0;
-        final month = int.tryParse(parts[1]) ?? 0;
-        final day = int.tryParse(parts[2]) ?? 0;
-        final saleDate = DateTime(year, month, day);
-
-        return saleDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
-               saleDate.isBefore(endDate.add(const Duration(days: 1)));
-      } catch (_) {
+      
+      // If there's remaining value, include it
+      if (remainingAmount > 0) {
+        // Continue to date check
+      } else {
         return false;
       }
-    }).toList();
-  }
+    }
+
+    final dateStr = sale['date_en']?.toString() ?? '';
+    if (dateStr.isEmpty) return false;
+
+    try {
+      final parts = dateStr.split('-');
+      if (parts.length != 3) return false;
+      final year = int.tryParse(parts[0]) ?? 0;
+      final month = int.tryParse(parts[1]) ?? 0;
+      final day = int.tryParse(parts[2]) ?? 0;
+      final saleDate = DateTime(year, month, day);
+
+      return saleDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
+             saleDate.isBefore(endDate.add(const Duration(days: 1)));
+    } catch (_) {
+      return false;
+    }
+  }).toList();
+}
 
   List<Map<String, dynamic>> _getFilteredServices() {
     final range = _getGregorianRangeForPersianMonth(_selectedYear, _selectedMonth);

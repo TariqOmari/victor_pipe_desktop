@@ -193,7 +193,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 28,
+        version: 29,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -233,7 +233,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 28,
+        version: 29,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -650,6 +650,19 @@ class DatabaseHelper {
         print('⚠️ Error migrating amount_afn column: $e');
       }
     }
+
+    // Add this inside _onUpgrade method - VERSION 29
+if (oldVersion < 29) {
+  try {
+    print('🔄 Adding back-return tracking columns for version 29...');
+    await _ensureBackReturnColumns(db);
+    print('✅ Back-return columns added!');
+  } catch (e) {
+    print('⚠️ Error adding back-return columns: $e');
+  }
+  print('✅ Database upgraded to version 29!');
+}
+
 
     if (oldVersion < 22) {
       try {
@@ -1363,7 +1376,47 @@ Future<Map<String, dynamic>?> getWasteRecordById(int id) async {
     return null;
   }
 }
-
+// Add this method to your DatabaseHelper class
+Future<void> _ensureBackReturnColumns(Database db) async {
+  try {
+    final columns = await db.rawQuery("PRAGMA table_info('sales_invoices')");
+    final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+    
+    final requiredColumns = {
+      'returned_count': 'TEXT DEFAULT \'0\'',
+      'returned_weight': 'TEXT DEFAULT \'0\'',
+      'returned_price': 'REAL DEFAULT 0',
+      'original_unit_count': 'TEXT',
+      'original_total_weight': 'TEXT',
+      'original_final_price': 'REAL',
+    };
+    
+    for (final entry in requiredColumns.entries) {
+      if (!columnNames.contains(entry.key)) {
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN ${entry.key} ${entry.value}');
+          print('✅ Added missing sales_invoices column: ${entry.key}');
+        } catch (e) {
+          print('⚠️ Error adding column ${entry.key}: $e');
+        }
+      }
+    }
+    
+    // ✅ FIX: Update existing returned sales with default values if they are NULL
+    await db.execute('''
+      UPDATE sales_invoices 
+      SET 
+        returned_count = COALESCE(returned_count, '0'),
+        returned_weight = COALESCE(returned_weight, '0'),
+        returned_price = COALESCE(returned_price, 0)
+      WHERE is_back_returned = 1
+    ''');
+    
+    print('✅ Back-return columns verified and existing data updated!');
+  } catch (e) {
+    print('❌ Error ensuring back-return columns: $e');
+  }
+}
 
   Future<void> _ensureServiceInvoicesTable(Database db) async {
     try {
@@ -1453,7 +1506,6 @@ Future<Map<String, dynamic>?> getWasteRecordById(int id) async {
       rethrow;
     }
   }
-
 Future<void> _ensureSalesInvoiceTable(Database db) async {
   try {
     await db.execute('''
@@ -1501,81 +1553,17 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
         produced_product_id INTEGER,
         driver_name TEXT,
         number_plate TEXT,
+        returned_count TEXT DEFAULT '0',
+        returned_weight TEXT DEFAULT '0',
+        returned_price REAL DEFAULT 0,
+        original_unit_count TEXT,
+        original_total_weight TEXT,
+        original_final_price REAL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
-
-    // Try adding columns individually if they don't exist
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN driver_name TEXT');
-      print('✅ Added driver_name column');
-    } catch (e) {
-      print('⚠️ driver_name column already exists: $e');
-    }
-
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN number_plate TEXT');
-      print('✅ Added number_plate column');
-    } catch (e) {
-      print('⚠️ number_plate column already exists: $e');
-    }
-
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
-    } catch (e) {
-      print('⚠️ loading_time_en column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
-    } catch (e) {
-      print('⚠️ price_rate column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN payment_method TEXT');
-    } catch (e) {
-      print('⚠️ payment_method column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN loan_type TEXT');
-    } catch (e) {
-      print('⚠️ loan_type column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN paid_amount REAL DEFAULT 0');
-    } catch (e) {
-      print('⚠️ paid_amount column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN remaining_amount REAL DEFAULT 0');
-    } catch (e) {
-      print('⚠️ remaining_amount column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN is_back_returned INTEGER DEFAULT 0');
-    } catch (e) {
-      print('⚠️ is_back_returned column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_reason TEXT');
-    } catch (e) {
-      print('⚠️ back_return_reason column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date TEXT');
-    } catch (e) {
-      print('⚠️ back_return_date column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN back_return_date_en TEXT');
-    } catch (e) {
-      print('⚠️ back_return_date_en column already exists or could not be added: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN produced_product_id INTEGER');
-    } catch (e) {
-      print('⚠️ produced_product_id column already exists or could not be added: $e');
-    }
     
+    // ... rest of your code
   } catch (e) {
     print('❌ Error ensuring sales invoices table: $e');
     rethrow;

@@ -193,7 +193,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 29,
+        version: 38,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -210,6 +210,7 @@ class DatabaseHelper {
           await _ensureDailyExpensesTable(db);
           await _ensureWasteMaterialsTable(db);
           await _ensureSalesInvoiceProductRelation(db);
+          await _ensureInvoiceItemsTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -233,7 +234,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 29,
+        version: 38,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -250,6 +251,7 @@ class DatabaseHelper {
           await _ensureDailyExpensesTable(db);
           await _ensureWasteMaterialsTable(db);
           await _ensureSalesInvoiceProductRelation(db);
+          await _ensureInvoiceItemsTable(db);
           await db.execute('PRAGMA busy_timeout = 5000');
           await db.execute('PRAGMA journal_mode = WAL');
         },
@@ -276,605 +278,1140 @@ class DatabaseHelper {
     }
   }
 
- Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-  try {
-    print('🔄 Upgrading database from version $oldVersion to $newVersion...');
-    
-    if (oldVersion < 2) {
-      await db.execute('''
-        CREATE TABLE suppliers(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          phone TEXT NOT NULL,
-          email TEXT,
-          address TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''');
-      print('✅ Suppliers table added!');
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    try {
+      print('🔄 Upgrading database from version $oldVersion to $newVersion...');
       
-      await db.insert('suppliers', {
-        'name': 'تامین پلیمر تهران',
-        'phone': '021 1234 5678',
-        'email': 'info@taminpolimer.com',
-        'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
-      });
-      print('✅ Sample supplier added!');
-    }
-    
-    if (oldVersion < 3) {
-      await db.execute('''
-        CREATE TABLE raw_materials(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          supplier_id INTEGER,
-          name TEXT NOT NULL,
-          location TEXT,
-          material_type TEXT,
-          thickness TEXT,
-          net_weight TEXT,
-          gross_weight TEXT,
-          date TEXT,
-          date_en TEXT,
-          unit TEXT,
-          unit_price TEXT,
-          product TEXT,
-          commission TEXT,
-          transfer_cost TEXT,
-          miscellaneous TEXT,
-          ghurfedari TEXT,
-          barchalani TEXT,
-          purchase_type TEXT,
-          seller_payment TEXT,
-          seller_payment_method TEXT,
-          seller_paid_amount TEXT,
-          currency TEXT,
-          exchange_rate REAL,
-          final_price TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-        )
-      ''');
-      print('✅ Raw materials table added!');
-    }
-
-    if (oldVersion < 4) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN location TEXT');
-      } catch (e) { print('⚠️ location: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN material_type TEXT');
-      } catch (e) { print('⚠️ material_type: $e'); }
-      print('✅ Version 4 upgrade done!');
-    }
-
-    if (oldVersion < 5) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN date TEXT');
-      } catch (e) { print('⚠️ date: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN unit TEXT');
-      } catch (e) { print('⚠️ unit: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN unit_price TEXT');
-      } catch (e) { print('⚠️ unit_price: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN product TEXT');
-      } catch (e) { print('⚠️ product: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN commission TEXT');
-      } catch (e) { print('⚠️ commission: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN transfer_cost TEXT');
-      } catch (e) { print('⚠️ transfer_cost: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN miscellaneous TEXT');
-      } catch (e) { print('⚠️ miscellaneous: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN final_price TEXT');
-      } catch (e) { print('⚠️ final_price: $e'); }
-      print('✅ Version 5 upgrade done!');
-    }
-
-    if (oldVersion < 6) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN ghurfedari TEXT');
-      } catch (e) { print('⚠️ ghurfedari: $e'); }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN barchalani TEXT');
-      } catch (e) { print('⚠️ barchalani: $e'); }
-      print('✅ Version 6 upgrade done!');
-    }
-
-    if (oldVersion < 9) {
-      try {
-        await db.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT');
-        print('✅ Added profile_pic column to users table');
-      } catch (e) {
-        print('⚠️ Error adding profile_pic: $e');
-      }
-      print('✅ Database upgraded to version 9!');
-    }
-
-    if (oldVersion < 10) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN purchase_type TEXT');
-        print('✅ Added purchase_type column to raw_materials table');
-      } catch (e) {
-        print('⚠️ Error adding purchase_type: $e');
-      }
-      print('✅ Database upgraded to version 10!');
-    }
-
-    if (oldVersion < 11) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN date_en TEXT');
-        print('✅ Added date_en column to raw_materials table');
-      } catch (e) {
-        print('⚠️ Error adding date_en: $e');
-      }
-      print('✅ Database upgraded to version 11!');
-    }
-
-    if (oldVersion < 24) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment TEXT');
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment_method TEXT');
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_paid_amount TEXT');
-        print('✅ Added seller payment columns to raw_materials table');
-      } catch (e) {
-        print('⚠️ Error adding seller payment columns: $e');
-      }
-      print('✅ Database upgraded to version 24!');
-    }
-
-    if (oldVersion < 25) {
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN currency TEXT');
-      } catch (e) {
-        print('⚠️ Error adding currency column to raw_materials: $e');
-      }
-      try {
-        await db.execute('ALTER TABLE raw_materials ADD COLUMN exchange_rate REAL');
-      } catch (e) {
-        print('⚠️ Error adding exchange_rate column to raw_materials: $e');
-      }
-      print('✅ Database upgraded to version 25!');
-    }
-
-    if (oldVersion < 26) {
-      try {
-        await _ensureSalesInvoiceProductRelation(db);
-        print('✅ Added produced_product_id relationship to sales_invoices');
-      } catch (e) {
-        print('⚠️ Error adding produced_product_id: $e');
-      }
-      print('✅ Database upgraded to version 26!');
-    }
-
-    if (oldVersion < 27) {
-      try {
-        await _ensureSupplierLoanTables(db);
-        print('✅ Added supplier_loans table');
-      } catch (e) {
-        print('⚠️ Error adding supplier_loans table: $e');
-      }
-      print('✅ Database upgraded to version 27!');
-    }
-
-    if (oldVersion < 28) {
-      try {
-        print('🔄 Fixing service_invoices table for version 28...');
-        final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
-        final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
-        
-        if (!columnNames.contains('invoice_number')) {
-          await db.execute('ALTER TABLE service_invoices ADD COLUMN invoice_number TEXT');
-          print('✅ Added invoice_number column to service_invoices');
-          await db.execute('UPDATE service_invoices SET invoice_number = "SERV" || substr("00000" || id, -5, 5) WHERE invoice_number IS NULL');
-          print('✅ Updated existing service invoices with invoice numbers');
-        }
-        print('⚠️ Note: To make invoice_number NOT NULL UNIQUE, recreate the table or ensure all rows have values');
-      } catch (e) {
-        print('⚠️ Error fixing service_invoices table: $e');
-      }
-      print('✅ Database upgraded to version 28!');
-    }
-
-    // ADD DRIVER_NAME AND NUMBER_PLATE COLUMNS - KEEP VERSION 28
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN driver_name TEXT');
-      print('✅ Added driver_name column to sales_invoices');
-    } catch (e) {
-      print('⚠️ driver_name column already exists: $e');
-    }
-
-    try {
-      await db.execute('ALTER TABLE sales_invoices ADD COLUMN number_plate TEXT');
-      print('✅ Added number_plate column to sales_invoices');
-    } catch (e) {
-      print('⚠️ number_plate column already exists: $e');
-    }
-
-    if (oldVersion < 13) {
-      try {
-        await _ensureProducedProductsTable(db);
-        print('✅ Ensured produced_products table exists');
-      } catch (e) {
-        print('⚠️ Error ensuring produced_products table: $e');
-      }
-      print('✅ Database upgraded to version 13!');
-    }
-
-    if (oldVersion < 14) {
-      try {
-        await _ensureCapitalTables(db);
-        print('✅ Ensured capital tables exist');
-      } catch (e) {
-        print('⚠️ Error ensuring capital tables: $e');
-      }
-      print('✅ Database upgraded to version 14!');
-    }
-
-    if (oldVersion < 15) {
-      try {
-        await _ensureCustomerCompanyTables(db);
-        print('✅ Ensured customer/company tables exist');
-      } catch (e) {
-        print('⚠️ Error ensuring customer/company tables: $e');
-      }
-      print('✅ Database upgraded to version 15!');
-    }
-
-    if (oldVersion < 16) {
-      try {
-        await _ensureSalesInvoiceTable(db);
-        print('✅ Ensured sales invoices table exists');
-      } catch (e) {
-        print('⚠️ Error ensuring sales invoices table: $e');
-      }
-      print('✅ Database upgraded to version 16!');
-    }
-
-    if (oldVersion < 17) {
-      try {
-        await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time TEXT');
-        print('✅ Added loading_time column to sales_invoices table');
-      } catch (e) {
-        print('⚠️ Error adding loading_time column: $e');
-      }
-      try {
-        await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
-        print('✅ Added loading_time_en column to sales_invoices table');
-      } catch (e) {
-        print('⚠️ Error adding loading_time_en column: $e');
-      }
-      try {
-        await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
-      } catch (e) {
-        print('⚠️ Error adding price_rate column (may already exist): $e');
-      }
-      print('✅ Database upgraded to version 17!');
-    }
-
-    if (oldVersion < 18) {
-      try {
-        print('🔄 Migrating daily_expenses to remove bill_number and registration_number...');
+      if (oldVersion < 2) {
         await db.execute('''
-          CREATE TABLE IF NOT EXISTS daily_expenses_new(
+          CREATE TABLE suppliers(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_number TEXT UNIQUE,
-            date TEXT,
-            date_en TEXT,
-            category TEXT,
-            description TEXT,
-            price REAL,
-            currency TEXT,
-            exchange_rate REAL,
-            usd_equivalent REAL,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            email TEXT,
+            address TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
         ''');
+        print('✅ Suppliers table added!');
+        
+        await db.insert('suppliers', {
+          'name': 'تامین پلیمر تهران',
+          'phone': '021 1234 5678',
+          'email': 'info@taminpolimer.com',
+          'address': 'تهران، خیابان آزادی، پلاک ۱۲۳',
+        });
+        print('✅ Sample supplier added!');
+      }
+      
+      if (oldVersion < 3) {
         await db.execute('''
-          INSERT INTO daily_expenses_new (id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at)
-          SELECT id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at FROM daily_expenses
+          CREATE TABLE raw_materials(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_id INTEGER,
+            name TEXT NOT NULL,
+            location TEXT,
+            material_type TEXT,
+            thickness TEXT,
+            net_weight TEXT,
+            gross_weight TEXT,
+            date TEXT,
+            date_en TEXT,
+            unit TEXT,
+            unit_price TEXT,
+            product TEXT,
+            commission TEXT,
+            transfer_cost TEXT,
+            miscellaneous TEXT,
+            ghurfedari TEXT,
+            barchalani TEXT,
+            purchase_type TEXT,
+            seller_payment TEXT,
+            seller_payment_method TEXT,
+            seller_paid_amount TEXT,
+            currency TEXT,
+            exchange_rate REAL,
+            final_price TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+          )
         ''');
-        await db.execute('DROP TABLE IF EXISTS daily_expenses');
-        await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
-        print('✅ Migration to version 18 completed!');
-      } catch (e) {
-        print('⚠️ Migration to version 18 failed: $e');
+        print('✅ Raw materials table added!');
       }
-    }
 
-    if (oldVersion < 19) {
-      try {
-        await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN account_id INTEGER');
-        await db.execute("UPDATE sarafi_transactions SET account_id = 1 WHERE account_id IS NULL");
-        print('✅ Added account_id column to sarafi_transactions');
-      } catch (e) {
-        print('⚠️ Error adding account_id to sarafi_transactions: $e');
+      if (oldVersion < 4) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN location TEXT');
+        } catch (e) { print('⚠️ location: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN material_type TEXT');
+        } catch (e) { print('⚠️ material_type: $e'); }
+        print('✅ Version 4 upgrade done!');
       }
-    }
 
-    if (oldVersion < 20) {
-      try {
-        print('🔄 Migrating sarafi_transactions: renaming afn_equivalent to amount_afn...');
-        
-        final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
-        final columnNames = columns.map((row) => row['name']?.toString()).toSet();
-        
-        if (columnNames.contains('afn_equivalent') && !columnNames.contains('amount_afn')) {
-          await db.execute('ALTER TABLE sarafi_transactions RENAME TO sarafi_transactions_old');
+      if (oldVersion < 5) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN date TEXT');
+        } catch (e) { print('⚠️ date: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN unit TEXT');
+        } catch (e) { print('⚠️ unit: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN unit_price TEXT');
+        } catch (e) { print('⚠️ unit_price: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN product TEXT');
+        } catch (e) { print('⚠️ product: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN commission TEXT');
+        } catch (e) { print('⚠️ commission: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN transfer_cost TEXT');
+        } catch (e) { print('⚠️ transfer_cost: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN miscellaneous TEXT');
+        } catch (e) { print('⚠️ miscellaneous: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN final_price TEXT');
+        } catch (e) { print('⚠️ final_price: $e'); }
+        print('✅ Version 5 upgrade done!');
+      }
+
+      if (oldVersion < 6) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN ghurfedari TEXT');
+        } catch (e) { print('⚠️ ghurfedari: $e'); }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN barchalani TEXT');
+        } catch (e) { print('⚠️ barchalani: $e'); }
+        print('✅ Version 6 upgrade done!');
+      }
+
+      if (oldVersion < 9) {
+        try {
+          await db.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT');
+          print('✅ Added profile_pic column to users table');
+        } catch (e) {
+          print('⚠️ Error adding profile_pic: $e');
+        }
+        print('✅ Database upgraded to version 9!');
+      }
+
+      if (oldVersion < 10) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN purchase_type TEXT');
+          print('✅ Added purchase_type column to raw_materials table');
+        } catch (e) {
+          print('⚠️ Error adding purchase_type: $e');
+        }
+        print('✅ Database upgraded to version 10!');
+      }
+
+      if (oldVersion < 11) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN date_en TEXT');
+          print('✅ Added date_en column to raw_materials table');
+        } catch (e) {
+          print('⚠️ Error adding date_en: $e');
+        }
+        print('✅ Database upgraded to version 11!');
+      }
+
+      if (oldVersion < 24) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment TEXT');
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_payment_method TEXT');
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN seller_paid_amount TEXT');
+          print('✅ Added seller payment columns to raw_materials table');
+        } catch (e) {
+          print('⚠️ Error adding seller payment columns: $e');
+        }
+        print('✅ Database upgraded to version 24!');
+      }
+
+      if (oldVersion < 25) {
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN currency TEXT');
+        } catch (e) {
+          print('⚠️ Error adding currency column to raw_materials: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE raw_materials ADD COLUMN exchange_rate REAL');
+        } catch (e) {
+          print('⚠️ Error adding exchange_rate column to raw_materials: $e');
+        }
+        print('✅ Database upgraded to version 25!');
+      }
+
+      if (oldVersion < 26) {
+        try {
+          await _ensureSalesInvoiceProductRelation(db);
+          print('✅ Added produced_product_id relationship to sales_invoices');
+        } catch (e) {
+          print('⚠️ Error adding produced_product_id: $e');
+        }
+        print('✅ Database upgraded to version 26!');
+      }
+
+      if (oldVersion < 27) {
+        try {
+          await _ensureSupplierLoanTables(db);
+          print('✅ Added supplier_loans table');
+        } catch (e) {
+          print('⚠️ Error adding supplier_loans table: $e');
+        }
+        print('✅ Database upgraded to version 27!');
+      }
+
+      if (oldVersion < 28) {
+        try {
+          print('🔄 Fixing service_invoices table for version 28...');
+          final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
+          final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
           
+          if (!columnNames.contains('invoice_number')) {
+            await db.execute('ALTER TABLE service_invoices ADD COLUMN invoice_number TEXT');
+            print('✅ Added invoice_number column to service_invoices');
+            await db.execute('UPDATE service_invoices SET invoice_number = "SERV" || substr("00000" || id, -5, 5) WHERE invoice_number IS NULL');
+            print('✅ Updated existing service invoices with invoice numbers');
+          }
+          print('⚠️ Note: To make invoice_number NOT NULL UNIQUE, recreate the table or ensure all rows have values');
+        } catch (e) {
+          print('⚠️ Error fixing service_invoices table: $e');
+        }
+        print('✅ Database upgraded to version 28!');
+      }
+
+      // ADD DRIVER_NAME AND NUMBER_PLATE COLUMNS - KEEP VERSION 28
+      try {
+        await db.execute('ALTER TABLE sales_invoices ADD COLUMN driver_name TEXT');
+        print('✅ Added driver_name column to sales_invoices');
+      } catch (e) {
+        print('⚠️ driver_name column already exists: $e');
+      }
+
+      try {
+        await db.execute('ALTER TABLE sales_invoices ADD COLUMN number_plate TEXT');
+        print('✅ Added number_plate column to sales_invoices');
+      } catch (e) {
+        print('⚠️ number_plate column already exists: $e');
+      }
+
+      if (oldVersion < 13) {
+        try {
+          await _ensureProducedProductsTable(db);
+          print('✅ Ensured produced_products table exists');
+        } catch (e) {
+          print('⚠️ Error ensuring produced_products table: $e');
+        }
+        print('✅ Database upgraded to version 13!');
+      }
+
+      if (oldVersion < 14) {
+        try {
+          await _ensureCapitalTables(db);
+          print('✅ Ensured capital tables exist');
+        } catch (e) {
+          print('⚠️ Error ensuring capital tables: $e');
+        }
+        print('✅ Database upgraded to version 14!');
+      }
+
+      if (oldVersion < 15) {
+        try {
+          await _ensureCustomerCompanyTables(db);
+          print('✅ Ensured customer/company tables exist');
+        } catch (e) {
+          print('⚠️ Error ensuring customer/company tables: $e');
+        }
+        print('✅ Database upgraded to version 15!');
+      }
+
+      if (oldVersion < 16) {
+        try {
+          await _ensureSalesInvoiceTable(db);
+          print('✅ Ensured sales invoices table exists');
+        } catch (e) {
+          print('⚠️ Error ensuring sales invoices table: $e');
+        }
+        print('✅ Database upgraded to version 16!');
+      }
+
+      if (oldVersion < 17) {
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time TEXT');
+          print('✅ Added loading_time column to sales_invoices table');
+        } catch (e) {
+          print('⚠️ Error adding loading_time column: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN loading_time_en TEXT');
+          print('✅ Added loading_time_en column to sales_invoices table');
+        } catch (e) {
+          print('⚠️ Error adding loading_time_en column: $e');
+        }
+        try {
+          await db.execute('ALTER TABLE sales_invoices ADD COLUMN price_rate REAL');
+        } catch (e) {
+          print('⚠️ Error adding price_rate column (may already exist): $e');
+        }
+        print('✅ Database upgraded to version 17!');
+      }
+
+      if (oldVersion < 18) {
+        try {
+          print('🔄 Migrating daily_expenses to remove bill_number and registration_number...');
           await db.execute('''
-            CREATE TABLE sarafi_transactions(
+            CREATE TABLE IF NOT EXISTS daily_expenses_new(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
-              account_id INTEGER,
-              transaction_type TEXT NOT NULL,
-              amount_usd REAL NOT NULL,
-              exchange_rate REAL NOT NULL DEFAULT 1,
-              amount_afn REAL NOT NULL DEFAULT 0,
-              balance_after REAL NOT NULL DEFAULT 0,
-              source_name TEXT,
-              source_account TEXT,
-              source_email TEXT,
-              source_phone TEXT,
+              invoice_number TEXT UNIQUE,
               date TEXT,
               date_en TEXT,
-              address TEXT,
-              note TEXT,
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-              FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
-            )
-          ''');
-          
-          await db.execute('''
-            INSERT INTO sarafi_transactions 
-              (id, account_id, transaction_type, amount_usd, exchange_rate, 
-               source_name, source_account, source_email, source_phone, 
-               date, date_en, address, note, created_at, amount_afn, balance_after)
-            SELECT 
-              id, account_id, transaction_type, amount_usd, exchange_rate,
-              source_name, source_account, source_email, source_phone,
-              date, date_en, address, note, created_at, afn_equivalent, 0
-            FROM sarafi_transactions_old
-          ''');
-          
-          await db.execute('DROP TABLE sarafi_transactions_old');
-          print('✅ Successfully renamed afn_equivalent to amount_afn');
-        } else if (!columnNames.contains('amount_afn')) {
-          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_afn REAL NOT NULL DEFAULT 0');
-          print('✅ Added amount_afn column');
-        }
-      } catch (e) {
-        print('⚠️ Error migrating amount_afn column: $e');
-      }
-    }
-
-    // Add this inside _onUpgrade method - VERSION 29
-if (oldVersion < 29) {
-  try {
-    print('🔄 Adding back-return tracking columns for version 29...');
-    await _ensureBackReturnColumns(db);
-    print('✅ Back-return columns added!');
-  } catch (e) {
-    print('⚠️ Error adding back-return columns: $e');
-  }
-  print('✅ Database upgraded to version 29!');
-}
-
-
-    if (oldVersion < 22) {
-      try {
-        await _ensureWasteMaterialsTable(db);
-        print('✅ Ensured waste_material_losses table exists');
-      } catch (e) {
-        print('⚠️ Error ensuring waste_material_losses table: $e');
-      }
-      print('✅ Database upgraded to version 22!');
-    }
-
-    if (oldVersion < 21) {
-      try {
-        print('🔄 Migrating sarafi_transactions: adding balance_after...');
-        
-        final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
-        final columnNames = columns.map((row) => row['name']?.toString()).toSet();
-        
-        if (!columnNames.contains('balance_after')) {
-          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
-          print('✅ Added balance_after column');
-        } else {
-          print('✅ balance_after column already exists');
-        }
-      } catch (e) {
-        print('⚠️ Error adding balance_after column: $e');
-      }
-    }
-    
-    print('✅ Database upgraded successfully!');
-  } catch (e) {
-    print('❌ Error upgrading database: $e');
-    rethrow;
-  }
-}
-
-  // ============ PRODUCED PRODUCTS TABLE (SINGLE DEFINITION) ============
- Future<void> _ensureProducedProductsTable(Database db) async {
-  try {
-    final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='produced_products'");
-    
-    if (tables.isEmpty) {
-      // Create table WITHOUT product_name (or with it as nullable)
-      await db.execute('''
-        CREATE TABLE produced_products(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          product_name TEXT,
-          production_type TEXT,
-          size TEXT,
-          thickness TEXT,
-          length TEXT,
-          raw_count INTEGER,
-          raw_weight REAL,
-          total_weight REAL,
-          unit TEXT,
-          production_date TEXT,
-          production_date_en TEXT,
-          status TEXT,
-          description TEXT,
-          remaining_stock REAL DEFAULT 0,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''');
-      print('✅ produced_products table created with all fields!');
-    } else {
-      // Table exists - check columns
-      final columns = await db.rawQuery("PRAGMA table_info('produced_products')");
-      final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
-      
-      print('📋 Existing columns: $columnNames');
-      
-      // Check if product_name is NOT NULL and remove the constraint
-      final productNameCol = columns.firstWhere(
-        (col) => col['name']?.toString() == 'product_name',
-        orElse: () => {},
-      );
-      
-      if (productNameCol.isNotEmpty) {
-        final notNull = productNameCol['notnull'] ?? 0;
-        if (notNull == 1) {
-          // product_name is NOT NULL - we need to make it nullable
-          // SQLite doesn't support dropping NOT NULL directly, so we need to recreate the table
-          print('⚠️ product_name has NOT NULL constraint - migrating to make it nullable...');
-          
-          // Create a new table without the NOT NULL constraint
-          await db.execute('''
-            CREATE TABLE produced_products_new(
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              product_name TEXT,
-              production_type TEXT,
-              size TEXT,
-              thickness TEXT,
-              length TEXT,
-              raw_count INTEGER,
-              raw_weight REAL,
-              total_weight REAL,
-              unit TEXT,
-              production_date TEXT,
-              production_date_en TEXT,
-              status TEXT,
+              category TEXT,
               description TEXT,
-              remaining_stock REAL DEFAULT 0,
+              price REAL,
+              currency TEXT,
+              exchange_rate REAL,
+              usd_equivalent REAL,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
           ''');
-          
-          // Copy data from old table to new table
           await db.execute('''
-            INSERT INTO produced_products_new (
-              id, product_name, production_type, size, thickness, length,
-              raw_count, raw_weight, total_weight, unit,
-              production_date, production_date_en, status, description,
-              remaining_stock, created_at
-            )
-            SELECT 
-              id, product_name, production_type, size, thickness, length,
-              raw_count, raw_weight, total_weight, unit,
-              production_date, production_date_en, status, description,
-              remaining_stock, created_at
-            FROM produced_products
+            INSERT INTO daily_expenses_new (id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at)
+            SELECT id, invoice_number, date, date_en, category, description, price, currency, exchange_rate, usd_equivalent, created_at FROM daily_expenses
           ''');
-          
-          // Drop old table and rename new one
-          await db.execute('DROP TABLE produced_products');
-          await db.execute('ALTER TABLE produced_products_new RENAME TO produced_products');
-          
-          print('✅ product_name NOT NULL constraint removed successfully!');
+          await db.execute('DROP TABLE IF EXISTS daily_expenses');
+          await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
+          print('✅ Migration to version 18 completed!');
+        } catch (e) {
+          print('⚠️ Migration to version 18 failed: $e');
         }
       }
-      
-      // Add missing columns one by one
-      final requiredColumns = {
-        'size': 'TEXT',
-        'raw_count': 'INTEGER',
-        'raw_weight': 'REAL',
-        'total_weight': 'REAL',
-        'production_date_en': 'TEXT',
-      };
-      
-      for (final entry in requiredColumns.entries) {
-        if (!columnNames.contains(entry.key)) {
-          try {
-            await db.execute('ALTER TABLE produced_products ADD COLUMN ${entry.key} ${entry.value}');
-            print('✅ Added column: ${entry.key}');
-          } catch (e) {
-            print('⚠️ Could not add column ${entry.key}: $e');
+
+      if (oldVersion < 19) {
+        try {
+          await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN account_id INTEGER');
+          await db.execute("UPDATE sarafi_transactions SET account_id = 1 WHERE account_id IS NULL");
+          print('✅ Added account_id column to sarafi_transactions');
+        } catch (e) {
+          print('⚠️ Error adding account_id to sarafi_transactions: $e');
+        }
+      }
+
+      if (oldVersion < 20) {
+        try {
+          print('🔄 Migrating sarafi_transactions: renaming afn_equivalent to amount_afn...');
+          
+          final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+          final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+          
+          if (columnNames.contains('afn_equivalent') && !columnNames.contains('amount_afn')) {
+            await db.execute('ALTER TABLE sarafi_transactions RENAME TO sarafi_transactions_old');
+            
+            await db.execute('''
+              CREATE TABLE sarafi_transactions(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER,
+                transaction_type TEXT NOT NULL,
+                amount_usd REAL NOT NULL,
+                exchange_rate REAL NOT NULL DEFAULT 1,
+                amount_afn REAL NOT NULL DEFAULT 0,
+                balance_after REAL NOT NULL DEFAULT 0,
+                source_name TEXT,
+                source_account TEXT,
+                source_email TEXT,
+                source_phone TEXT,
+                date TEXT,
+                date_en TEXT,
+                address TEXT,
+                note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES sarafi_accounts (id)
+              )
+            ''');
+            
+            await db.execute('''
+              INSERT INTO sarafi_transactions 
+                (id, account_id, transaction_type, amount_usd, exchange_rate, 
+                source_name, source_account, source_email, source_phone, 
+                date, date_en, address, note, created_at, amount_afn, balance_after)
+              SELECT 
+                id, account_id, transaction_type, amount_usd, exchange_rate,
+                source_name, source_account, source_email, source_phone,
+                date, date_en, address, note, created_at, afn_equivalent, 0
+              FROM sarafi_transactions_old
+            ''');
+            
+            await db.execute('DROP TABLE sarafi_transactions_old');
+            print('✅ Successfully renamed afn_equivalent to amount_afn');
+          } else if (!columnNames.contains('amount_afn')) {
+            await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN amount_afn REAL NOT NULL DEFAULT 0');
+            print('✅ Added amount_afn column');
           }
+        } catch (e) {
+          print('⚠️ Error migrating amount_afn column: $e');
+        }
+      }
+
+      // Add this inside _onUpgrade method - VERSION 29
+      if (oldVersion < 29) {
+        try {
+          print('🔄 Adding back-return tracking columns for version 29...');
+          await _ensureBackReturnColumns(db);
+          print('✅ Back-return columns added!');
+        } catch (e) {
+          print('⚠️ Error adding back-return columns: $e');
+        }
+        print('✅ Database upgraded to version 29!');
+      }
+
+      // VERSION 30 - Add invoice_items table for multi-product sales
+      if (oldVersion < 30) {
+        try {
+          print('🔄 Adding invoice_items table for multi-product sales (version 30)...');
+          await _ensureInvoiceItemsTable(db);
+          
+          // Migrate existing single-product data to invoice_items
+          try {
+            print('🔄 Migrating existing sales invoices to invoice_items...');
+            
+            final columns = await db.rawQuery("PRAGMA table_info('sales_invoices')");
+            final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+            
+            // Check if product columns exist
+            final hasProductColumns = columnNames.contains('product_name') || 
+                                       columnNames.contains('total_weight') ||
+                                       columnNames.contains('weight_per_unit') ||
+                                       columnNames.contains('unit_count');
+            
+            if (hasProductColumns) {
+              // Get all invoices that have product data
+              final invoices = await db.rawQuery('''
+                SELECT id, produced_product_id, product_name, size, thickness, 
+                       weight_per_unit, unit_count, total_weight, unit, unit_price, 
+                       total_price, weight, gender
+                FROM sales_invoices
+                WHERE (product_name IS NOT NULL AND product_name != '') 
+                   OR (total_weight IS NOT NULL AND total_weight != '' AND total_weight != '0')
+                   OR (weight_per_unit IS NOT NULL AND weight_per_unit != '' AND weight_per_unit != '0')
+                   OR (unit_count IS NOT NULL AND unit_count != '' AND unit_count != '0')
+              ''');
+              
+              int migrated = 0;
+              for (var inv in invoices) {
+                final item = {
+                  'invoice_id': inv['id'],
+                  'produced_product_id': inv['produced_product_id'],
+                  'product_name': inv['product_name']?.toString() ?? '',
+                  'size': inv['size']?.toString(),
+                  'thickness': inv['thickness']?.toString(),
+                  'weight_per_unit': double.tryParse(inv['weight_per_unit']?.toString() ?? '0'),
+                  'unit_count': double.tryParse(inv['unit_count']?.toString() ?? '0'),
+                  'total_weight': double.tryParse(inv['total_weight']?.toString() ?? '0'),
+                  'unit': inv['unit']?.toString(),
+                  'unit_price': double.tryParse(inv['unit_price']?.toString() ?? '0'),
+                  'total_price': double.tryParse(inv['total_price']?.toString() ?? '0'),
+                  'weight': inv['weight']?.toString(),
+                  'gender': inv['gender']?.toString(),
+                  'created_at': DateTime.now().toIso8601String(),
+                };
+                
+                // Remove null values
+                item.removeWhere((key, value) => value == null);
+                
+                // Only insert if it has product_name or total_weight
+                if ((item['product_name'] != null && item['product_name']!.toString().isNotEmpty) ||
+                    (item['total_weight'] != null && item['total_weight'] != 0)) {
+                  await db.insert('invoice_items', item);
+                  migrated++;
+                }
+              }
+              print('✅ Migrated $migrated invoice items!');
+            }
+          } catch (e) {
+            print('⚠️ Migration of existing data failed: $e');
+          }
+          
+          print('✅ Database upgraded to version 30!');
+        } catch (e) {
+          print('⚠️ Error upgrading to version 30: $e');
+        }
+      }
+
+      if (oldVersion < 22) {
+        try {
+          await _ensureWasteMaterialsTable(db);
+          print('✅ Ensured waste_material_losses table exists');
+        } catch (e) {
+          print('⚠️ Error ensuring waste_material_losses table: $e');
+        }
+        print('✅ Database upgraded to version 22!');
+      }
+
+
+      if (oldVersion < 31) {
+  try {
+    print('🔄 Removing UNIQUE constraint from invoice_number for multi-product support...');
+    
+    // Create new table without UNIQUE constraint
+    await db.execute('''
+      CREATE TABLE sales_invoices_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT NOT NULL,
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_address TEXT,
+        customer_company TEXT,
+        product_name TEXT,
+        gender TEXT,
+        size TEXT,
+        thickness TEXT,
+        weight TEXT,
+        weight_per_unit TEXT,
+        unit_count TEXT,
+        total_weight TEXT,
+        unit TEXT,
+        unit_price REAL,
+        total_price REAL,
+        price_rate REAL,
+        currency TEXT,
+        usd_equivalent REAL,
+        afn_equivalent REAL,
+        loading_cost REAL,
+        transfer_cost REAL,
+        clearance_cost REAL,
+        discount REAL,
+        loading_time TEXT,
+        loading_time_en TEXT,
+        final_price REAL,
+        payment_method TEXT,
+        loan_type TEXT,
+        paid_amount REAL DEFAULT 0,
+        remaining_amount REAL DEFAULT 0,
+        description TEXT,
+        sale_type TEXT,
+        date TEXT,
+        date_en TEXT,
+        is_back_returned INTEGER DEFAULT 0,
+        back_return_reason TEXT,
+        back_return_date TEXT,
+        back_return_date_en TEXT,
+        produced_product_id INTEGER,
+        driver_name TEXT,
+        number_plate TEXT,
+        returned_count TEXT DEFAULT '0',
+        returned_weight TEXT DEFAULT '0',
+        returned_price REAL DEFAULT 0,
+        original_unit_count TEXT,
+        original_total_weight TEXT,
+        original_final_price REAL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    
+    // Copy data
+    await db.execute('''
+      INSERT INTO sales_invoices_new SELECT * FROM sales_invoices
+    ''');
+    
+    await db.execute('DROP TABLE sales_invoices');
+    await db.execute('ALTER TABLE sales_invoices_new RENAME TO sales_invoices');
+    
+    print('✅ UNIQUE constraint removed from invoice_number!');
+  } catch (e) {
+    print('⚠️ Error removing UNIQUE constraint: $e');
+  }
+}
+// KEEP ONLY THIS VERSION 32 BLOCK (remove the duplicate)
+if (oldVersion < 32) {
+  try {
+    print('🔄 Removing UNIQUE constraint from invoice_number for multi-product support...');
+    
+    // Create new table without UNIQUE constraint
+    await db.execute('''
+      CREATE TABLE sales_invoices_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT NOT NULL,
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_address TEXT,
+        customer_company TEXT,
+        product_name TEXT,
+        gender TEXT,
+        size TEXT,
+        thickness TEXT,
+        weight TEXT,
+        weight_per_unit TEXT,
+        unit_count TEXT,
+        total_weight TEXT,
+        unit TEXT,
+        unit_price REAL,
+        total_price REAL,
+        price_rate REAL,
+        currency TEXT,
+        usd_equivalent REAL,
+        afn_equivalent REAL,
+        loading_cost REAL,
+        transfer_cost REAL,
+        clearance_cost REAL,
+        discount REAL,
+        loading_time TEXT,
+        loading_time_en TEXT,
+        final_price REAL,
+        payment_method TEXT,
+        loan_type TEXT,
+        paid_amount REAL DEFAULT 0,
+        remaining_amount REAL DEFAULT 0,
+        description TEXT,
+        sale_type TEXT,
+        date TEXT,
+        date_en TEXT,
+        is_back_returned INTEGER DEFAULT 0,
+        back_return_reason TEXT,
+        back_return_date TEXT,
+        back_return_date_en TEXT,
+        produced_product_id INTEGER,
+        driver_name TEXT,
+        number_plate TEXT,
+        returned_count TEXT DEFAULT '0',
+        returned_weight TEXT DEFAULT '0',
+        returned_price REAL DEFAULT 0,
+        original_unit_count TEXT,
+        original_total_weight TEXT,
+        original_final_price REAL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    
+    // Copy data
+    await db.execute('''
+      INSERT INTO sales_invoices_new SELECT * FROM sales_invoices
+    ''');
+    
+    await db.execute('DROP TABLE sales_invoices');
+    await db.execute('ALTER TABLE sales_invoices_new RENAME TO sales_invoices');
+    
+    print('✅ UNIQUE constraint removed from invoice_number!');
+  } catch (e) {
+    print('⚠️ Error removing UNIQUE constraint: $e');
+  }
+}
+
+
+if (oldVersion < 33) {
+  try {
+    print('🔄 Removing UNIQUE constraint from service_invoices invoice_number for multi-service support...');
+    
+    // Create new table without UNIQUE constraint
+    await db.execute('''
+      CREATE TABLE service_invoices_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT NOT NULL,
+        customer_name TEXT,
+        customer_phone TEXT,
+        customer_address TEXT,
+        service_title TEXT,
+        service_type TEXT,
+        description TEXT,
+        size TEXT,
+        thickness TEXT,
+        total_weight REAL,
+        unit TEXT,
+        unit_price REAL,
+        total_price REAL,
+        price REAL,
+        currency TEXT,
+        exchange_rate REAL,
+        loading_cost REAL,
+        transfer_cost REAL,
+        clearance_cost REAL,
+        discount REAL,
+        final_price REAL,
+        afn_equivalent REAL,
+        date TEXT,
+        date_en TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    
+    // Copy data
+    await db.execute('''
+      INSERT INTO service_invoices_new SELECT * FROM service_invoices
+    ''');
+    
+    await db.execute('DROP TABLE service_invoices');
+    await db.execute('ALTER TABLE service_invoices_new RENAME TO service_invoices');
+    
+    print('✅ UNIQUE constraint removed from service_invoices!');
+  } catch (e) {
+    print('⚠️ Error removing UNIQUE constraint from service_invoices: $e');
+  }
+}
+
+if (oldVersion < 34) {
+  try {
+    print('🔄 Removing UNIQUE constraint from daily_expenses registration_number...');
+    
+    // Check if UNIQUE constraint exists
+    final tableInfo = await db.rawQuery("PRAGMA table_info('daily_expenses')");
+    final hasUnique = tableInfo.any((col) => 
+      col['name'] == 'registration_number' && col['unique'] == 1
+    );
+    
+    if (hasUnique) {
+      // Create new table without UNIQUE constraint
+      await db.execute('''
+        CREATE TABLE daily_expenses_new(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT,
+          registration_number TEXT,
+          date TEXT,
+          date_en TEXT,
+          category TEXT,
+          description TEXT,
+          price REAL,
+          currency TEXT,
+          exchange_rate REAL,
+          usd_equivalent REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      // Copy data
+      await db.execute('''
+        INSERT INTO daily_expenses_new (
+          id, invoice_number, registration_number, date, date_en,
+          category, description, price, currency, exchange_rate,
+          usd_equivalent, created_at
+        )
+        SELECT 
+          id, invoice_number, registration_number, date, date_en,
+          category, description, price, currency, exchange_rate,
+          usd_equivalent, created_at
+        FROM daily_expenses
+      ''');
+      
+      await db.execute('DROP TABLE daily_expenses');
+      await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
+      
+      print('✅ UNIQUE constraint removed from daily_expenses!');
+    } else {
+      print('✅ daily_expenses already has no UNIQUE constraint');
+    }
+  } catch (e) {
+    print('⚠️ Error removing UNIQUE constraint from daily_expenses: $e');
+  }
+}
+
+if (oldVersion < 35) {
+  try {
+    print('🔄 Removing UNIQUE constraint from daily_expenses invoice_number...');
+    
+    // Check if UNIQUE constraint exists on invoice_number
+    final tableInfo = await db.rawQuery("PRAGMA table_info('daily_expenses')");
+    final hasUnique = tableInfo.any((col) => 
+      col['name'] == 'invoice_number' && col['unique'] == 1
+    );
+    
+    if (hasUnique) {
+      // Create new table without UNIQUE constraint
+      await db.execute('''
+        CREATE TABLE daily_expenses_new(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT,
+          registration_number TEXT,
+          date TEXT,
+          date_en TEXT,
+          category TEXT,
+          description TEXT,
+          price REAL,
+          currency TEXT,
+          exchange_rate REAL,
+          usd_equivalent REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      // Copy data
+      await db.execute('''
+        INSERT INTO daily_expenses_new (
+          id, invoice_number, registration_number, date, date_en,
+          category, description, price, currency, exchange_rate,
+          usd_equivalent, created_at
+        )
+        SELECT 
+          id, invoice_number, registration_number, date, date_en,
+          category, description, price, currency, exchange_rate,
+          usd_equivalent, created_at
+        FROM daily_expenses
+      ''');
+      
+      await db.execute('DROP TABLE daily_expenses');
+      await db.execute('ALTER TABLE daily_expenses_new RENAME TO daily_expenses');
+      
+      print('✅ UNIQUE constraint removed from daily_expenses invoice_number!');
+    } else {
+      print('✅ daily_expenses invoice_number already has no UNIQUE constraint');
+    }
+  } catch (e) {
+    print('⚠️ Error removing UNIQUE constraint from daily_expenses invoice_number: $e');
+  }
+}
+
+
+// Add this after the version 35 block
+if (oldVersion < 36) {
+  try {
+    print('🔄 Removing UNIQUE constraint from waste_material_losses invoice_number for multi-item support...');
+    
+    // Create new table without UNIQUE constraint
+    await db.execute('''
+      CREATE TABLE waste_material_losses_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT NOT NULL,
+        party_details TEXT,
+        waste_type TEXT,
+        weight REAL,
+        quantity REAL,
+        value REAL,
+        currency TEXT,
+        exchange_rate REAL,
+        afn_equivalent REAL,
+        description TEXT,
+        date TEXT,
+        date_en TEXT,
+        is_sold INTEGER DEFAULT 0,
+        sell_currency TEXT,
+        sell_price REAL,
+        sell_date TEXT,
+        sell_date_en TEXT,
+        sell_customer_name TEXT,
+        driver_name TEXT,
+        number_plate TEXT,
+        raw_material_id INTEGER,
+        waste_unit_price REAL,
+        waste_final_price REAL,
+        waste_raw_material_pure_weight REAL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    
+    // Copy data
+    await db.execute('''
+      INSERT INTO waste_material_losses_new (
+        id, invoice_number, party_details, waste_type, weight, quantity,
+        value, currency, exchange_rate, afn_equivalent, description,
+        date, date_en, is_sold, sell_currency, sell_price,
+        sell_date, sell_date_en, sell_customer_name, driver_name,
+        number_plate, raw_material_id, waste_unit_price,
+        waste_final_price, waste_raw_material_pure_weight,
+        created_at
+      )
+      SELECT 
+        id, invoice_number, party_details, waste_type, weight, quantity,
+        value, currency, exchange_rate, afn_equivalent, description,
+        date, date_en, is_sold, sell_currency, sell_price,
+        sell_date, sell_date_en, sell_customer_name, driver_name,
+        number_plate, raw_material_id, waste_unit_price,
+        waste_final_price, waste_raw_material_pure_weight,
+        created_at
+      FROM waste_material_losses
+    ''');
+    
+    await db.execute('DROP TABLE waste_material_losses');
+    await db.execute('ALTER TABLE waste_material_losses_new RENAME TO waste_material_losses');
+    
+    print('✅ UNIQUE constraint removed from waste_material_losses invoice_number!');
+  } catch (e) {
+    print('⚠️ Error removing UNIQUE constraint from waste_material_losses: $e');
+  }
+}
+if (oldVersion < 37) {
+  try {
+    await _ensureDailyExpensesTable(db);
+    print('✅ Daily expenses upgraded to include afn_equivalent');
+  } catch (e) {
+    print('⚠️ Error upgrading daily_expenses: $e');
+  }
+}
+
+if (oldVersion < 38) {
+  try {
+    await _ensureProductionLogsTable(db);
+    print('✅ production_logs table added in v38');
+  } catch (e) {
+    print('⚠️ Error adding production_logs: $e');
+  }
+}
+
+
+      if (oldVersion < 21) {
+        try {
+          print('🔄 Migrating sarafi_transactions: adding balance_after...');
+          
+          final columns = await db.rawQuery('PRAGMA table_info(sarafi_transactions)');
+          final columnNames = columns.map((row) => row['name']?.toString()).toSet();
+          
+          if (!columnNames.contains('balance_after')) {
+            await db.execute('ALTER TABLE sarafi_transactions ADD COLUMN balance_after REAL NOT NULL DEFAULT 0');
+            print('✅ Added balance_after column');
+          } else {
+            print('✅ balance_after column already exists');
+          }
+        } catch (e) {
+          print('⚠️ Error adding balance_after column: $e');
         }
       }
       
-      // Migrate old columns if they exist
-      try {
-        if (columnNames.contains('quantity') && !columnNames.contains('raw_count')) {
-          await db.execute('ALTER TABLE produced_products ADD COLUMN raw_count INTEGER DEFAULT 0');
-          await db.execute('UPDATE produced_products SET raw_count = CAST(quantity AS INTEGER) WHERE quantity IS NOT NULL');
-          print('✅ Migrated quantity to raw_count');
-        }
-      } catch (e) {
-        print('⚠️ Could not migrate quantity: $e');
-      }
+      print('✅ Database upgraded successfully!');
+    } catch (e) {
+      print('❌ Error upgrading database: $e');
+      rethrow;
+    }
+  }
+
+  // ============ INVOICE ITEMS TABLE ============
+  Future<void> _ensureInvoiceItemsTable(Database db) async {
+    try {
+      final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='invoice_items'");
       
-      try {
-        if (columnNames.contains('weight') && !columnNames.contains('raw_weight')) {
-          await db.execute('ALTER TABLE produced_products ADD COLUMN raw_weight REAL DEFAULT 0');
-          await db.execute('UPDATE produced_products SET raw_weight = CAST(weight AS REAL) WHERE weight IS NOT NULL');
-          print('✅ Migrated weight to raw_weight');
-        }
-      } catch (e) {
-        print('⚠️ Could not migrate weight: $e');
-      }
-      
-      try {
-        if (columnNames.contains('total_weight')) {
-          final colInfo = await db.rawQuery("PRAGMA table_info('produced_products')");
-          final totalWeightCol = colInfo.firstWhere(
-            (col) => col['name']?.toString() == 'total_weight',
-            orElse: () => {},
-          );
-          final type = totalWeightCol['type']?.toString() ?? '';
-          if (type.contains('TEXT') || type.contains('VARCHAR')) {
+      if (tables.isEmpty) {
+        await db.execute('''
+          CREATE TABLE invoice_items(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id INTEGER NOT NULL,
+            produced_product_id INTEGER,
+            product_name TEXT,
+            size TEXT,
+            thickness TEXT,
+            weight_per_unit REAL,
+            unit_count REAL,
+            total_weight REAL,
+            unit TEXT,
+            unit_price REAL,
+            total_price REAL,
+            weight TEXT,
+            gender TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (invoice_id) REFERENCES sales_invoices (id) ON DELETE CASCADE
+          )
+        ''');
+        
+        await db.execute('CREATE INDEX idx_invoice_items_invoice_id ON invoice_items(invoice_id)');
+        print('✅ invoice_items table created!');
+      } else {
+        // Check columns
+        final columns = await db.rawQuery("PRAGMA table_info('invoice_items')");
+        final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+        
+        final requiredColumns = {
+          'produced_product_id': 'INTEGER',
+          'product_name': 'TEXT',
+          'size': 'TEXT',
+          'thickness': 'TEXT',
+          'weight_per_unit': 'REAL',
+          'unit_count': 'REAL',
+          'total_weight': 'REAL',
+          'unit': 'TEXT',
+          'unit_price': 'REAL',
+          'total_price': 'REAL',
+          'weight': 'TEXT',
+          'gender': 'TEXT',
+        };
+        
+        for (final entry in requiredColumns.entries) {
+          if (!columnNames.contains(entry.key)) {
             try {
-              await db.execute('ALTER TABLE produced_products ADD COLUMN total_weight_new REAL');
-              await db.execute('UPDATE produced_products SET total_weight_new = CAST(total_weight AS REAL) WHERE total_weight IS NOT NULL AND total_weight != ""');
-              await db.execute('ALTER TABLE produced_products RENAME COLUMN total_weight TO total_weight_old');
-              await db.execute('ALTER TABLE produced_products RENAME COLUMN total_weight_new TO total_weight');
-              await db.execute('ALTER TABLE produced_products DROP COLUMN total_weight_old');
-              print('✅ Migrated total_weight from TEXT to REAL');
+              await db.execute('ALTER TABLE invoice_items ADD COLUMN ${entry.key} ${entry.value}');
+              print('✅ Added missing invoice_items column: ${entry.key}');
             } catch (e) {
-              print('⚠️ Could not migrate total_weight type: $e');
+              print('⚠️ Error adding column ${entry.key}: $e');
             }
           }
         }
-      } catch (e) {
-        print('⚠️ Could not check total_weight type: $e');
+        print('✅ invoice_items table verified!');
       }
-    }
-    
-    // Ensure remaining_stock exists
-    try {
-      await db.execute('ALTER TABLE produced_products ADD COLUMN remaining_stock REAL DEFAULT 0');
-      print('✅ Added remaining_stock column');
     } catch (e) {
-      // Column already exists
+      print('❌ Error ensuring invoice_items table: $e');
     }
-    
-    print('✅ produced_products table verified/updated!');
-    
-  } catch (e) {
-    print('❌ Error ensuring produced_products table: $e');
-    rethrow;
   }
-}
+
+  // ============ PRODUCED PRODUCTS TABLE (SINGLE DEFINITION) ============
+  Future<void> _ensureProducedProductsTable(Database db) async {
+    try {
+      final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='produced_products'");
+      
+      if (tables.isEmpty) {
+        // Create table WITHOUT product_name (or with it as nullable)
+        await db.execute('''
+          CREATE TABLE produced_products(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT,
+            production_type TEXT,
+            size TEXT,
+            thickness TEXT,
+            length TEXT,
+            raw_count INTEGER,
+            raw_weight REAL,
+            total_weight REAL,
+            unit TEXT,
+            production_date TEXT,
+            production_date_en TEXT,
+            status TEXT,
+            description TEXT,
+            remaining_stock REAL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        ''');
+        print('✅ produced_products table created with all fields!');
+      } else {
+        // Table exists - check columns
+        final columns = await db.rawQuery("PRAGMA table_info('produced_products')");
+        final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+        
+        print('📋 Existing columns: $columnNames');
+        
+        // Check if product_name is NOT NULL and remove the constraint
+        final productNameCol = columns.firstWhere(
+          (col) => col['name']?.toString() == 'product_name',
+          orElse: () => {},
+        );
+        
+        if (productNameCol.isNotEmpty) {
+          final notNull = productNameCol['notnull'] ?? 0;
+          if (notNull == 1) {
+            // product_name is NOT NULL - we need to make it nullable
+            // SQLite doesn't support dropping NOT NULL directly, so we need to recreate the table
+            print('⚠️ product_name has NOT NULL constraint - migrating to make it nullable...');
+            
+            // Create a new table without the NOT NULL constraint
+            await db.execute('''
+              CREATE TABLE produced_products_new(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_name TEXT,
+                production_type TEXT,
+                size TEXT,
+                thickness TEXT,
+                length TEXT,
+                raw_count INTEGER,
+                raw_weight REAL,
+                total_weight REAL,
+                unit TEXT,
+                production_date TEXT,
+                production_date_en TEXT,
+                status TEXT,
+                description TEXT,
+                remaining_stock REAL DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            ''');
+            
+            // Copy data from old table to new table
+            await db.execute('''
+              INSERT INTO produced_products_new (
+                id, product_name, production_type, size, thickness, length,
+                raw_count, raw_weight, total_weight, unit,
+                production_date, production_date_en, status, description,
+                remaining_stock, created_at
+              )
+              SELECT 
+                id, product_name, production_type, size, thickness, length,
+                raw_count, raw_weight, total_weight, unit,
+                production_date, production_date_en, status, description,
+                remaining_stock, created_at
+              FROM produced_products
+            ''');
+            
+            // Drop old table and rename new one
+            await db.execute('DROP TABLE produced_products');
+            await db.execute('ALTER TABLE produced_products_new RENAME TO produced_products');
+            
+            print('✅ product_name NOT NULL constraint removed successfully!');
+          }
+        }
+        
+        // Add missing columns one by one
+        final requiredColumns = {
+          'size': 'TEXT',
+          'raw_count': 'INTEGER',
+          'raw_weight': 'REAL',
+          'total_weight': 'REAL',
+          'production_date_en': 'TEXT',
+        };
+        
+        for (final entry in requiredColumns.entries) {
+          if (!columnNames.contains(entry.key)) {
+            try {
+              await db.execute('ALTER TABLE produced_products ADD COLUMN ${entry.key} ${entry.value}');
+              print('✅ Added column: ${entry.key}');
+            } catch (e) {
+              print('⚠️ Could not add column ${entry.key}: $e');
+            }
+          }
+        }
+        
+        // Migrate old columns if they exist
+        try {
+          if (columnNames.contains('quantity') && !columnNames.contains('raw_count')) {
+            await db.execute('ALTER TABLE produced_products ADD COLUMN raw_count INTEGER DEFAULT 0');
+            await db.execute('UPDATE produced_products SET raw_count = CAST(quantity AS INTEGER) WHERE quantity IS NOT NULL');
+            print('✅ Migrated quantity to raw_count');
+          }
+        } catch (e) {
+          print('⚠️ Could not migrate quantity: $e');
+        }
+        
+        try {
+          if (columnNames.contains('weight') && !columnNames.contains('raw_weight')) {
+            await db.execute('ALTER TABLE produced_products ADD COLUMN raw_weight REAL DEFAULT 0');
+            await db.execute('UPDATE produced_products SET raw_weight = CAST(weight AS REAL) WHERE weight IS NOT NULL');
+            print('✅ Migrated weight to raw_weight');
+          }
+        } catch (e) {
+          print('⚠️ Could not migrate weight: $e');
+        }
+        
+        try {
+          if (columnNames.contains('total_weight')) {
+            final colInfo = await db.rawQuery("PRAGMA table_info('produced_products')");
+            final totalWeightCol = colInfo.firstWhere(
+              (col) => col['name']?.toString() == 'total_weight',
+              orElse: () => {},
+            );
+            final type = totalWeightCol['type']?.toString() ?? '';
+            if (type.contains('TEXT') || type.contains('VARCHAR')) {
+              try {
+                await db.execute('ALTER TABLE produced_products ADD COLUMN total_weight_new REAL');
+                await db.execute('UPDATE produced_products SET total_weight_new = CAST(total_weight AS REAL) WHERE total_weight IS NOT NULL AND total_weight != ""');
+                await db.execute('ALTER TABLE produced_products RENAME COLUMN total_weight TO total_weight_old');
+                await db.execute('ALTER TABLE produced_products RENAME COLUMN total_weight_new TO total_weight');
+                await db.execute('ALTER TABLE produced_products DROP COLUMN total_weight_old');
+                print('✅ Migrated total_weight from TEXT to REAL');
+              } catch (e) {
+                print('⚠️ Could not migrate total_weight type: $e');
+              }
+            }
+          }
+        } catch (e) {
+          print('⚠️ Could not check total_weight type: $e');
+        }
+      }
+      
+      // Ensure remaining_stock exists
+      try {
+        await db.execute('ALTER TABLE produced_products ADD COLUMN remaining_stock REAL DEFAULT 0');
+        print('✅ Added remaining_stock column');
+      } catch (e) {
+        // Column already exists
+      }
+      
+      print('✅ produced_products table verified/updated!');
+      
+    } catch (e) {
+      print('❌ Error ensuring produced_products table: $e');
+      rethrow;
+    }
+  }
 
   Future<void> _ensureCapitalTables(Database db) async {
     try {
@@ -1058,6 +1595,127 @@ if (oldVersion < 29) {
       return false;
     }
   }
+  
+  Future<void> _ensureProductionLogsTable(Database db) async {
+  try {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS production_logs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        produced_product_id INTEGER NOT NULL,
+        production_type TEXT,
+        size TEXT,
+        thickness TEXT,
+        length TEXT,
+        raw_count INTEGER,
+        raw_weight REAL,
+        total_weight REAL,
+        unit TEXT,
+        production_date TEXT,
+        production_date_en TEXT,
+        status TEXT,
+        description TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (produced_product_id) REFERENCES produced_products (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_production_logs_product_id '
+      'ON production_logs(produced_product_id)'
+    );
+    print('✅ production_logs table ready');
+  } catch (e) {
+    print('❌ Error ensuring production_logs table: $e');
+  }
+}
+
+
+
+// ============ PRODUCTION LOGS ============
+Future<int> insertProductionLog(Map<String, dynamic> log) async {
+  try {
+    final db = await database;
+    final filtered = await _filterMapForTableColumns(db, 'production_logs', log);
+    if (filtered.isEmpty) {
+      print('⚠️ insertProductionLog filtered empty');
+      return -1;
+    }
+    return await db.insert('production_logs', filtered);
+  } catch (e) {
+    print('❌ Error inserting production log: $e');
+    return -1;
+  }
+}
+
+Future<List<Map<String, dynamic>>> getProductionLogs(int producedProductId) async {
+  try {
+    final db = await database;
+    return await db.query(
+      'production_logs',
+      where: 'produced_product_id = ?',
+      whereArgs: [producedProductId],
+      orderBy: 'created_at DESC',
+    );
+  } catch (e) {
+    print('❌ Error getting production logs: $e');
+    return [];
+  }
+}
+
+Future<List<Map<String, dynamic>>> getProductionLogsBySizeThickness(
+  String size,
+  String thickness, {
+  DateTime? fromDate,
+  DateTime? toDate,
+}) async {
+  try {
+    final db = await database;
+    final trimmedSize = size.trim();
+    final trimmedThickness = thickness.trim();
+
+    if (trimmedSize.isEmpty || trimmedThickness.isEmpty) {
+      return [];
+    }
+
+    String dateClause = '';
+    final List<dynamic> args = [trimmedSize, trimmedThickness];
+
+    if (fromDate != null && toDate != null) {
+      final toInclusive = toDate.add(const Duration(days: 1));
+      dateClause = " AND date(COALESCE(production_date_en, '')) >= date(?) "
+                   "AND date(COALESCE(production_date_en, '')) < date(?)";
+      args.add(fromDate.toIso8601String().split('T').first);
+      args.add(toInclusive.toIso8601String().split('T').first);
+    }
+
+    final rows = await db.rawQuery('''
+      SELECT *
+      FROM production_logs
+      WHERE TRIM(COALESCE(size, '')) = ?
+        AND TRIM(COALESCE(thickness, '')) = ?
+        $dateClause
+      ORDER BY created_at DESC
+    ''', args);
+
+    return rows;
+  } catch (e) {
+    print('❌ Error getting production logs by size/thickness: $e');
+    return [];
+  }
+}
+
+Future<int> deleteProductionLogsByProductId(int producedProductId) async {
+  try {
+    final db = await database;
+    return await db.delete(
+      'production_logs',
+      where: 'produced_product_id = ?',
+      whereArgs: [producedProductId],
+    );
+  } catch (e) {
+    print('❌ Error deleting production logs: $e');
+    return -1;
+  }
+}
 
   Future<void> _repairSarafiTransactionsTable(Database db) async {
     try {
@@ -1214,125 +1872,203 @@ if (oldVersion < 29) {
     }
   }
 
-  Future<void> _ensureDailyExpensesTable(Database db) async {
-    try {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS daily_expenses(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          registration_number TEXT UNIQUE,
-          date TEXT,
-          date_en TEXT,
-          category TEXT,
-          description TEXT,
-          price REAL,
-          currency TEXT,
-          exchange_rate REAL,
-          usd_equivalent REAL,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      ''');
-    } catch (e) {
-      print('❌ Error ensuring daily_expenses table: $e');
-      rethrow;
-    }
-  }
-
-// In DatabaseHelper class, add these columns to waste_material_losses table:
-
-Future<void> _ensureWasteMaterialsTable(Database db) async {
+Future<void> _ensureDailyExpensesTable(Database db) async {
   try {
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS waste_material_losses(
+      CREATE TABLE IF NOT EXISTS daily_expenses(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_number TEXT UNIQUE,
-        party_details TEXT,
-        waste_type TEXT,
-        weight REAL,
-        quantity REAL,
-        value REAL,
-        currency TEXT,
-        exchange_rate REAL,
-        afn_equivalent REAL,
-        description TEXT,
+        invoice_number TEXT,
+        registration_number TEXT,
         date TEXT,
         date_en TEXT,
-        is_sold INTEGER DEFAULT 0,
-        sell_currency TEXT,
-        sell_price REAL,
-        sell_date TEXT,
-        sell_date_en TEXT,
-        sell_customer_name TEXT,
-        driver_name TEXT,
-        number_plate TEXT,
-        raw_material_id INTEGER,
-        waste_unit_price REAL,
-        waste_final_price REAL,
-        waste_raw_material_pure_weight REAL,
+        category TEXT,
+        description TEXT,
+        price REAL,
+        currency TEXT,
+        exchange_rate REAL,
+        usd_equivalent REAL,
+        afn_equivalent REAL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
 
-    // Add new columns if they don't exist
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_customer_name TEXT');
-    } catch (e) {
-      print('⚠️ sell_customer_name column already exists: $e');
+    final columns = await db.rawQuery("PRAGMA table_info('daily_expenses')");
+    final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+
+    if (!columnNames.contains('afn_equivalent')) {
+      await db.execute('ALTER TABLE daily_expenses ADD COLUMN afn_equivalent REAL');
+      print('✅ Added afn_equivalent column');
     }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN driver_name TEXT');
-    } catch (e) {
-      print('⚠️ driver_name column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN number_plate TEXT');
-    } catch (e) {
-      print('⚠️ number_plate column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN raw_material_id INTEGER');
-    } catch (e) {
-      print('⚠️ raw_material_id column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN waste_unit_price REAL');
-    } catch (e) {
-      print('⚠️ waste_unit_price column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN waste_final_price REAL');
-    } catch (e) {
-      print('⚠️ waste_final_price column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN waste_raw_material_pure_weight REAL');
-    } catch (e) {
-      print('⚠️ waste_raw_material_pure_weight column already exists: $e');
-    }
+
+    // ✅ Recompute BOTH columns correctly for ALL existing rows
+    await db.execute('''
+      UPDATE daily_expenses 
+      SET 
+        usd_equivalent = CASE 
+          WHEN currency LIKE '%افغانی%' OR currency LIKE '%افغاني%' OR LOWER(currency) LIKE '%afn%'
+            THEN ROUND(price / exchange_rate)
+          ELSE ROUND(price)
+        END,
+        afn_equivalent = CASE 
+          WHEN currency LIKE '%افغانی%' OR currency LIKE '%افغاني%' OR LOWER(currency) LIKE '%afn%'
+            THEN price
+          ELSE ROUND(price * exchange_rate)
+        END
+      WHERE exchange_rate > 0
+    ''');
+    print('✅ Recomputed usd_equivalent and afn_equivalent for all rows');
+  } catch (e) {
+    print('❌ Error ensuring daily_expenses table: $e');
+    rethrow;
+  }
+}
+
+
+
+  // In DatabaseHelper class, add these columns to waste_material_losses table:
+
+Future<void> _ensureWasteMaterialsTable(Database db) async {
+  try {
+    // Check if table exists
+    final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='waste_material_losses'");
     
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN is_sold INTEGER DEFAULT 0');
-    } catch (e) {
-      print('⚠️ is_sold column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_currency TEXT');
-    } catch (e) {
-      print('⚠️ sell_currency column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_price REAL');
-    } catch (e) {
-      print('⚠️ sell_price column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_date TEXT');
-    } catch (e) {
-      print('⚠️ sell_date column already exists: $e');
-    }
-    try {
-      await db.execute('ALTER TABLE waste_material_losses ADD COLUMN sell_date_en TEXT');
-    } catch (e) {
-      print('⚠️ sell_date_en column already exists: $e');
+    if (tables.isEmpty) {
+      await db.execute('''
+        CREATE TABLE waste_material_losses(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT NOT NULL,
+          party_details TEXT,
+          waste_type TEXT,
+          weight REAL,
+          quantity REAL,
+          value REAL,
+          initial_value REAL DEFAULT 0,
+          currency TEXT,
+          exchange_rate REAL,
+          afn_equivalent REAL,
+          description TEXT,
+          date TEXT,
+          date_en TEXT,
+          is_sold INTEGER DEFAULT 0,
+          sell_currency TEXT,
+          sell_price REAL,
+          sell_date TEXT,
+          sell_date_en TEXT,
+          sell_customer_name TEXT,
+          driver_name TEXT,
+          number_plate TEXT,
+          raw_material_id INTEGER,
+          waste_unit_price REAL,
+          waste_final_price REAL,
+          waste_raw_material_pure_weight REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      print('✅ waste_material_losses table created with initial_value!');
+    } else {
+      // Check if UNIQUE constraint exists and remove it
+      final tableInfo = await db.rawQuery("PRAGMA table_info('waste_material_losses')");
+      final hasUnique = tableInfo.any((col) => 
+        col['name'] == 'invoice_number' && col['unique'] == 1
+      );
+      
+      if (hasUnique) {
+        print('🔄 Found UNIQUE constraint on invoice_number - migrating...');
+        
+        await db.execute('''
+          CREATE TABLE waste_material_losses_new(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT NOT NULL,
+            party_details TEXT,
+            waste_type TEXT,
+            weight REAL,
+            quantity REAL,
+            value REAL,
+            initial_value REAL DEFAULT 0,
+            currency TEXT,
+            exchange_rate REAL,
+            afn_equivalent REAL,
+            description TEXT,
+            date TEXT,
+            date_en TEXT,
+            is_sold INTEGER DEFAULT 0,
+            sell_currency TEXT,
+            sell_price REAL,
+            sell_date TEXT,
+            sell_date_en TEXT,
+            sell_customer_name TEXT,
+            driver_name TEXT,
+            number_plate TEXT,
+            raw_material_id INTEGER,
+            waste_unit_price REAL,
+            waste_final_price REAL,
+            waste_raw_material_pure_weight REAL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        ''');
+        
+        await db.execute('''
+          INSERT INTO waste_material_losses_new (
+            id, invoice_number, party_details, waste_type, weight, quantity,
+            value, currency, exchange_rate, afn_equivalent, description,
+            date, date_en, is_sold, sell_currency, sell_price,
+            sell_date, sell_date_en, sell_customer_name, driver_name,
+            number_plate, raw_material_id, waste_unit_price,
+            waste_final_price, waste_raw_material_pure_weight,
+            created_at
+          )
+          SELECT 
+            id, invoice_number, party_details, waste_type, weight, quantity,
+            value, currency, exchange_rate, afn_equivalent, description,
+            date, date_en, is_sold, sell_currency, sell_price,
+            sell_date, sell_date_en, sell_customer_name, driver_name,
+            number_plate, raw_material_id, waste_unit_price,
+            waste_final_price, waste_raw_material_pure_weight,
+            created_at
+          FROM waste_material_losses
+        ''');
+        
+        await db.execute('DROP TABLE waste_material_losses');
+        await db.execute('ALTER TABLE waste_material_losses_new RENAME TO waste_material_losses');
+        
+        print('✅ UNIQUE constraint removed from waste_material_losses!');
+      }
+      
+      // Add initial_value column if it doesn't exist
+      final columns = await db.rawQuery("PRAGMA table_info('waste_material_losses')");
+      final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+      
+      if (!columnNames.contains('initial_value')) {
+        await db.execute('ALTER TABLE waste_material_losses ADD COLUMN initial_value REAL DEFAULT 0');
+        print('✅ Added initial_value column to waste_material_losses');
+      }
+      
+      // Add other columns if missing
+      final requiredColumns = {
+        'sell_customer_name': 'TEXT',
+        'driver_name': 'TEXT',
+        'number_plate': 'TEXT',
+        'raw_material_id': 'INTEGER',
+        'waste_unit_price': 'REAL',
+        'waste_final_price': 'REAL',
+        'waste_raw_material_pure_weight': 'REAL',
+        'is_sold': 'INTEGER DEFAULT 0',
+        'sell_currency': 'TEXT',
+        'sell_price': 'REAL',
+        'sell_date': 'TEXT',
+        'sell_date_en': 'TEXT',
+      };
+      
+      for (final entry in requiredColumns.entries) {
+        if (!columnNames.contains(entry.key)) {
+          try {
+            await db.execute('ALTER TABLE waste_material_losses ADD COLUMN ${entry.key} ${entry.value}');
+            print('✅ Added missing waste_material_losses column: ${entry.key}');
+          } catch (e) {
+            print('⚠️ Error adding column ${entry.key}: $e');
+          }
+        }
+      }
     }
   } catch (e) {
     print('❌ Error ensuring waste_material_losses table: $e');
@@ -1340,121 +2076,121 @@ Future<void> _ensureWasteMaterialsTable(Database db) async {
   }
 }
 
-
-Future<int> updateWasteSellInfo(int id, String currency, double price, String date, String dateEn) async {
-  try {
-    final db = await database;
-    return await db.update(
-      'waste_material_losses',
-      {
-        'is_sold': 1,
-        'sell_currency': currency,
-        'sell_price': price,
-        'sell_date': date,
-        'sell_date_en': dateEn,
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  } catch (e) {
-    print('❌ Error updating waste sell info: $e');
-    return -1;
+  Future<int> updateWasteSellInfo(int id, String currency, double price, String date, String dateEn) async {
+    try {
+      final db = await database;
+      return await db.update(
+        'waste_material_losses',
+        {
+          'is_sold': 1,
+          'sell_currency': currency,
+          'sell_price': price,
+          'sell_date': date,
+          'sell_date_en': dateEn,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      print('❌ Error updating waste sell info: $e');
+      return -1;
+    }
   }
-}
 
-Future<Map<String, dynamic>?> getWasteRecordById(int id) async {
-  try {
-    final db = await database;
-    final result = await db.query(
-      'waste_material_losses',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    return result.isNotEmpty ? result.first : null;
-  } catch (e) {
-    print('❌ Error getting waste record by id: $e');
-    return null;
+  Future<Map<String, dynamic>?> getWasteRecordById(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'waste_material_losses',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return result.isNotEmpty ? result.first : null;
+    } catch (e) {
+      print('❌ Error getting waste record by id: $e');
+      return null;
+    }
   }
-}
-// Add this method to your DatabaseHelper class
-Future<void> _ensureBackReturnColumns(Database db) async {
-  try {
-    final columns = await db.rawQuery("PRAGMA table_info('sales_invoices')");
-    final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
-    
-    final requiredColumns = {
-      'returned_count': 'TEXT DEFAULT \'0\'',
-      'returned_weight': 'TEXT DEFAULT \'0\'',
-      'returned_price': 'REAL DEFAULT 0',
-      'original_unit_count': 'TEXT',
-      'original_total_weight': 'TEXT',
-      'original_final_price': 'REAL',
-    };
-    
-    for (final entry in requiredColumns.entries) {
-      if (!columnNames.contains(entry.key)) {
-        try {
-          await db.execute('ALTER TABLE sales_invoices ADD COLUMN ${entry.key} ${entry.value}');
-          print('✅ Added missing sales_invoices column: ${entry.key}');
-        } catch (e) {
-          print('⚠️ Error adding column ${entry.key}: $e');
+
+  // Add this method to your DatabaseHelper class
+  Future<void> _ensureBackReturnColumns(Database db) async {
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info('sales_invoices')");
+      final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
+      
+      final requiredColumns = {
+        'returned_count': 'TEXT DEFAULT \'0\'',
+        'returned_weight': 'TEXT DEFAULT \'0\'',
+        'returned_price': 'REAL DEFAULT 0',
+        'original_unit_count': 'TEXT',
+        'original_total_weight': 'TEXT',
+        'original_final_price': 'REAL',
+      };
+      
+      for (final entry in requiredColumns.entries) {
+        if (!columnNames.contains(entry.key)) {
+          try {
+            await db.execute('ALTER TABLE sales_invoices ADD COLUMN ${entry.key} ${entry.value}');
+            print('✅ Added missing sales_invoices column: ${entry.key}');
+          } catch (e) {
+            print('⚠️ Error adding column ${entry.key}: $e');
+          }
         }
       }
-    }
-    
-    // ✅ FIX: Update existing returned sales with default values if they are NULL
-    await db.execute('''
-      UPDATE sales_invoices 
-      SET 
-        returned_count = COALESCE(returned_count, '0'),
-        returned_weight = COALESCE(returned_weight, '0'),
-        returned_price = COALESCE(returned_price, 0)
-      WHERE is_back_returned = 1
-    ''');
-    
-    print('✅ Back-return columns verified and existing data updated!');
-  } catch (e) {
-    print('❌ Error ensuring back-return columns: $e');
-  }
-}
-
-  Future<void> _ensureServiceInvoicesTable(Database db) async {
-    try {
-      final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='service_invoices'");
       
-      if (tables.isEmpty) {
-        await db.execute('''
-          CREATE TABLE service_invoices(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_number TEXT NOT NULL UNIQUE,
-            customer_name TEXT,
-            customer_phone TEXT,
-            customer_address TEXT,
-            service_title TEXT,
-            service_type TEXT,
-            description TEXT,
-            size TEXT,
-            thickness TEXT,
-            total_weight REAL,
-            unit TEXT,
-            unit_price REAL,
-            total_price REAL,
-            price REAL,
-            currency TEXT,
-            exchange_rate REAL,
-            loading_cost REAL,
-            transfer_cost REAL,
-            clearance_cost REAL,
-            discount REAL,
-            final_price REAL,
-            afn_equivalent REAL,
-            date TEXT,
-            date_en TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        ''');
-        print('✅ service_invoices table created with invoice_number!');
-      } else {
+      // ✅ FIX: Update existing returned sales with default values if they are NULL
+      await db.execute('''
+        UPDATE sales_invoices 
+        SET 
+          returned_count = COALESCE(returned_count, '0'),
+          returned_weight = COALESCE(returned_weight, '0'),
+          returned_price = COALESCE(returned_price, 0)
+        WHERE is_back_returned = 1
+      ''');
+      
+      print('✅ Back-return columns verified and existing data updated!');
+    } catch (e) {
+      print('❌ Error ensuring back-return columns: $e');
+    }
+  }
+
+Future<void> _ensureServiceInvoicesTable(Database db) async {
+  try {
+    final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='service_invoices'");
+    
+    if (tables.isEmpty) {
+      await db.execute('''
+        CREATE TABLE service_invoices(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT NOT NULL,  -- REMOVED UNIQUE
+          customer_name TEXT,
+          customer_phone TEXT,
+          customer_address TEXT,
+          service_title TEXT,
+          service_type TEXT,
+          description TEXT,
+          size TEXT,
+          thickness TEXT,
+          total_weight REAL,
+          unit TEXT,
+          unit_price REAL,
+          total_price REAL,
+          price REAL,
+          currency TEXT,
+          exchange_rate REAL,
+          loading_cost REAL,
+          transfer_cost REAL,
+          clearance_cost REAL,
+          discount REAL,
+          final_price REAL,
+          afn_equivalent REAL,
+          date TEXT,
+          date_en TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      print('✅ service_invoices table created!');
+    } else {
         final columns = await db.rawQuery("PRAGMA table_info('service_invoices')");
         final columnNames = columns.map((c) => c['name']?.toString()).whereType<String>().toSet();
         
@@ -1506,12 +2242,19 @@ Future<void> _ensureBackReturnColumns(Database db) async {
       rethrow;
     }
   }
-Future<void> _ensureSalesInvoiceTable(Database db) async {
+
+ Future<void> _ensureSalesInvoiceTable(Database db) async {
   try {
+    // DROP the old table and recreate without UNIQUE constraint
+    // OR add a new column for group_id
+    
+    // OPTION 1: Remove UNIQUE constraint (you need to recreate table)
+    // This is the simplest fix
+    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sales_invoices(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_number TEXT NOT NULL UNIQUE,
+        invoice_number TEXT NOT NULL,
         customer_name TEXT,
         customer_phone TEXT,
         customer_address TEXT,
@@ -1563,7 +2306,7 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
       )
     ''');
     
-    // ... rest of your code
+    print('✅ sales_invoices table verified/updated');
   } catch (e) {
     print('❌ Error ensuring sales invoices table: $e');
     rethrow;
@@ -1584,128 +2327,129 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
     return filtered;
   }
 
- Future<void> _createTables(Database db) async {
-  await db.execute('''
-    CREATE TABLE users(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      full_name TEXT NOT NULL,
-      email TEXT,
-      role TEXT DEFAULT 'admin',
-      profile_pic TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  ''');
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        email TEXT,
+        role TEXT DEFAULT 'admin',
+        profile_pic TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
-  await db.execute('''
-    CREATE TABLE products(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      price REAL NOT NULL,
-      stock INTEGER NOT NULL,
-      category TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  ''');
+    await db.execute('''
+      CREATE TABLE products(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        stock INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
-  await db.execute('''
-    CREATE TABLE suppliers(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      email TEXT,
-      address TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  ''');
+    await db.execute('''
+      CREATE TABLE suppliers(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT,
+        address TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
-  await db.execute('''
-    CREATE TABLE raw_materials(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      supplier_id INTEGER,
-      name TEXT NOT NULL,
-      location TEXT,
-      material_type TEXT,
-      thickness TEXT,
-      net_weight TEXT,
-      gross_weight TEXT,
-      date TEXT,
-      date_en TEXT,
-      unit TEXT,
-      unit_price TEXT,
-      product TEXT,
-      commission TEXT,
-      transfer_cost TEXT,
-      miscellaneous TEXT,
-      ghurfedari TEXT,
-      barchalani TEXT,
-      purchase_type TEXT,
-      seller_payment TEXT,
-      seller_payment_method TEXT,
-      seller_paid_amount TEXT,
-      currency TEXT,
-      exchange_rate REAL,
-      final_price TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
-    )
-  ''');
+    await db.execute('''
+      CREATE TABLE raw_materials(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER,
+        name TEXT NOT NULL,
+        location TEXT,
+        material_type TEXT,
+        thickness TEXT,
+        net_weight TEXT,
+        gross_weight TEXT,
+        date TEXT,
+        date_en TEXT,
+        unit TEXT,
+        unit_price TEXT,
+        product TEXT,
+        commission TEXT,
+        transfer_cost TEXT,
+        miscellaneous TEXT,
+        ghurfedari TEXT,
+        barchalani TEXT,
+        purchase_type TEXT,
+        seller_payment TEXT,
+        seller_payment_method TEXT,
+        seller_paid_amount TEXT,
+        currency TEXT,
+        exchange_rate REAL,
+        final_price TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+      )
+    ''');
 
-  // UPDATED: product_name is no longer NOT NULL
-  await db.execute('''
-    CREATE TABLE produced_products(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_name TEXT,
-      production_type TEXT,
-      size TEXT,
-      thickness TEXT,
-      length TEXT,
-      raw_count INTEGER,
-      raw_weight REAL,
-      total_weight REAL,
-      unit TEXT,
-      production_date TEXT,
-      production_date_en TEXT,
-      status TEXT,
-      description TEXT,
-      remaining_stock REAL DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  ''');
+    // UPDATED: product_name is no longer NOT NULL
+    await db.execute('''
+      CREATE TABLE produced_products(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_name TEXT,
+        production_type TEXT,
+        size TEXT,
+        thickness TEXT,
+        length TEXT,
+        raw_count INTEGER,
+        raw_weight REAL,
+        total_weight REAL,
+        unit TEXT,
+        production_date TEXT,
+        production_date_en TEXT,
+        status TEXT,
+        description TEXT,
+        remaining_stock REAL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
-  await db.execute('''
-    CREATE TABLE capital_assets(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      asset_type TEXT NOT NULL,
-      name TEXT NOT NULL,
-      current_balance REAL NOT NULL,
-      initial_balance REAL NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  ''');
+    await db.execute('''
+      CREATE TABLE capital_assets(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        asset_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        current_balance REAL NOT NULL,
+        initial_balance REAL NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
-  await db.execute('''
-    CREATE TABLE capital_transactions(
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      asset_type TEXT NOT NULL,
-      asset_name TEXT NOT NULL,
-      transaction_type TEXT NOT NULL,
-      amount REAL NOT NULL,
-      description TEXT,
-      date TEXT,
-      date_en TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  ''');
+    await db.execute('''
+      CREATE TABLE capital_transactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        asset_type TEXT NOT NULL,
+        asset_name TEXT NOT NULL,
+        transaction_type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        description TEXT,
+        date TEXT,
+        date_en TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
-  await _ensureSupplierLoanTables(db);
-  await _ensureSellLoanTables(db);
-  await _ensureSalesInvoiceTable(db);
-  await _ensureServiceInvoicesTable(db);
-  await _ensureDailyExpensesTable(db);
-  await _ensureSalesInvoiceProductRelation(db);
-}
+    await _ensureSupplierLoanTables(db);
+    await _ensureSellLoanTables(db);
+    await _ensureSalesInvoiceTable(db);
+    await _ensureServiceInvoicesTable(db);
+    await _ensureDailyExpensesTable(db);
+    await _ensureSalesInvoiceProductRelation(db);
+    await _ensureInvoiceItemsTable(db);
+  }
 
   Future<void> _insertSampleData(Database db) async {
     await db.insert('users', {
@@ -2169,6 +2913,173 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
     }
   }
 
+  // ============ INVOICE ITEMS ============
+  Future<int> insertInvoiceItem(Map<String, dynamic> item) async {
+    try {
+      final db = await database;
+      final filtered = await _filterMapForTableColumns(db, 'invoice_items', item);
+      if (filtered.isEmpty) {
+        print('⚠️ insertInvoiceItem filtered empty - invoice_items table may not exist');
+        return -1;
+      }
+      return await db.insert('invoice_items', filtered);
+    } catch (e) {
+      print('❌ Error inserting invoice item: $e');
+      return -1;
+    }
+  }
+
+  Future<int> insertMultipleInvoiceItems(List<Map<String, dynamic>> items) async {
+    try {
+      final db = await database;
+      int count = 0;
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        for (var item in items) {
+          final result = await insertInvoiceItem(item);
+          if (result == -1) {
+            await db.execute('ROLLBACK');
+            return -1;
+          }
+          count++;
+        }
+        await db.execute('COMMIT');
+        return count;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error inserting multiple invoice items: $e');
+      return -1;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getInvoiceItems(int invoiceId) async {
+    try {
+      final db = await database;
+      return await db.query(
+        'invoice_items',
+        where: 'invoice_id = ?',
+        whereArgs: [invoiceId],
+        orderBy: 'created_at ASC',
+      );
+    } catch (e) {
+      print('❌ Error getting invoice items: $e');
+      return [];
+    }
+  }
+
+  Future<int> deleteInvoiceItem(int id) async {
+    try {
+      final db = await database;
+      return await db.delete('invoice_items', where: 'id = ?', whereArgs: [id]);
+    } catch (e) {
+      print('❌ Error deleting invoice item: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteAllInvoiceItems(int invoiceId) async {
+    try {
+      final db = await database;
+      return await db.delete('invoice_items', where: 'invoice_id = ?', whereArgs: [invoiceId]);
+    } catch (e) {
+      print('❌ Error deleting invoice items: $e');
+      return -1;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getFullSalesInvoice(int invoiceId) async {
+    try {
+      final db = await database;
+      final invoice = await getSalesInvoiceById(invoiceId);
+      if (invoice == null) return null;
+      
+      final items = await getInvoiceItems(invoiceId);
+      invoice['items'] = items;
+      
+      // Calculate totals from items
+      double totalWeight = 0;
+      double totalPrice = 0;
+      int totalUnits = 0;
+      for (var item in items) {
+        final weight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
+        final price = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+        final units = double.tryParse(item['unit_count']?.toString() ?? '0') ?? 0;
+        totalWeight += weight;
+        totalPrice += price;
+        totalUnits += units.toInt();
+      }
+      invoice['calculated_total_weight'] = totalWeight;
+      invoice['calculated_total_price'] = totalPrice;
+      invoice['calculated_total_units'] = totalUnits;
+      
+      return invoice;
+    } catch (e) {
+      print('❌ Error getting full sales invoice: $e');
+      return null;
+    }
+  }
+
+  Future<int> insertSalesInvoiceWithItems(Map<String, dynamic> invoice, List<Map<String, dynamic>> items) async {
+    try {
+      final db = await database;
+      
+      // Generate invoice number if not provided
+      if (invoice['invoice_number'] == null || invoice['invoice_number'].toString().isEmpty) {
+        final nextNum = await getNextSalesInvoiceNumber();
+        invoice['invoice_number'] = nextNum.toString().padLeft(5, '0');
+      }
+      
+      // Calculate total weight and price from items
+      double totalWeight = 0;
+      double totalPrice = 0;
+      for (var item in items) {
+        final weight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
+        final price = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+        totalWeight += weight;
+        totalPrice += price;
+      }
+      
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        // Insert invoice
+        final filtered = await _filterMapForTableColumns(db, 'sales_invoices', invoice);
+        if (filtered.isEmpty) {
+          await db.execute('ROLLBACK');
+          return -1;
+        }
+        final invoiceId = await db.insert('sales_invoices', filtered);
+        
+        if (invoiceId == -1) {
+          await db.execute('ROLLBACK');
+          return -1;
+        }
+        
+        // Insert items
+        for (var item in items) {
+          item['invoice_id'] = invoiceId;
+          final itemId = await insertInvoiceItem(item);
+          if (itemId == -1) {
+            await db.execute('ROLLBACK');
+            return -1;
+          }
+        }
+        
+        await db.execute('COMMIT');
+        return invoiceId;
+        
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error inserting sales invoice with items: $e');
+      return -1;
+    }
+  }
+
   // ============ SERVICE INVOICES ============
   Future<List<Map<String, dynamic>>> getServiceInvoices() async {
     try {
@@ -2488,14 +3399,7 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
   Future<void> initializeProductStock() async {
     try {
       final db = await database;
-      
-      try {
-        await db.execute('ALTER TABLE produced_products ADD COLUMN total_weight REAL DEFAULT 0');
-        print('✅ Added total_weight column to produced_products');
-      } catch (e) {
-        print('⚠️ total_weight column already exists or could not be added: $e');
-      }
-      
+
       await db.execute('''
         UPDATE produced_products 
         SET remaining_stock = total_weight
@@ -2517,65 +3421,90 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
     }
   }
 
-  Future<int> insertProducedProduct(Map<String, dynamic> product) async {
-    try {
-      final db = await database;
-      
-      final rawCount = int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0;
-      final rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
-      final totalWeight = rawCount * rawWeight;
-      
-      product['total_weight'] = totalWeight.toDouble();
-      product['remaining_stock'] = totalWeight.toDouble();
-      
-      return await db.insert('produced_products', product);
-    } catch (e) {
-      print('❌ Error inserting produced product: $e');
-      return -1;
+ Future<int> insertProducedProduct(Map<String, dynamic> product) async {
+  try {
+    final db = await database;
+    
+    final rawCount = int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0;
+    final rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
+    final totalWeight = rawCount * rawWeight;
+    
+    product['total_weight'] = totalWeight.toDouble();
+    product['remaining_stock'] = totalWeight.toDouble();
+    
+    final productId = await db.insert('produced_products', product);
+    
+    // ✅ Save a separate copy in production_logs
+    if (productId != -1) {
+      try {
+        await db.insert('production_logs', {
+          'produced_product_id': productId,
+          'production_type': product['production_type'] ?? product['product_name'] ?? '',
+          'size': product['size'] ?? '',
+          'thickness': product['thickness'] ?? '',
+          'length': product['length'] ?? '',
+          'raw_count': rawCount,
+          'raw_weight': rawWeight,
+          'total_weight': totalWeight,
+          'unit': product['unit'] ?? '',
+          'production_date': product['production_date'] ?? '',
+          'production_date_en': product['production_date_en'] ?? '',
+          'status': product['status'] ?? '',
+          'description': product['description'] ?? '',
+        });
+        print('✅ Production log saved for product $productId');
+      } catch (e) {
+        print('⚠️ Error saving production log: $e');
+      }
     }
+    
+    return productId;
+  } catch (e) {
+    print('❌ Error inserting produced product: $e');
+    return -1;
   }
+}
 
-  Future<int> updateProducedProduct(int id, Map<String, dynamic> product) async {
-    try {
-      final db = await database;
+ Future<int> updateProducedProduct(int id, Map<String, dynamic> product) async {
+  try {
+    final db = await database;
+    
+    final currentProduct = await db.query(
+      'produced_products',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    
+    if (currentProduct.isNotEmpty) {
+      final currentRemainingStock = double.tryParse(currentProduct.first['remaining_stock']?.toString() ?? '0') ?? 0;
       
-      final currentProduct = await db.query(
-        'produced_products',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      
-      if (currentProduct.isNotEmpty) {
-        final currentRemainingStock = double.tryParse(currentProduct.first['remaining_stock']?.toString() ?? '0') ?? 0;
+      if (product.containsKey('raw_count') || product.containsKey('raw_weight')) {
+        final rawCount = int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0;
+        final rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
+        final totalWeight = rawCount * rawWeight;
+        product['total_weight'] = totalWeight.toDouble();
         
-        if (product.containsKey('raw_count') || product.containsKey('raw_weight')) {
-          final rawCount = int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0;
-          final rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
-          final totalWeight = rawCount * rawWeight;
-          product['total_weight'] = totalWeight.toDouble();
-          
-          final oldTotalWeight = double.tryParse(currentProduct.first['total_weight']?.toString() ?? '0') ?? 0;
-          if (currentRemainingStock == oldTotalWeight) {
-            product['remaining_stock'] = totalWeight.toDouble();
-          } else if (totalWeight > oldTotalWeight) {
-            final difference = totalWeight - oldTotalWeight;
-            product['remaining_stock'] = currentRemainingStock + difference;
-          }
+        final oldTotalWeight = double.tryParse(currentProduct.first['total_weight']?.toString() ?? '0') ?? 0;
+        if (currentRemainingStock == oldTotalWeight) {
+          product['remaining_stock'] = totalWeight.toDouble();
+        } else if (totalWeight > oldTotalWeight) {
+          final difference = totalWeight - oldTotalWeight;
+          product['remaining_stock'] = currentRemainingStock + difference;
         }
       }
-      
-      return await db.update(
-        'produced_products',
-        product,
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    } catch (e) {
-      print('❌ Error updating produced product: $e');
-      return -1;
     }
+    
+    return await db.update(
+      'produced_products',
+      product,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  } catch (e) {
+    print('❌ Error updating produced product: $e');
+    return -1;
   }
-
+}
   Future<int> deleteProducedProduct(int id) async {
     try {
       final db = await database;
@@ -2918,51 +3847,84 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
     }
   }
 
-  Future<int> insertDailyExpense(Map<String, dynamic> expense) async {
-    try {
-      final db = await database;
-      
-      if (expense['registration_number'] == null || 
-          expense['registration_number'].toString().trim().isEmpty) {
-        print('❌ registration_number is required');
-        return -1;
-      }
-      
-      expense['date_en'] = expense['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
-      
-      try {
-        final price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0.0;
-        final rate = double.tryParse(expense['exchange_rate']?.toString() ?? '0') ?? 0.0;
-        expense['usd_equivalent'] = (price * rate).round();
-      } catch (_) {}
-
-      final filtered = await _filterMapForTableColumns(db, 'daily_expenses', expense);
-      if (filtered.isEmpty) {
-        print('⚠️ insertDailyExpense filtered empty - daily_expenses table may not exist or payload had no valid columns');
-        return -1;
-      }
-      return await db.insert('daily_expenses', filtered);
-    } catch (e) {
-      print('❌ Error inserting daily expense: $e');
+Future<int> insertDailyExpense(Map<String, dynamic> expense) async {
+  try {
+    final db = await database;
+    
+    // registration_number is optional
+    if (expense['registration_number'] != null && 
+        expense['registration_number'].toString().trim().isEmpty) {
+      expense['registration_number'] = null;
+    }
+    
+    expense['date_en'] = expense['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
+    
+    // ✅ Compute BOTH equivalents from currency + price + rate
+    final price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0.0;
+    final rate = double.tryParse(expense['exchange_rate']?.toString() ?? '0') ?? 0.0;
+    final currency = expense['currency']?.toString() ?? 'افغانی';
+    final isAFN = currency.contains('افغانی') || 
+                  currency.contains('افغاني') || 
+                  currency.toLowerCase().contains('afn');
+    
+    if (isAFN) {
+      // AFN row
+      expense['usd_equivalent'] = rate > 0 ? (price / rate).round() : 0;
+      expense['afn_equivalent'] = price;
+    } else {
+      // USD (or other) row
+      expense['usd_equivalent'] = price.round();
+      expense['afn_equivalent'] = rate > 0 ? (price * rate).round() : 0;
+    }
+    
+    final filtered = await _filterMapForTableColumns(db, 'daily_expenses', expense);
+    if (filtered.isEmpty) {
+      print('⚠️ insertDailyExpense filtered empty');
       return -1;
     }
+    return await db.insert('daily_expenses', filtered);
+  } catch (e) {
+    print('❌ Error inserting daily expense: $e');
+    return -1;
   }
+}
 
-  Future<int> updateDailyExpense(int id, Map<String, dynamic> expense) async {
-    try {
-      final db = await database;
-      final filtered = await _filterMapForTableColumns(db, 'daily_expenses', expense);
-      if (filtered.isEmpty) {
-        print('⚠️ updateDailyExpense filtered empty - daily_expenses table may not exist or payload had no valid columns');
-        return -1;
-      }
-      return await db.update('daily_expenses', filtered, where: 'id = ?', whereArgs: [id]);
-    } catch (e) {
-      print('❌ Error updating daily expense: $e');
+Future<int> updateDailyExpense(int id, Map<String, dynamic> expense) async {
+  try {
+    final db = await database;
+    
+    if (expense['registration_number'] != null && 
+        expense['registration_number'].toString().trim().isEmpty) {
+      expense['registration_number'] = null;
+    }
+    
+    // ✅ Compute BOTH equivalents
+    final price = double.tryParse(expense['price']?.toString() ?? '0') ?? 0.0;
+    final rate = double.tryParse(expense['exchange_rate']?.toString() ?? '0') ?? 0.0;
+    final currency = expense['currency']?.toString() ?? 'افغانی';
+    final isAFN = currency.contains('افغانی') || 
+                  currency.contains('افغاني') || 
+                  currency.toLowerCase().contains('afn');
+    
+    if (isAFN) {
+      expense['usd_equivalent'] = rate > 0 ? (price / rate).round() : 0;
+      expense['afn_equivalent'] = price;
+    } else {
+      expense['usd_equivalent'] = price.round();
+      expense['afn_equivalent'] = rate > 0 ? (price * rate).round() : 0;
+    }
+    
+    final filtered = await _filterMapForTableColumns(db, 'daily_expenses', expense);
+    if (filtered.isEmpty) {
+      print('⚠️ updateDailyExpense filtered empty');
       return -1;
     }
+    return await db.update('daily_expenses', filtered, where: 'id = ?', whereArgs: [id]);
+  } catch (e) {
+    print('❌ Error updating daily expense: $e');
+    return -1;
   }
-
+}
   Future<int> deleteDailyExpense(int id) async {
     try {
       final db = await database;
@@ -2997,58 +3959,57 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
     }
   }
 
-  Future<int> insertWasteRecord(Map<String, dynamic> waste) async {
-    try {
-      final db = await database;
-      if (waste['invoice_number'] == null || waste['invoice_number'].toString().trim().isEmpty) {
-        final next = await getNextWasteInvoiceNumber();
-        waste['invoice_number'] = next.toString().padLeft(5, '0');
-      }
-      waste['date_en'] = waste['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
-      final value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0.0;
-      final rate = double.tryParse(waste['exchange_rate']?.toString() ?? '0') ?? 0.0;
-      waste['afn_equivalent'] = (value * rate).round();
-      final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
-      if (filtered.isEmpty) {
-        return -1;
-      }
-      return await db.insert('waste_material_losses', filtered);
-    } catch (e) {
-      if (e.toString().contains('UNIQUE constraint failed') || e.toString().contains('constraint failed')) {
-        try {
-          waste['invoice_number'] = (await getNextWasteInvoiceNumber()).toString().padLeft(5, '0');
-          final db = await database;
-          final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
-          if (filtered.isEmpty) {
-            return -1;
-          }
-          return await db.insert('waste_material_losses', filtered);
-        } catch (retryError) {
-          print('❌ Retry insert waste record failed: $retryError');
-          return -1;
-        }
-      }
-      print('❌ Error inserting waste record: $e');
+Future<int> insertWasteRecord(Map<String, dynamic> waste) async {
+  try {
+    final db = await database;
+    
+    // Generate invoice number if not provided
+    if (waste['invoice_number'] == null || waste['invoice_number'].toString().trim().isEmpty) {
+      final next = await getNextWasteInvoiceNumber();
+      waste['invoice_number'] = next.toString().padLeft(5, '0');
+    }
+    
+    waste['date_en'] = waste['date_en'] ?? PersianDateConverter.getEnglishDate(DateTime.now());
+    
+    // Use initial_value if value is not set
+    if (waste['value'] == null || waste['value'] == 0) {
+      waste['value'] = waste['initial_value'] ?? 0;
+    }
+    
+    // ✅ FIX: Only compute afn_equivalent if not already provided by UI
+    // Don't overwrite the value the UI already calculated correctly
+    // The UI handles: AFN → value/rate, USD → value*rate
+    
+    final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
+    if (filtered.isEmpty) {
+      print('⚠️ insertWasteRecord filtered empty');
       return -1;
     }
+    
+    return await db.insert('waste_material_losses', filtered);
+  } catch (e) {
+    print('❌ Error inserting waste record: $e');
+    return -1;
   }
+}
 
-  Future<int> updateWasteRecord(int id, Map<String, dynamic> waste) async {
-    try {
-      final db = await database;
-      final value = double.tryParse(waste['value']?.toString() ?? '0') ?? 0.0;
-      final rate = double.tryParse(waste['exchange_rate']?.toString() ?? '0') ?? 0.0;
-      waste['afn_equivalent'] = (value * rate).round();
-      final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
-      if (filtered.isEmpty) {
-        return -1;
-      }
-      return await db.update('waste_material_losses', filtered, where: 'id = ?', whereArgs: [id]);
-    } catch (e) {
-      print('❌ Error updating waste record: $e');
+Future<int> updateWasteRecord(int id, Map<String, dynamic> waste) async {
+  try {
+    final db = await database;
+    
+    // ✅ FIX: Don't overwrite afn_equivalent - UI already calculated it correctly
+    // The UI handles: AFN → value/rate, USD → value*rate
+    
+    final filtered = await _filterMapForTableColumns(db, 'waste_material_losses', waste);
+    if (filtered.isEmpty) {
       return -1;
     }
+    return await db.update('waste_material_losses', filtered, where: 'id = ?', whereArgs: [id]);
+  } catch (e) {
+    print('❌ Error updating waste record: $e');
+    return -1;
   }
+}
 
   Future<int> deleteWasteRecord(int id) async {
     try {
@@ -3074,6 +4035,73 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
       print('❌ Error resetting database: $e');
     }
   }
+
+  // ============ INSERT MULTI-PRODUCT AS SEPARATE INVOICES ============
+Future<List<int>> insertMultipleSalesInvoices(List<Map<String, dynamic>> invoices) async {
+  try {
+    final db = await database;
+    List<int> insertedIds = [];
+    
+    await db.execute('BEGIN TRANSACTION');
+    try {
+      for (var invoice in invoices) {
+        // Generate invoice number if not provided
+        if (invoice['invoice_number'] == null || invoice['invoice_number'].toString().isEmpty) {
+          final nextNum = await getNextSalesInvoiceNumber();
+          invoice['invoice_number'] = nextNum.toString().padLeft(5, '0');
+        }
+        
+        final filtered = await _filterMapForTableColumns(db, 'sales_invoices', invoice);
+        if (filtered.isNotEmpty) {
+          final id = await db.insert('sales_invoices', filtered);
+          if (id == -1) {
+            await db.execute('ROLLBACK');
+            return [];
+          }
+          insertedIds.add(id);
+        }
+      }
+      await db.execute('COMMIT');
+      return insertedIds;
+    } catch (e) {
+      await db.execute('ROLLBACK');
+      rethrow;
+    }
+  } catch (e) {
+    print('❌ Error inserting multiple sales invoices: $e');
+    return [];
+  }
+}
+
+// ============ GET INVOICES GROUPED BY INVOICE NUMBER ============
+Future<Map<String, List<Map<String, dynamic>>>> getInvoicesGroupedByNumber() async {
+  try {
+    final db = await database;
+    final allInvoices = await db.query(
+      'sales_invoices',
+      orderBy: 'invoice_number DESC, id ASC',
+    );
+    
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (var invoice in allInvoices) {
+      final invoiceNumber = invoice['invoice_number']?.toString() ?? 'unknown';
+      if (!grouped.containsKey(invoiceNumber)) {
+        grouped[invoiceNumber] = [];
+      }
+      grouped[invoiceNumber]!.add(invoice);
+    }
+    return grouped;
+  } catch (e) {
+    print('❌ Error getting grouped invoices: $e');
+    return {};
+  }
+}
+
+
+
+
+
+
 
   // ============ PRODUCT STOCK (TOTAL WEIGHT) ============
   Future<Map<String, dynamic>> getTotalProductStock() async {
@@ -3129,6 +4157,6 @@ Future<void> _ensureSalesInvoiceTable(Database db) async {
 
   bool _isWeightUnit(String unit) {
     return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
-           unit == 'تن' || unit == 'ton' || unit == 'Ton';
+          unit == 'تن' || unit == 'ton' || unit == 'Ton';
   }
 }

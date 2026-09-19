@@ -42,7 +42,7 @@ dependencies:
   
   # Excel Import/Export
   excel: ^4.0.4
-  file_picker: ^6.1.1
+  file_picker: ^8.1.7
   file_selector: ^1.0.3
 
 dev_dependencies:

@@ -219,199 +219,290 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
   }
 
   Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
-    try {
-      List<Map<String, dynamic>> importedData = [];
-      int successCount = 0;
-      int skippedCount = 0;
-      List<String> errors = [];
+  try {
+    List<Map<String, dynamic>> importedData = [];
+    int successCount = 0;
+    int skippedCount = 0;
+    List<String> errors = [];
 
-      // گرفتن هدرها از ردیف اول
-      final headersRow = sheet.rows.first;
-      List<String> headers = [];
-      for (var cell in headersRow) {
-        if (cell != null && cell.value != null) {
-          headers.add(cell.value.toString().trim());
-        }
+    print('📋 Total rows: ${sheet.rows.length}');
+
+    final headersRow = sheet.rows.first;
+    List<String> headers = [];
+    for (var cell in headersRow) {
+      if (cell != null && cell.value != null) {
+        headers.add(cell.value.toString().trim());
+      } else {
+        headers.add('');
       }
+    }
 
-      print('📋 Headers: $headers');
+    print('📋 Headers: $headers');
 
-      // پیدا کردن ایندکس فیلدها
-      int productionTypeIndex = -1;
-      int sizeIndex = -1;
-      int thicknessIndex = -1;
-      int lengthIndex = -1;
-      int rawCountIndex = -1;
-      int rawWeightIndex = -1;
-      int totalWeightIndex = -1;
-      int unitIndex = -1;
-      int dateIndex = -1;
-      int statusIndex = -1;
-      int descriptionIndex = -1;
+    String normalize(String h) {
+      return h
+          .trim()
+          .replaceAll('\u200c', '')
+          .replaceAll(' ', '')
+          .replaceAll('ي', 'ی')
+          .replaceAll('ك', 'ک')
+          .toLowerCase();
+    }
 
-      for (int i = 0; i < headers.length; i++) {
-        String h = headers[i];
-        String hLower = h.toLowerCase();
-        
-        if (hLower.contains('نوع تولید') || hLower.contains('production') || hLower.contains('نوع')) {
-          productionTypeIndex = i;
-        } else if (hLower.contains('سایز') || hLower.contains('size')) {
-          sizeIndex = i;
-        } else if (hLower.contains('ضخامت') || hLower.contains('thickness')) {
-          thicknessIndex = i;
-        } else if (hLower.contains('طول') || hLower.contains('length')) {
-          lengthIndex = i;
-        } else if (hLower.contains('تعداد خاده') || hLower.contains('raw count') || hLower.contains('تعداد')) {
-          rawCountIndex = i;
-        } else if (hLower.contains('وزن فی خاده') || hLower.contains('raw weight') || hLower.contains('وزن فی')) {
-          rawWeightIndex = i;
-        } else if (hLower.contains('مجموع وزن') || hLower.contains('total weight') || hLower.contains('وزن کل')) {
-          totalWeightIndex = i;
-        } else if (hLower.contains('واحد') && !hLower.contains('پول')) {
-          unitIndex = i;
-        } else if (hLower.contains('تاریخ') || hLower.contains('date')) {
-          dateIndex = i;
-        } else if (hLower.contains('وضعیت') || hLower.contains('status')) {
-          statusIndex = i;
-        } else if (hLower.contains('توضیحات') || hLower.contains('شرح') || hLower.contains('description')) {
-          descriptionIndex = i;
-        }
+    int productionTypeIndex = -1;
+    int sizeIndex = -1;
+    int thicknessIndex = -1;
+    int lengthIndex = -1;
+    int rawCountIndex = -1;
+    int rawWeightIndex = -1;
+    int totalWeightIndex = -1;
+    int unitIndex = -1;
+    int dateIndex = -1;
+    int statusIndex = -1;
+    int descriptionIndex = -1;
+
+    for (int i = 0; i < headers.length; i++) {
+      String h = normalize(headers[i]);
+      if (h.isEmpty) continue;
+
+      if (h == 'نوعتولید' || h == 'نوعتولیدات') {
+        productionTypeIndex = i;
+      } else if (h == 'سایز' || h == 'اندازه') {
+        sizeIndex = i;
+      } else if (h == 'ضخامت') {
+        thicknessIndex = i;
+      } else if (h == 'طول') {
+        lengthIndex = i;
+      } else if (h == 'تعدادخاده' || h == 'تعدادخادها' || h == 'تعداد') {
+        rawCountIndex = i;
+      } else if (h == 'وزنفیخاده' || h == 'وزنفیخادها' || h == 'وزنخاده') {
+        rawWeightIndex = i;
+      } else if (h == 'مجموعوزن' || h == 'وزنکل' || h == 'وزنمجموعی') {
+        totalWeightIndex = i;
+      } else if (h == 'واحد') {
+        unitIndex = i;
+      } else if (h == 'تاریخ') {
+        dateIndex = i;
+      } else if (h == 'وضعیت') {
+        statusIndex = i;
+      } else if (h == 'توضیحات' || h == 'شرح' || h == 'ملاحظات') {
+        descriptionIndex = i;
       }
+    }
 
-      print('📋 Production Type: $productionTypeIndex, Date: $dateIndex');
+    print('📋 INDEX MAP:');
+    print('  productionType = $productionTypeIndex');
+    print('  size           = $sizeIndex');
+    print('  thickness      = $thicknessIndex');
+    print('  length         = $lengthIndex');
+    print('  rawCount       = $rawCountIndex');
+    print('  rawWeight      = $rawWeightIndex');
+    print('  totalWeight    = $totalWeightIndex');
+    print('  unit           = $unitIndex');
+    print('  date           = $dateIndex');
+    print('  status         = $statusIndex');
+    print('  description    = $descriptionIndex');
 
-      if (productionTypeIndex == -1 || dateIndex == -1) {
-        return {
-          'success': false,
-          'message': 'فیلدهای مورد نیاز پیدا نشد: نوع تولید، تاریخ'
-        };
-      }
-
-      // پردازش ردیف‌ها
-      for (int i = 1; i < sheet.rows.length; i++) {
-        final row = sheet.rows[i];
-        
-        bool hasData = false;
-        for (var cell in row) {
-          if (cell != null && cell.value != null) {
-            String val = cell.value.toString().trim();
-            if (val.isNotEmpty && val != '0' && val != '-' && val != '\$') {
-              hasData = true;
-              break;
-            }
-          }
-        }
-        if (!hasData) continue;
-
-        try {
-          String productionType = _getCellValueDirect(row, productionTypeIndex);
-          String size = sizeIndex != -1 ? _getCellValueDirect(row, sizeIndex) : '';
-          String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
-          String length = lengthIndex != -1 ? _getCellValueDirect(row, lengthIndex) : '';
-          String rawCountStr = rawCountIndex != -1 ? _getCellValueDirect(row, rawCountIndex) : '1';
-          String rawWeightStr = rawWeightIndex != -1 ? _getCellValueDirect(row, rawWeightIndex) : '0';
-          String totalWeightStr = totalWeightIndex != -1 ? _getCellValueDirect(row, totalWeightIndex) : '';
-          String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'متر';
-          String date = _getCellValueDirect(row, dateIndex);
-          String status = statusIndex != -1 ? _getCellValueDirect(row, statusIndex) : 'در حال تولید';
-          String description = descriptionIndex != -1 ? _getCellValueDirect(row, descriptionIndex) : '';
-
-          // پاک کردن علامت‌های اضافی
-          rawCountStr = rawCountStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          rawWeightStr = rawWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
-          totalWeightStr = totalWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
-
-          print('📝 Row ${i+1}: Type="$productionType", Date="$date"');
-
-          if (productionType.isEmpty || date.isEmpty) {
-            skippedCount++;
-            errors.add('ردیف ' + (i+1).toString() + ': فیلدهای مورد نیاز کامل نیستند');
-            continue;
-          }
-
-          int rawCount = _parseNumber(rawCountStr).toInt();
-          double rawWeight = _parseNumber(rawWeightStr);
-          
-          // اگر مجموع وزن خالی بود، محاسبه کن
-          double totalWeight = _parseNumber(totalWeightStr);
-          if (totalWeight <= 0 && rawCount > 0 && rawWeight > 0) {
-            totalWeight = rawCount * rawWeight;
-          }
-
-          // تاریخ
-          if (date.isEmpty) {
-            date = PersianDateConverter.gregorianToJalali(DateTime.now());
-          }
-          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
-
-          // تعیین واحد مناسب
-          String unitFinal = unit;
-          if (unit.isEmpty) {
-            if (_isWeightUnit(unit)) {
-              unitFinal = 'کیلوگرم';
-            } else {
-              unitFinal = 'متر';
-            }
-          }
-
-          // ============================================
-          // ساخت داده - فقط فیلدهای موجود در جدول
-          // ============================================
-          Map<String, dynamic> product = {
-            'product_name': productionType,
-            'production_type': productionType,
-            'size': size,
-            'thickness': thickness,
-            'length': length,
-            'raw_count': rawCount,
-            'raw_weight': rawWeight,
-            'total_weight': totalWeight,
-            'unit': unitFinal,
-            'production_date': date,
-            'production_date_en': dateEn,
-            'status': status,
-            'description': description,
-            'remaining_stock': totalWeight,
-          };
-
-          print('📦 Inserting: ${product['production_type']}');
-          
-          int result = await _db.insertProducedProduct(product);
-          if (result != -1) {
-            successCount++;
-            importedData.add(product);
-            print('✅ Row ${i+1} imported!');
-          } else {
-            skippedCount++;
-            errors.add('ردیف ' + (i+1).toString() + ': خطا در ذخیره‌سازی');
-          }
-
-        } catch (e) {
-          skippedCount++;
-          errors.add('ردیف ' + (i+1).toString() + ': خطا - ' + e.toString());
-          print('❌ Error: $e');
-        }
-      }
-
-      return {
-        'success': true,
-        'successCount': successCount,
-        'skippedCount': skippedCount,
-        'importedData': importedData,
-        'errors': errors,
-        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
-      };
-
-    } catch (e) {
-      print('❌ Error: $e');
+    if (productionTypeIndex == -1) {
       return {
         'success': false,
-        'message': 'خطا در پردازش فایل: $e',
+        'message': 'ستون «نوع تولید» پیدا نشد.\nهدرها: $headers'
       };
     }
+
+    for (int i = 1; i < sheet.rows.length; i++) {
+      final row = sheet.rows[i];
+
+      bool hasData = false;
+      for (var cell in row) {
+        if (cell != null && cell.value != null) {
+          String val = cell.value.toString().trim();
+          if (val.isNotEmpty && val != '0' && val != '-' && val != '\$') {
+            hasData = true;
+            break;
+          }
+        }
+      }
+      if (!hasData) continue;
+
+      try {
+        String productionType = _getCellValueDirect(row, productionTypeIndex);
+        String size = sizeIndex != -1 ? _getCellValueDirect(row, sizeIndex) : '';
+        String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
+        String length = lengthIndex != -1 ? _getCellValueDirect(row, lengthIndex) : '';
+        String rawCountStr = rawCountIndex != -1 ? _getCellValueDirect(row, rawCountIndex) : '';
+        String rawWeightStr = rawWeightIndex != -1 ? _getCellValueDirect(row, rawWeightIndex) : '';
+        String totalWeightStr = totalWeightIndex != -1 ? _getCellValueDirect(row, totalWeightIndex) : '';
+        String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
+        String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
+        String status = statusIndex != -1 ? _getCellValueDirect(row, statusIndex) : 'در حال تولید';
+        String description = descriptionIndex != -1 ? _getCellValueDirect(row, descriptionIndex) : '';
+
+        rawCountStr = rawCountStr.replaceAll(RegExp(r'[$,]'), '').trim();
+        rawWeightStr = rawWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
+        totalWeightStr = totalWeightStr.replaceAll(RegExp(r'[$,]'), '').trim();
+
+        print('📝 ROW $i:');
+        print('  prodType   = "$productionType"');
+        print('  size       = "$size"');
+        print('  thickness  = "$thickness"');
+        print('  length     = "$length"');
+        print('  rawCount   = "$rawCountStr"');
+        print('  rawWeight  = "$rawWeightStr"');
+        print('  totalWeight= "$totalWeightStr"');
+        print('  unit       = "$unit"');
+        print('  date       = "$date"');
+
+        if (productionType.isEmpty) {
+          skippedCount++;
+          errors.add('ردیف $i: نوع تولید خالی است');
+          continue;
+        }
+
+        int rawCount = _parseNumber(rawCountStr).toInt();
+        double rawWeight = _parseNumber(rawWeightStr);
+        double totalWeight = _parseNumber(totalWeightStr);
+
+        if (totalWeight <= 0 && rawCount > 0 && rawWeight > 0) {
+          totalWeight = rawCount * rawWeight;
+        }
+        if (rawWeight <= 0 && rawCount > 0 && totalWeight > 0) {
+          rawWeight = totalWeight / rawCount;
+        }
+        if (rawCount <= 0 && rawWeight > 0 && totalWeight > 0) {
+          rawCount = (totalWeight / rawWeight).round();
+        }
+
+        String dateFinal = date.isEmpty
+            ? PersianDateConverter.gregorianToJalali(DateTime.now())
+            : date;
+        String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+        String unitFinal = unit.isEmpty ? 'کیلوگرم' : unit;
+
+        final trimmedSize = size.trim();
+        final trimmedThickness = thickness.trim();
+
+        if (trimmedSize.isNotEmpty && trimmedThickness.isNotEmpty) {
+          try {
+            final db = await _db.database;
+            final existing = await db.query(
+              'produced_products',
+              where: 'TRIM(COALESCE(size, \'\')) = ? AND TRIM(COALESCE(thickness, \'\')) = ?',
+              whereArgs: [trimmedSize, trimmedThickness],
+              limit: 1,
+            );
+
+            if (existing.isNotEmpty) {
+              final e = existing.first;
+              final existingId = e['id'] as int;
+              final existingRawCount = int.tryParse(e['raw_count']?.toString() ?? '0') ?? 0;
+              final existingTotalWeight = double.tryParse(e['total_weight']?.toString() ?? '0') ?? 0;
+              final existingRemainingStock = double.tryParse(e['remaining_stock']?.toString() ?? '0') ?? 0;
+
+              final newRawCount = existingRawCount + rawCount;
+              final newTotalWeight = existingTotalWeight + totalWeight;
+              final newRemainingStock = existingRemainingStock + totalWeight;
+              final newRawWeight = newRawCount > 0 ? newTotalWeight / newRawCount : rawWeight;
+
+              final updatePayload = {
+                'raw_count': newRawCount,
+                'raw_weight': newRawWeight,
+                'total_weight': newTotalWeight,
+                'remaining_stock': newRemainingStock,
+                'unit': e['unit']?.toString() ?? unitFinal,
+                'production_date': dateFinal,
+                'production_date_en': dateEn,
+                'status': status,
+                'description': description,
+              };
+
+              await _db.updateProducedProduct(existingId, updatePayload);
+
+              // ✅ Save this production separately in production_logs
+              try {
+                final db2 = await _db.database;
+                await db2.insert('production_logs', {
+                  'produced_product_id': existingId,
+                  'production_type': productionType,
+                  'size': trimmedSize,
+                  'thickness': trimmedThickness,
+                  'length': length,
+                  'raw_count': rawCount,
+                  'raw_weight': rawWeight,
+                  'total_weight': totalWeight,
+                  'unit': unitFinal,
+                  'production_date': dateFinal,
+                  'production_date_en': dateEn,
+                  'status': status,
+                  'description': description,
+                });
+              } catch (logErr) {
+                print('⚠️ Failed to save production log: $logErr');
+              }
+
+              successCount++;
+              importedData.add(updatePayload);
+              print('🔀 Row $i merged into #$existingId');
+              continue;
+            }
+          } catch (e) {
+            print('⚠️ Duplicate check error: $e');
+          }
+        }
+
+        final product = {
+          'product_name': productionType,
+          'production_type': productionType,
+          'size': size,
+          'thickness': thickness,
+          'length': length,
+          'raw_count': rawCount,
+          'raw_weight': rawWeight,
+          'total_weight': totalWeight,
+          'unit': unitFinal,
+          'production_date': dateFinal,
+          'production_date_en': dateEn,
+          'status': status,
+          'description': description,
+          'remaining_stock': totalWeight,
+        };
+
+        int result = await _db.insertProducedProduct(product);
+        if (result != -1) {
+          successCount++;
+          importedData.add(product);
+        } else {
+          skippedCount++;
+          errors.add('ردیف $i: خطا در ذخیره‌سازی');
+        }
+
+      } catch (e) {
+        skippedCount++;
+        errors.add('ردیف $i: خطا - ${e.toString()}');
+        print('❌ Row error: $e');
+      }
+    }
+
+    return {
+      'success': true,
+      'successCount': successCount,
+      'skippedCount': skippedCount,
+      'mergedCount': 0,
+      'importedData': importedData,
+      'errors': errors,
+      'message': '✅ $successCount ردیف وارد شد. '
+          '$skippedCount نادیده گرفته شد.',
+    };
+
+  } catch (e) {
+    print('❌ Fatal error: $e');
+    return {'success': false, 'message': 'خطا: $e'};
   }
+}
 
   void _showImportResultDialog(BuildContext context, Map<String, dynamic> result) {
+    final merged = result['mergedCount'] ?? 0;
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -428,6 +519,13 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                   '✅ ${result['successCount']} رکورد با موفقیت وارد شد',
                   style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                 ),
+                if (merged > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '🔀 $merged رکورد با محصولات موجود تلفیق شد',
+                    style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+                  ),
+                ],
                 if (result['skippedCount'] > 0) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -1012,7 +1110,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
 
   Widget _buildSoldStatusChip(Map<String, dynamic> product, AppLocalizations l10n) {
     final isSold = (product['is_sold'] == 1 || product['is_sold']?.toString() == '1');
-    final saleCount = (product['sale_count'] as int? ?? 0);
     final availableStock = double.tryParse(product['remaining_stock']?.toString() ?? '0') ?? 0;
     
     String unit = product['unit']?.toString() ?? '';
@@ -1026,9 +1123,9 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
         ),
-        child: Text(
+        child: const Text(
           'فروخته شده',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 7,
             fontWeight: FontWeight.w600,
             color: Colors.grey,
@@ -1072,10 +1169,686 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
     );
   }
 
+  // ============================================================
+  // PRODUCTION DETAILS FOR A SINGLE PRODUCT
+  // ============================================================
+  Future<Map<String, dynamic>> _getProductProductionDetails(
+    int currentProductId,
+    String size,
+    String thickness, {
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    try {
+      final db = await _db.database;
+
+      final trimmedSize = size.trim();
+      final trimmedThickness = thickness.trim();
+
+      if (trimmedSize.isEmpty || trimmedThickness.isEmpty) {
+        final row = await db.query(
+          'produced_products',
+          where: 'id = ?',
+          whereArgs: [currentProductId],
+          limit: 1,
+        );
+        if (row.isEmpty) {
+          return {
+            'rows': <Map<String, dynamic>>[],
+            'produced_weight': 0.0,
+            'produced_units': 0,
+            'row_count': 0,
+          };
+        }
+        final r = row.first;
+        final w = double.tryParse(r['total_weight']?.toString() ?? '0') ?? 0;
+        final u = int.tryParse(r['raw_count']?.toString() ?? '0') ?? 0;
+        return {
+          'rows': [r],
+          'produced_weight': w,
+          'produced_units': u,
+          'row_count': 1,
+        };
+      }
+
+      String dateClause = '';
+      final List<dynamic> dateArgs = [];
+      if (fromDate != null && toDate != null) {
+        final toInclusive = toDate.add(const Duration(days: 1));
+        dateClause = " AND date(COALESCE(production_date_en, '')) >= date(?) "
+                     "AND date(COALESCE(production_date_en, '')) < date(?)";
+        dateArgs.add(fromDate.toIso8601String().split('T').first);
+        dateArgs.add(toInclusive.toIso8601String().split('T').first);
+      }
+
+      final rows = await db.rawQuery('''
+        SELECT *
+        FROM produced_products
+        WHERE TRIM(COALESCE(size, '')) = ?
+          AND TRIM(COALESCE(thickness, '')) = ?
+          $dateClause
+        ORDER BY created_at DESC
+      ''', [trimmedSize, trimmedThickness, ...dateArgs]);
+
+      double producedWeight = 0;
+      int producedUnits = 0;
+      for (final r in rows) {
+        final w = double.tryParse(r['total_weight']?.toString() ?? '0') ?? 0;
+        final u = int.tryParse(r['raw_count']?.toString() ?? '0') ?? 0;
+        producedWeight += w;
+        producedUnits += u;
+      }
+
+      return {
+        'rows': rows,
+        'produced_weight': producedWeight,
+        'produced_units': producedUnits,
+        'row_count': rows.length,
+      };
+    } catch (e) {
+      print('❌ Error getting product production details: $e');
+      return {
+        'rows': <Map<String, dynamic>>[],
+        'produced_weight': 0.0,
+        'produced_units': 0,
+        'row_count': 0,
+      };
+    }
+  }
+
+  String _formatWeightForUnit(double weight, String unit) {
+    if (_isWeightUnit(unit)) {
+      final tons = weight / 1000;
+      if (tons < 0.01 && tons > 0) return '${tons.toStringAsFixed(3)} تن';
+      return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+    }
+    return '${weight.toStringAsFixed(weight % 1 == 0 ? 0 : 1)} $unit';
+  }
+
+  Widget _specItem(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1A1A2E),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _miniHeader(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF1A1A2E),
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _miniCell(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 10, color: Color(0xFF1A1A2E)),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  // ============================================================
+  // VIEW PRODUCT DETAILS MODAL (PRODUCTION HISTORY)
+  // ============================================================
+  void _showProductDetailsDialog(
+    BuildContext context,
+    Map<String, dynamic> product,
+    AppLocalizations l10n,
+  ) {
+    String selectedFilter = 'today';
+    Map<String, dynamic> prodDetails = {
+      'rows': <Map<String, dynamic>>[],
+      'produced_weight': 0.0,
+      'produced_units': 0,
+      'row_count': 0,
+    };
+    bool loadingDetails = true;
+    bool loadedOnce = false;
+
+    final unit = product['unit']?.toString() ?? '';
+    final totalWeight = double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0;
+    final remainingStock = double.tryParse(product['remaining_stock']?.toString() ?? '0') ?? 0;
+    final rawCount = int.tryParse(product['raw_count']?.toString() ?? '0') ?? 0;
+    final rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
+    final size = product['size']?.toString() ?? '';
+    final thickness = product['thickness']?.toString() ?? '';
+    final isWeight = _isWeightUnit(unit);
+
+    String fmtWeight(double kg) {
+      if (isWeight) {
+        final tons = kg / 1000;
+        if (tons < 0.01 && tons > 0) return '${tons.toStringAsFixed(3)} تن';
+        return '${tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2)} تن';
+      }
+      return '${kg.toStringAsFixed(kg % 1 == 0 ? 0 : 1)} $unit';
+    }
+
+    (DateTime?, DateTime?) rangeForFilter(String filter) {
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      switch (filter) {
+        case 'today':
+          return (todayStart, now);
+        case 'week':
+          return (todayStart.subtract(const Duration(days: 6)), now);
+        case 'month':
+          return (DateTime(now.year, now.month, 1), now);
+        default:
+          return (null, null);
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setModalState) {
+          Future<void> loadForFilter() async {
+            setModalState(() => loadingDetails = true);
+            final range = rangeForFilter(selectedFilter);
+
+            // ✅ Fetch from production_logs (separate entries) instead of produced_products
+            final logs = await _db.getProductionLogsBySizeThickness(
+              size,
+              thickness,
+              fromDate: range.$1,
+              toDate: range.$2,
+            );
+
+            double producedWeight = 0;
+            int producedUnits = 0;
+            for (final r in logs) {
+              producedWeight += double.tryParse(r['total_weight']?.toString() ?? '0') ?? 0;
+              producedUnits += int.tryParse(r['raw_count']?.toString() ?? '0') ?? 0;
+            }
+
+            final details = {
+              'rows': logs,
+              'produced_weight': producedWeight,
+              'produced_units': producedUnits,
+              'row_count': logs.length,
+            };
+
+            if (!dialogContext.mounted) return;
+            setModalState(() {
+              prodDetails = details;
+              loadingDetails = false;
+              loadedOnce = true;
+            });
+          }
+
+          if (!loadedOnce) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (dialogContext.mounted && !loadedOnce) {
+                loadForFilter();
+              }
+            });
+          }
+
+          final producedWeight = (prodDetails['produced_weight'] as double?) ?? 0;
+          final producedUnits = (prodDetails['produced_units'] as int?) ?? 0;
+          final rowsList = (prodDetails['rows'] as List?) ?? [];
+
+          Widget statTile({
+            required String label,
+            required String value,
+            required IconData icon,
+            required Color color,
+            String? sub,
+          }) {
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withOpacity(0.18), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, color: color, size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                  if (sub != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      sub,
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }
+
+          Widget filterChip(String key, String label) {
+            final active = selectedFilter == key;
+            return GestureDetector(
+              onTap: () {
+                if (selectedFilter == key) return;
+                setModalState(() => selectedFilter = key);
+                loadForFilter();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: active ? const Color(0xFFCB001D) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: active
+                        ? const Color(0xFFCB001D)
+                        : Colors.grey.shade300,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: active ? Colors.white : Colors.grey.shade700,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCB001D).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.inventory_2,
+                        color: Color(0xFFCB001D), size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product['production_type']?.toString() ?? '-',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A1A2E),
+                          ),
+                        ),
+                        Text(
+                          'شناسه #${product['id']} • '
+                          'سایز: ${size.isEmpty ? "-" : size} • '
+                          'ضخامت: ${thickness.isEmpty ? "-" : thickness}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 640,
+                height: 560,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // SPECS
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          children: [
+                            _specItem('سایز', size.isEmpty ? '-' : size),
+                            _specItem('ضخامت', thickness.isEmpty ? '-' : thickness),
+                            _specItem('طول', product['length']?.toString() ?? '-'),
+                            _specItem('واحد', unit.isEmpty ? '-' : unit),
+                            _specItem('وضعیت', product['status']?.toString() ?? '-'),
+                            _specItem(
+                              'وزن فی خاده',
+                              '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} ${isWeight ? "کیلوگرم" : unit}',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // FILTERS
+                      Row(
+                        children: [
+                          const Icon(Icons.filter_alt,
+                              size: 16, color: Color(0xFFCB001D)),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'دوره تولید:',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1A1A2E),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          filterChip('today', 'امروز'),
+                          const SizedBox(width: 6),
+                          filterChip('week', 'این هفته'),
+                          const SizedBox(width: 6),
+                          filterChip('month', 'این ماه'),
+                          const SizedBox(width: 6),
+                          filterChip('all', 'همه'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // STATS
+                      Row(
+                        children: [
+                          Expanded(
+                            child: statTile(
+                              label: 'تولید کل (کل تاریخچه)',
+                              value: fmtWeight(totalWeight),
+                              sub: '$rawCount خاده • روی این ردیف',
+                              icon: Icons.factory_rounded,
+                              color: const Color(0xFF1A1A2E),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: statTile(
+                              label: 'موجود در گدام',
+                              value: fmtWeight(remainingStock),
+                              sub: totalWeight > 0
+                                  ? '${((remainingStock / totalWeight) * 100).clamp(0, 100).toStringAsFixed(1)}% از کل'
+                                  : '-',
+                              icon: Icons.warehouse_rounded,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: statTile(
+                              label: 'تولید در دوره انتخابی',
+                              value: fmtWeight(producedWeight),
+                              sub: '$producedUnits خاده • ${rowsList.length} ردیف',
+                              icon: Icons.add_box_rounded,
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: statTile(
+                              label: 'تعداد ردیف‌های دوره',
+                              value: '${rowsList.length}',
+                              sub: 'مطابق سایز + ضخامت',
+                              icon: Icons.list_alt_rounded,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // PRODUCTION HISTORY LIST
+                      Row(
+                        children: [
+                          const Icon(Icons.history,
+                              size: 16, color: Color(0xFFCB001D)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'سوابق تولید (${rowsList.length})',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1A1A2E),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (loadingDetails)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFCB001D),
+                            ),
+                          ),
+                        )
+                      else if (rowsList.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(Icons.inbox_outlined,
+                                  color: Colors.grey.shade400, size: 32),
+                              const SizedBox(height: 6),
+                              Text(
+                                'تولیدی در این دوره برای این سایز و ضخامت ثبت نشده',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade200),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              // Header
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCB001D).withOpacity(0.06),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(8),
+                                    topRight: Radius.circular(8),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    _miniHeader('شناسه', 45),
+                                    _miniHeader('نوع تولید', 100),
+                                    _miniHeader('تعداد خاده', 60),
+                                    _miniHeader('وزن فی خاده', 70),
+                                    _miniHeader('مجموع وزن', 80),
+                                    _miniHeader('وضعیت', 65),
+                                    _miniHeader('تاریخ', 80),
+                                  ],
+                                ),
+                              ),
+                              ...rowsList.map((r) {
+                                final rUnit = r['unit']?.toString() ?? unit;
+                                final rRawWeight =
+                                    double.tryParse(r['raw_weight']?.toString() ?? '0') ?? 0;
+                                final rTotalWeight =
+                                    double.tryParse(r['total_weight']?.toString() ?? '0') ?? 0;
+                                final rCount = int.tryParse(r['raw_count']?.toString() ?? '0') ?? 0;
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      top: BorderSide(
+                                          color: Colors.grey.shade100,
+                                          width: 0.5),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      _miniCell('#${r['id'] ?? '-'}', 45),
+                                      _miniCell(
+                                          r['production_type']?.toString() ?? '-', 100),
+                                      _miniCell('$rCount', 60),
+                                      _miniCell(
+                                        '${rRawWeight.toStringAsFixed(rRawWeight % 1 == 0 ? 0 : 1)} ${_isWeightUnit(rUnit) ? "kg" : rUnit}',
+                                        70,
+                                      ),
+                                      _miniCell(
+                                        _formatWeightForUnit(rTotalWeight, rUnit),
+                                        80,
+                                      ),
+                                      _miniCell(r['status']?.toString() ?? '-', 65),
+                                      _miniCell(
+                                        r['production_date']?.toString() ??
+                                            r['production_date_en']?.toString() ??
+                                            '-',
+                                        80,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(height: 12),
+                      if (product['description']?.toString().isNotEmpty == true)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.shade200),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.notes,
+                                  size: 16, color: Colors.amber.shade800),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  product['description'].toString(),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('بستن',
+                      style: TextStyle(color: Color(0xFF888888))),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _showProductDialog(context, l10n, product: product);
+                  },
+                  icon: const Icon(Icons.edit, size: 16, color: Colors.white),
+                  label: const Text('ویرایش',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCB001D),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ============================================================
+  // PRODUCT DIALOG (ADD / EDIT)
+  // ============================================================
   void _showProductDialog(BuildContext context, AppLocalizations l10n, {Map<String, dynamic>? product}) {
     final isEditing = product != null;
     
-    // Field controllers
     final productionTypeController = TextEditingController(text: product?['production_type']?.toString() ?? '');
     final sizeController = TextEditingController(text: product?['size']?.toString() ?? '');
     final thicknessController = TextEditingController(text: product?['thickness']?.toString() ?? '');
@@ -1102,27 +1875,19 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           double rawWeight = double.tryParse(rawWeightController.text) ?? 0;
-          int rawCount = int.tryParse(rawCountController.text) ?? 0;
           double totalWeight = double.tryParse(totalWeightController.text) ?? 0;
           
-          // Check if unit is weight-based
           bool isWeightUnit = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg' || 
                              selectedUnit == 'تن' || selectedUnit == 'ton' || selectedUnit == 'Ton';
           
-          // Convert total weight to tons if it's in kg
           String totalWeightDisplay;
           String totalWeightInTons;
-          String rawWeightDisplay;
           
           if (isWeightUnit) {
-            // Raw weight always in kg
-            rawWeightDisplay = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
-            // Total weight in tons
             double tons = totalWeight / 1000;
             totalWeightInTons = tons.toStringAsFixed(tons % 1 == 0 ? 0 : 2);
             totalWeightDisplay = '$totalWeightInTons تن';
           } else {
-            rawWeightDisplay = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $selectedUnit';
             totalWeightDisplay = '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1)} $selectedUnit';
             totalWeightInTons = totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 1);
           }
@@ -1138,38 +1903,35 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 1. نوع تولید (FIRST FIELD - Required)
                       TextField(
                         controller: productionTypeController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'نوع تولید *',
-                          border: const OutlineInputBorder(), 
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(), 
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
                       
-                      // 2. سایز
                       TextField(
                         controller: sizeController,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'سایز',
-                          border: const OutlineInputBorder(), 
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(), 
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                       const SizedBox(height: 8),
                       
-                      // 3. ضخامت & 4. طول - Row
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: thicknessController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'ضخامت',
-                                border: const OutlineInputBorder(), 
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(), 
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                             ),
                           ),
@@ -1177,10 +1939,10 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: lengthController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'طول',
-                                border: const OutlineInputBorder(), 
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(), 
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                             ),
                           ),
@@ -1188,21 +1950,19 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       ),
                       const SizedBox(height: 8),
                       
-                      // 5. تعداد خاده & 6. وزن فی خاده - Row (Required)
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: rawCountController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'تعداد خاده *',
-                                border: const OutlineInputBorder(), 
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(), 
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => setDialogState(() {
                                 _calculateTotalWeight();
-                                setDialogState(() {});
                               }),
                             ),
                           ),
@@ -1210,17 +1970,16 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: rawWeightController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'وزن فی خاده * (کیلوگرم)', 
-                                border: const OutlineInputBorder(), 
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(), 
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                 helperText: 'همیشه بر حسب کیلوگرم وارد کنید',
-                                helperStyle: const TextStyle(fontSize: 9, color: Colors.grey),
+                                helperStyle: TextStyle(fontSize: 9, color: Colors.grey),
                               ),
                               keyboardType: TextInputType.number,
                               onChanged: (_) => setDialogState(() {
                                 _calculateTotalWeight();
-                                setDialogState(() {});
                               }),
                             ),
                           ),
@@ -1228,7 +1987,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       ),
                       const SizedBox(height: 8),
                       
-                      // 7. مجموع وزن (Auto-calculated, Read-only) - Show in TONS
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1246,16 +2004,16 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                               children: [
                                 const Icon(Icons.calculate, color: Color(0xFFCB001D), size: 18),
                                 const SizedBox(width: 8),
-                                Text(
+                                const Text(
                                   'مجموع وزن',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                     color: Color(0xFF1A1A2E),
                                   ),
                                 ),
                                 const Spacer(),
-                                if (totalWeight > 0 && isWeightUnit) ...[
+                                if (totalWeight > 0)
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(
@@ -1270,24 +2028,8 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                         color: Color(0xFFCB001D),
                                       ),
                                     ),
-                                  ),
-                                ] else if (totalWeight > 0) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFCB001D).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      totalWeightDisplay,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFFCB001D),
-                                      ),
-                                    ),
-                                  ),
-                                ] else ...[
+                                  )
+                                else
                                   const Text(
                                     '0',
                                     style: TextStyle(
@@ -1296,7 +2038,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                       color: Colors.grey,
                                     ),
                                   ),
-                                ],
                               ],
                             ),
                             if (totalWeight > 0 && isWeightUnit) ...[
@@ -1359,15 +2100,14 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       ),
                       const SizedBox(height: 8),
                       
-                      // 8. واحد & 9. تاریخ - Row
                       Row(
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'واحد *', 
-                                border: const OutlineInputBorder(), 
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(), 
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               value: selectedUnit,
                               items: const [
@@ -1379,7 +2119,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                               onChanged: (value) => setDialogState(() {
                                 selectedUnit = value;
                                 _calculateTotalWeight();
-                                setDialogState(() {});
                               }),
                             ),
                           ),
@@ -1387,11 +2126,11 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                           Expanded(
                             child: TextField(
                               controller: dateController,
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 labelText: 'تاریخ *', 
-                                border: const OutlineInputBorder(), 
-                                suffixIcon: Icon(Icons.calendar_today, color: const Color(0xFFCB001D), size: 18), 
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(), 
+                                suffixIcon: Icon(Icons.calendar_today, color: Color(0xFFCB001D), size: 18), 
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),
                               readOnly: true,
                               onTap: () async {
@@ -1416,12 +2155,11 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       ),
                       const SizedBox(height: 8),
                       
-                      // 10. وضعیت
                       DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'وضعیت', 
-                          border: const OutlineInputBorder(), 
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(), 
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         value: selectedStatus,
                         items: const [
@@ -1433,14 +2171,13 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       ),
                       const SizedBox(height: 8),
                       
-                      // 11. توضیحات
                       TextField(
                         controller: descriptionController, 
                         maxLines: 2, 
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'توضیحات', 
-                          border: const OutlineInputBorder(), 
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(), 
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                     ],
@@ -1454,13 +2191,12 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    // Validate required fields
                     if (productionTypeController.text.isEmpty || 
                         rawCountController.text.isEmpty || 
                         selectedUnit == null || 
                         dateController.text.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
+                        const SnackBar(
                           content: Text('لطفاً تمام فیلدهای الزامی (*) را پر کنید'), 
                           backgroundColor: Colors.red
                         )
@@ -1472,10 +2208,105 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                     final rawWeight = double.tryParse(rawWeightController.text) ?? 0;
                     final totalWeight = rawCount * rawWeight;
 
+                    final trimmedSize = sizeController.text.trim();
+                    final trimmedThickness = thicknessController.text.trim();
+
+                    Navigator.pop(context);
+
+                    if (!isEditing && trimmedSize.isNotEmpty && trimmedThickness.isNotEmpty) {
+                      try {
+                        final db = await _db.database;
+                        final existing = await db.query(
+                          'produced_products',
+                          where: 'TRIM(COALESCE(size, \'\')) = ? AND TRIM(COALESCE(thickness, \'\')) = ?',
+                          whereArgs: [trimmedSize, trimmedThickness],
+                          limit: 1,
+                        );
+
+                        if (existing.isNotEmpty) {
+                          final e = existing.first;
+                          final existingId = e['id'] as int;
+                          final existingRawCount = int.tryParse(e['raw_count']?.toString() ?? '0') ?? 0;
+                          final existingTotalWeight = double.tryParse(e['total_weight']?.toString() ?? '0') ?? 0;
+                          final existingRemainingStock = double.tryParse(e['remaining_stock']?.toString() ?? '0') ?? 0;
+
+                          final newRawCount = existingRawCount + rawCount;
+                          final newTotalWeight = existingTotalWeight + totalWeight;
+                          final newRemainingStock = existingRemainingStock + totalWeight;
+                          final newRawWeight = newRawCount > 0 ? newTotalWeight / newRawCount : rawWeight;
+
+                          final updatePayload = {
+                            'raw_count': newRawCount,
+                            'raw_weight': newRawWeight,
+                            'total_weight': newTotalWeight,
+                            'remaining_stock': newRemainingStock,
+                            'unit': e['unit']?.toString() ?? selectedUnit ?? 'متر',
+                            'production_date': dateController.text,
+                            'production_date_en': selectedEnglishDate ?? e['production_date_en'] ?? '',
+                            'status': selectedStatus ?? e['status'] ?? 'در حال تولید',
+                            'description': descriptionController.text.isNotEmpty
+                                ? descriptionController.text
+                                : (e['description']?.toString() ?? ''),
+                          };
+
+                          final upd = await _db.updateProducedProduct(existingId, updatePayload);
+
+                          // ✅ Save this production separately in production_logs
+                          try {
+                            final db2 = await _db.database;
+                            await db2.insert('production_logs', {
+                              'produced_product_id': existingId,
+                              'production_type': productionTypeController.text,
+                              'size': trimmedSize,
+                              'thickness': trimmedThickness,
+                              'length': lengthController.text,
+                              'raw_count': rawCount,
+                              'raw_weight': rawWeight,
+                              'total_weight': totalWeight,
+                              'unit': selectedUnit ?? e['unit'] ?? '',
+                              'production_date': dateController.text,
+                              'production_date_en': selectedEnglishDate ?? '',
+                              'status': selectedStatus ?? 'در حال تولید',
+                              'description': descriptionController.text,
+                            });
+                          } catch (logErr) {
+                            print('⚠️ Failed to save production log: $logErr');
+                          }
+
+                          if (!mounted) return;
+
+                          if (upd != -1) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '🔀 سایز و ضخامت یکسان یافت شد — به محصول موجود اضافه شد\n'
+                                  'تعداد خاده: $existingRawCount + $rawCount = $newRawCount\n'
+                                  'مجموع وزن: ${existingTotalWeight.toStringAsFixed(1)} + ${totalWeight.toStringAsFixed(1)} = ${newTotalWeight.toStringAsFixed(1)} کیلوگرم'
+                                ),
+                                backgroundColor: Colors.blue.shade700,
+                                duration: const Duration(seconds: 5),
+                              )
+                            );
+                            _loadData();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(l10n.errorSavingProduct), 
+                                backgroundColor: Colors.red
+                              )
+                            );
+                          }
+                          return;
+                        }
+                      } catch (err) {
+                        print('⚠️ Error during duplicate check: $err');
+                      }
+                    }
+
                     final payload = {
                       'production_type': productionTypeController.text,
-                      'size': sizeController.text,
-                      'thickness': thicknessController.text,
+                      'size': trimmedSize,
+                      'thickness': trimmedThickness,
                       'length': lengthController.text,
                       'raw_count': rawCount,
                       'raw_weight': rawWeight,
@@ -1488,7 +2319,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                       'remaining_stock': totalWeight.toDouble(),
                     };
 
-                    Navigator.pop(context);
                     final result = isEditing 
                       ? await _db.updateProducedProduct(product!['id'], payload) 
                       : await _db.insertProducedProduct(payload);
@@ -1607,7 +2437,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                 ),
                                 child: LayoutBuilder(
                                   builder: (context, constraints) {
-                                    // Fixed column widths - adjusted to prevent overflow
                                     final columnWidths = {
                                       'checkbox': 32.0,
                                       'id': 35.0,
@@ -1622,7 +2451,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                       'date': 80.0,
                                       'status': 65.0,
                                       'saleStatus': 70.0,
-                                      'actions': 60.0,
+                                      'actions': 88.0,
                                     };
 
                                     double totalColumnsWidth = columnWidths.values.reduce((a, b) => a + b) + 40;
@@ -1681,7 +2510,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                 double rawWeight = double.tryParse(product['raw_weight']?.toString() ?? '0') ?? 0;
                                                 double totalWeight = double.tryParse(product['total_weight']?.toString() ?? '0') ?? 0;
                                                 
-                                                // For rawWeight: ALWAYS show in kg (no conversion)
                                                 String displayRawWeight;
                                                 if (_isWeightUnit(unit)) {
                                                   displayRawWeight = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} کیلوگرم';
@@ -1689,7 +2517,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                   displayRawWeight = '${rawWeight.toStringAsFixed(rawWeight % 1 == 0 ? 0 : 1)} $unit';
                                                 }
                                                 
-                                                // For totalWeight: ALWAYS show in tons (with conversion)
                                                 String displayTotalWeight;
                                                 if (_isWeightUnit(unit)) {
                                                   double tons = totalWeight / 1000;
@@ -1732,7 +2559,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                       _buildDataCell(displayTotalWeight, columnWidths['totalWeight']!, isBold: true, isRed: true),
                                                       _buildDataCell(displayUnit, columnWidths['unit']!),
                                                       
-                                                      // DATE COLUMN
                                                       SizedBox(
                                                         width: columnWidths['date'],
                                                         child: Column(
@@ -1755,7 +2581,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                         ),
                                                       ),
 
-                                                      // STATUS COLUMN
                                                       SizedBox(
                                                         width: columnWidths['status']!,
                                                         child: Center(
@@ -1763,7 +2588,6 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                         ),
                                                       ),
                                                       
-                                                      // SALE STATUS COLUMN
                                                       SizedBox(
                                                         width: columnWidths['saleStatus']!,
                                                         child: Center(
@@ -1771,13 +2595,31 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                         ),
                                                       ),
                                                       
-                                                      // ACTIONS COLUMN
+                                                      // ACTIONS COLUMN (View + Edit + Delete)
                                                       SizedBox(
                                                         width: columnWidths['actions']!,
                                                         child: Row(
                                                           mainAxisAlignment: MainAxisAlignment.center,
                                                           crossAxisAlignment: CrossAxisAlignment.center,
                                                           children: [
+                                                            // VIEW
+                                                            Container(
+                                                              width: 24,
+                                                              height: 24,
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.blue.withOpacity(0.1),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                              ),
+                                                              child: IconButton(
+                                                                icon: Icon(Icons.visibility_outlined,
+                                                                    color: Colors.blue.shade700, size: 13),
+                                                                padding: EdgeInsets.zero,
+                                                                constraints: const BoxConstraints(),
+                                                                onPressed: () => _showProductDetailsDialog(context, product, l10n),
+                                                              ),
+                                                            ),
+                                                            const SizedBox(width: 2),
+                                                            // EDIT
                                                             Container(
                                                               width: 24,
                                                               height: 24,
@@ -1793,6 +2635,7 @@ class _ProductionManagementPageState extends State<ProductionManagementPage> {
                                                               ),
                                                             ),
                                                             const SizedBox(width: 2),
+                                                            // DELETE
                                                             Container(
                                                               width: 24,
                                                               height: 24,

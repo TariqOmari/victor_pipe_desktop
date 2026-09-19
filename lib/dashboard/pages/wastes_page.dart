@@ -37,7 +37,14 @@ class _WastesPageState extends State<WastesPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _invoicePreviewKey = GlobalKey();
 
-  // Helper to convert kg to tons - with proper decimal places
+  // ============================================
+  // MULTI-ITEM SUPPORT VARIABLES
+  // ============================================
+  List<Map<String, dynamic>> _wasteItems = [];
+  int _nextItemIndex = 1;
+  Map<String, List<Map<String, dynamic>>> _groupedWastes = {};
+
+  // Helper to convert kg to tons
   String _formatWeightWithConversion(double weight) {
     if (weight <= 0) return '0';
     double tons = weight / 1000;
@@ -210,6 +217,7 @@ class _WastesPageState extends State<WastesPage> {
       int sellCustomerNameIndex = -1;
       int driverNameIndex = -1;
       int numberPlateIndex = -1;
+      int initialValueIndex = -1;  // ADDED
 
       for (int i = 0; i < headers.length; i++) {
         String h = headers[i];
@@ -254,6 +262,9 @@ class _WastesPageState extends State<WastesPage> {
           driverNameIndex = i;
         } else if (hLower.contains('پلیت') || hLower.contains('plate')) {
           numberPlateIndex = i;
+        } else if (hLower.contains('ارزش اولیه') || hLower.contains('ارزش') ||
+            hLower.contains('initial value') || hLower.contains('initial_value')) {
+          initialValueIndex = i;
         }
       }
 
@@ -320,6 +331,9 @@ class _WastesPageState extends State<WastesPage> {
           String numberPlate = numberPlateIndex != -1
               ? _getCellValueDirect(row, numberPlateIndex)
               : '';
+          String initialValueStr = initialValueIndex != -1
+              ? _getCellValueDirect(row, initialValueIndex)
+              : '0';
 
           weightStr = weightStr.replaceAll(RegExp(r'[$,]'), '').trim();
           quantityStr = quantityStr.replaceAll(RegExp(r'[$,]'), '').trim();
@@ -328,6 +342,7 @@ class _WastesPageState extends State<WastesPage> {
           afnEquivalentStr = afnEquivalentStr.replaceAll(RegExp(r'[$,]'), '')
               .trim();
           sellPriceStr = sellPriceStr.replaceAll(RegExp(r'[$,]'), '').trim();
+          initialValueStr = initialValueStr.replaceAll(RegExp(r'[$,]'), '').trim();
 
           if (date.isEmpty) {
             skippedCount++;
@@ -340,26 +355,16 @@ class _WastesPageState extends State<WastesPage> {
             invoiceNumber = nextNumber.toString().padLeft(5, '0');
           }
 
-          final existing = await _db.getWasteRecords();
-          bool duplicate = existing.any((e) =>
-          e['invoice_number'] == invoiceNumber);
-          if (duplicate) {
-            skippedCount++;
-            errors.add('ردیف ' + (i + 1).toString() + ': شماره بل "' +
-                invoiceNumber + '" تکراری است');
-            continue;
-          }
-
           double weight = _parseNumber(weightStr);
           double quantity = _parseNumber(quantityStr);
           double exchangeRate = _parseNumber(exchangeRateStr);
           double afnEquivalent = _parseNumber(afnEquivalentStr);
           double sellPrice = _parseNumber(sellPriceStr);
+          double initialValue = _parseNumber(initialValueStr);
 
           String currencyFinal =
-          currency == 'AFN' || currency == 'افغانی' ? 'AFN' : 'USD';
+              currency == 'AFN' || currency == 'افغانی' ? 'AFN' : 'USD';
           
-          // Calculate AFN equivalent based on SELL PRICE
           if (afnEquivalent <= 0 && sellPrice > 0) {
             if (currencyFinal == 'USD') {
               afnEquivalent = sellPrice * exchangeRate;
@@ -373,6 +378,9 @@ class _WastesPageState extends State<WastesPage> {
           }
           String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
 
+          // Use initial_value if value is not set
+          double valueToUse = initialValue > 0 ? initialValue : sellPrice;
+
           Map<String, dynamic> waste = {
             'invoice_number': invoiceNumber,
             'date': date,
@@ -381,10 +389,11 @@ class _WastesPageState extends State<WastesPage> {
             'waste_type': wasteType,
             'weight': weight,
             'quantity': quantity > 0 ? quantity : 1,
-            'value': 0,
+            'initial_value': initialValue,
+            'value': valueToUse,
             'currency': currencyFinal,
             'exchange_rate': exchangeRate > 0 ? exchangeRate : 1,
-            'afn_equivalent': afnEquivalent > 0 ? afnEquivalent : (sellPrice * exchangeRate),
+            'afn_equivalent': afnEquivalent > 0 ? afnEquivalent : (valueToUse * exchangeRate),
             'description': description,
             'is_sold': 1,
             'sell_currency': currencyFinal,
@@ -530,40 +539,88 @@ class _WastesPageState extends State<WastesPage> {
     }
   }
 
+  // ============================================
+  // LOAD WASTES WITH GROUPING
+  // ============================================
   Future<void> _loadWastes() async {
     setState(() => _isLoading = true);
     try {
       final list = await _db.getWasteRecords();
+      
+      // Group by invoice_number
+      final Map<String, List<Map<String, dynamic>>> grouped = {};
+      for (var item in list) {
+        final invoiceNumber = item['invoice_number']?.toString() ?? 'unknown';
+        if (!grouped.containsKey(invoiceNumber)) {
+          grouped[invoiceNumber] = [];
+        }
+        grouped[invoiceNumber]!.add(item);
+      }
+      
+      // Convert grouped to consolidated list
+      final List<Map<String, dynamic>> consolidatedWastes = [];
+      for (var entry in grouped.entries) {
+        final items = entry.value;
+        final firstItem = items.first;
+        
+        final consolidated = Map<String, dynamic>.from(firstItem);
+        consolidated['items'] = items;
+        
+        // Calculate totals
+        double totalWeight = 0;
+        double totalQuantity = 0;
+        double totalValue = 0;
+        double totalAfnEquivalent = 0;
+        double totalSellPrice = 0;
+        double totalInitialValue = 0;
+        
+        // Collect all unique waste types and party details
+        final Set<String> wasteTypes = {};
+        final Set<String> partyDetails = {};
+        
+        for (var item in items) {
+          final weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
+          final quantity = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
+          final value = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
+          final afn = double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0;
+          final sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+          final initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+          
+          totalWeight += weight;
+          totalQuantity += quantity;
+          totalValue += value;
+          totalAfnEquivalent += afn;
+          totalSellPrice += sellPrice;
+          totalInitialValue += initialValue;
+          
+          final wt = item['waste_type']?.toString() ?? '';
+          if (wt.isNotEmpty) wasteTypes.add(wt);
+          
+          final pd = item['party_details']?.toString() ?? '';
+          if (pd.isNotEmpty) partyDetails.add(pd);
+        }
+        
+        consolidated['total_weight'] = totalWeight;
+        consolidated['total_quantity'] = totalQuantity;
+        consolidated['value'] = totalValue;
+        consolidated['afn_equivalent'] = totalAfnEquivalent;
+        consolidated['sell_price'] = totalSellPrice;
+        consolidated['initial_value'] = totalInitialValue;
+        consolidated['item_count'] = items.length;
+        consolidated['waste_types'] = wasteTypes.toList();
+        consolidated['display_waste_types'] = wasteTypes.join('، ');
+        consolidated['party_details'] = partyDetails.join('، ');
+        
+        consolidatedWastes.add(consolidated);
+      }
+      
+      // Sort by date descending
+      consolidatedWastes.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+      
       if (!mounted) return;
       setState(() {
-        _wastes = list.map((item) => {
-          'id': item['id'],
-          'invoice_number': item['invoice_number'],
-          'date': item['date'],
-          'date_en': item['date_en'],
-          'party_details': item['party_details'],
-          'waste_type': item['waste_type'],
-          'weight': item['weight'],
-          'quantity': item['quantity'],
-          'value': item['value'],
-          'currency': item['currency'],
-          'exchange_rate': item['exchange_rate'],
-          'afn_equivalent': item['afn_equivalent'],
-          'description': item['description'],
-          'is_sold': item['is_sold'] ?? 0,
-          'sell_currency': item['sell_currency'],
-          'sell_price': item['sell_price'],
-          'sell_date': item['sell_date'],
-          'sell_date_en': item['sell_date_en'],
-          'sell_customer_name': item['sell_customer_name'],
-          'driver_name': item['driver_name'],
-          'number_plate': item['number_plate'],
-          'raw_material_id': item['raw_material_id'],
-          'waste_unit_price': item['waste_unit_price'],
-          'waste_final_price': item['waste_final_price'],
-          'waste_raw_material_pure_weight': item[
-          'waste_raw_material_pure_weight'],
-        }).toList();
+        _wastes = consolidatedWastes;
+        _groupedWastes = grouped;
         _isLoading = false;
       });
     } catch (e) {
@@ -574,36 +631,22 @@ class _WastesPageState extends State<WastesPage> {
   }
 
   // ============================================
-  // WASTE DIALOG
+  // SHOW WASTE DIALOG WITH MULTI-ITEM SUPPORT + INITIAL VALUE
   // ============================================
   Future<void> _showWasteDialog({Map<String, dynamic>? waste}) async {
+    // Initialize multi-item support
+    _wasteItems = [];
+    _nextItemIndex = 1;
+    
     final invoiceNumberController = TextEditingController(
         text: waste?['invoice_number']?.toString() ?? '');
     final dateController = TextEditingController(
-        text: waste?['date']?.toString() ??
-            PersianDateConverter.getCurrentPersianDate());
-    final partyDetailsController = TextEditingController(
-        text: waste?['party_details']?.toString() ?? '');
-    final wasteTypeController = TextEditingController(
-        text: waste?['waste_type']?.toString() ?? '');
+        text: waste?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate());
     final descriptionController = TextEditingController(
         text: waste?['description']?.toString() ?? '');
-    final weightController = TextEditingController(
-        text: waste?['weight']?.toString() ?? '');
-    final quantityController = TextEditingController(
-      text: (waste != null && waste['quantity'] != null && waste['quantity'] !=
-          1)
-          ? waste['quantity'].toString()
-          : '',
-    );
     final priceRateController = TextEditingController(
         text: waste?['exchange_rate']?.toString() ?? '1');
-    final equivalentController = TextEditingController(
-        text: waste?['afn_equivalent']?.toString() ?? '');
-    final totalWeightController = TextEditingController(text: '');
-
-    final sellPriceController = TextEditingController(
-        text: waste?['sell_price']?.toString() ?? '');
+    final equivalentController = TextEditingController(text: '');
     final sellCustomerNameController = TextEditingController(
         text: waste?['sell_customer_name']?.toString() ?? '');
     final driverNameController = TextEditingController(
@@ -611,51 +654,55 @@ class _WastesPageState extends State<WastesPage> {
     final numberPlateController = TextEditingController(
         text: waste?['number_plate']?.toString() ?? '');
 
-    final rawMaterialPureWeightController = TextEditingController(text: '');
-    final rawMaterialFinalPriceController = TextEditingController(text: '');
-    final wasteUnitPriceController = TextEditingController(text: '');
-
     String selectedCurrency = waste?['currency']?.toString() ?? 'USD';
-    String selectedEnglishDate = waste?['date_en']?.toString() ??
-        PersianDateConverter.getEnglishDate(DateTime.now());
+    String selectedEnglishDate = waste?['date_en']?.toString() ?? PersianDateConverter.getEnglishDate(DateTime.now());
 
-    Map<String, dynamic>? selectedRawMaterial;
-    String? selectedRawMaterialId = waste?['raw_material_id']?.toString();
-
-    if (selectedRawMaterialId != null) {
-      try {
-        selectedRawMaterial = _rawMaterials.firstWhere(
-              (rm) => rm['id'].toString() == selectedRawMaterialId,
-          orElse: () => {},
-        );
-        if (selectedRawMaterial.isNotEmpty) {
-          rawMaterialPureWeightController.text = selectedRawMaterial['net_weight']
-              ?.toString() ?? '';
-          rawMaterialFinalPriceController.text = selectedRawMaterial['final_price']
-              ?.toString() ?? '';
-
-          double pureWeight = double.tryParse(
-              selectedRawMaterial['net_weight']?.toString() ?? '0') ?? 0;
-          double finalPrice = double.tryParse(
-              selectedRawMaterial['final_price']?.toString() ?? '0') ?? 0;
-
-          if (pureWeight > 0 && finalPrice > 0) {
-            String unit = selectedRawMaterial['unit'] ?? 'kg';
-            double pureWeightInTons = pureWeight;
-            if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
-              pureWeightInTons = pureWeight / 1000;
-            }
-            wasteUnitPriceController.text = (finalPrice / pureWeightInTons)
-                .toStringAsFixed(2);
-          }
-
-          wasteTypeController.text = selectedRawMaterial['name'] ?? '';
-          partyDetailsController.text = selectedRawMaterial['supplier_name'] ??
-              '';
-        }
-      } catch (e) {
-        print('Error loading raw material: $e');
+    // If editing existing waste with items, populate items
+    if (waste != null && waste.containsKey('items') && waste['items'] is List) {
+      final existingItems = List<Map<String, dynamic>>.from(waste['items']);
+      for (var item in existingItems) {
+        double w = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
+        double q = double.tryParse(item['quantity']?.toString() ?? '0') ?? 1;
+        double iv = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+        double sp = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+        
+        _wasteItems.add({
+          'id': _nextItemIndex++,
+          'waste_type': item['waste_type']?.toString() ?? '',
+          'party_details': item['party_details']?.toString() ?? '',
+          'weight': w,
+          'quantity': q,
+          'initial_value': iv,
+          'value': iv,
+          'sell_price': sp,
+          'description': item['description']?.toString() ?? '',
+          'wasteTypeCtrl': TextEditingController(text: item['waste_type']?.toString() ?? ''),
+          'partyCtrl': TextEditingController(text: item['party_details']?.toString() ?? ''),
+          'weightCtrl': TextEditingController(text: w > 0 ? w.toString() : ''),
+          'quantityCtrl': TextEditingController(text: q > 1 ? q.toString() : ''),
+          'initialValueCtrl': TextEditingController(text: iv > 0 ? iv.toString() : ''),
+          'sellPriceCtrl': TextEditingController(text: sp > 0 ? sp.toString() : ''),
+        });
       }
+    } else {
+      // Add one empty item
+      _wasteItems.add({
+        'id': _nextItemIndex++,
+        'waste_type': '',
+        'party_details': '',
+        'weight': 0.0,
+        'quantity': 1.0,
+        'initial_value': 0.0,
+        'value': 0.0,
+        'sell_price': 0.0,
+        'description': '',
+        'wasteTypeCtrl': TextEditingController(),
+        'partyCtrl': TextEditingController(),
+        'weightCtrl': TextEditingController(),
+        'quantityCtrl': TextEditingController(),
+        'initialValueCtrl': TextEditingController(),
+        'sellPriceCtrl': TextEditingController(),
+      });
     }
 
     if (invoiceNumberController.text.isEmpty && waste == null) {
@@ -663,139 +710,42 @@ class _WastesPageState extends State<WastesPage> {
       invoiceNumberController.text = nextNumber.toString().padLeft(5, '0');
     }
 
-  void updateTotals() {
-  final sellPrice = double.tryParse(sellPriceController.text) ?? 0;
-  final rate = double.tryParse(priceRateController.text) ?? 1;
-
-  if (selectedCurrency == 'AFN') {
-    // Convert AFN to USD
-    equivalentController.text = sellPrice > 0 && rate > 0
-        ? (sellPrice / rate).toStringAsFixed(2)
-        : '0';
-  } else {
-    // Convert USD to AFN
-    equivalentController.text = sellPrice > 0 && rate > 0
-        ? (sellPrice * rate).toStringAsFixed(0)
-        : '0';
-  }
-  
-  // Debug print to verify
-  print('💰 Sell Price: $sellPrice, Rate: $rate, AFN: ${equivalentController.text}');
-}
-
-    void updateTotalWeight() {
-      final weight = double.tryParse(weightController.text) ?? 0;
-      final quantityText = quantityController.text.trim();
-      double quantity;
-
-      if (quantityText.isEmpty || quantityText == '0') {
-        quantity = 1;
-      } else {
-        quantity = double.tryParse(quantityText) ?? 0;
-        if (quantity == 0) quantity = 1;
+    double getTotalWeight() {
+      double total = 0;
+      for (var item in _wasteItems) {
+        total += (item['weight'] ?? 0) * (item['quantity'] ?? 1);
       }
-
-      final total = weight * quantity;
-      if (total > 0) {
-        totalWeightController.text = _formatWeightWithConversion(total);
-      } else {
-        totalWeightController.text = '';
-      }
+      return total;
     }
 
-    void calculateWasteValue() {
-      if (selectedRawMaterial == null || selectedRawMaterial!.isEmpty) {
-        return;
+    double getTotalInitialValue() {
+      double total = 0;
+      for (var item in _wasteItems) {
+        total += item['initial_value'] ?? 0;
       }
-
-      double pureWeight = double.tryParse(
-          selectedRawMaterial!['net_weight']?.toString() ?? '0') ?? 0;
-      double finalPrice = double.tryParse(
-          selectedRawMaterial!['final_price']?.toString() ?? '0') ?? 0;
-      String unit = selectedRawMaterial!['unit'] ?? 'kg';
-
-      double pureWeightInTons = pureWeight;
-      if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
-        pureWeightInTons = pureWeight / 1000;
-      }
-
-      double wasteUnitPrice = 0;
-      if (pureWeightInTons > 0 && finalPrice > 0) {
-        wasteUnitPrice = finalPrice / pureWeightInTons;
-        wasteUnitPriceController.text = wasteUnitPrice.toStringAsFixed(2);
-      }
-
-      double wasteWeight = double.tryParse(weightController.text) ?? 0;
-      if (wasteWeight > 0) {
-        double wasteWeightInTons = wasteWeight / 1000;
-        if (wasteWeightInTons > 0 && wasteUnitPrice > 0) {
-          double wasteValue = wasteWeightInTons * wasteUnitPrice;
-          if (sellPriceController.text.isEmpty) {
-            sellPriceController.text = wasteValue.toStringAsFixed(2);
-          }
-          updateTotals();
-        }
-      }
-
-      if (wasteTypeController.text.isEmpty) {
-        wasteTypeController.text = selectedRawMaterial!['name'] ?? '';
-      }
-      if (partyDetailsController.text.isEmpty) {
-        partyDetailsController.text = selectedRawMaterial!['supplier_name'] ??
-            '';
-      }
+      return total;
     }
 
-    void onRawMaterialSelected(String? id) {
-      if (id == null || id.isEmpty) {
-        setState(() {
-          selectedRawMaterialId = null;
-          selectedRawMaterial = null;
-          rawMaterialPureWeightController.text = '';
-          rawMaterialFinalPriceController.text = '';
-          wasteUnitPriceController.text = '';
-        });
-        return;
+    double getTotalSellPrice() {
+      double total = 0;
+      for (var item in _wasteItems) {
+        total += item['sell_price'] ?? 0;
       }
+      return total;
+    }
 
-      try {
-        final rawMaterial = _rawMaterials.firstWhere(
-              (rm) => rm['id'].toString() == id,
-          orElse: () => {},
-        );
-
-        if (rawMaterial.isNotEmpty) {
-          setState(() {
-            selectedRawMaterialId = id;
-            selectedRawMaterial = rawMaterial;
-            rawMaterialPureWeightController.text = rawMaterial['net_weight']
-                ?.toString() ?? '';
-            rawMaterialFinalPriceController.text = rawMaterial['final_price']
-                ?.toString() ?? '';
-
-            double pureWeight = double.tryParse(
-                rawMaterial['net_weight']?.toString() ?? '0') ?? 0;
-            double finalPrice = double.tryParse(
-                rawMaterial['final_price']?.toString() ?? '0') ?? 0;
-
-            if (pureWeight > 0 && finalPrice > 0) {
-              String unit = rawMaterial['unit'] ?? 'kg';
-              double pureWeightInTons = pureWeight;
-              if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
-                pureWeightInTons = pureWeight / 1000;
-              }
-              wasteUnitPriceController.text = (finalPrice / pureWeightInTons)
-                  .toStringAsFixed(2);
-            }
-
-            wasteTypeController.text = rawMaterial['name'] ?? '';
-            partyDetailsController.text = rawMaterial['supplier_name'] ?? '';
-
-            calculateWasteValue();
-          });
-        }
-      } catch (e) {
-        print('Error selecting raw material: $e');
+    void updateTotals() {
+      final rate = double.tryParse(priceRateController.text) ?? 1;
+      final totalValue = getTotalSellPrice();
+      
+      if (selectedCurrency == 'AFN') {
+        equivalentController.text = totalValue > 0 && rate > 0
+            ? (totalValue / rate).toStringAsFixed(2)
+            : '0';
+      } else {
+        equivalentController.text = totalValue > 0 && rate > 0
+            ? (totalValue * rate).toStringAsFixed(0)
+            : '0';
       }
     }
 
@@ -803,205 +753,71 @@ class _WastesPageState extends State<WastesPage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          double weight = double.tryParse(weightController.text) ?? 0;
-          double quantity = double.tryParse(quantityController.text) ?? 0;
-          double totalWeight = weight * quantity;
-          String weightInTons = _formatWeightWithConversion(weight);
-          String totalWeightInTons = _formatWeightWithConversion(totalWeight);
-
-          List<DropdownMenuItem<String>> rawMaterialItems = [
-            const DropdownMenuItem<String>(
-              value: null,
-              child: Text('انتخاب ماده خام...'),
-            ),
-          ];
-
-          for (var rm in _rawMaterials) {
-            String name = rm['name']?.toString() ?? 'بدون نام';
-            String supplier = rm['supplier_name']?.toString() ?? '';
-            String netWeight = rm['net_weight']?.toString() ?? '0';
-            String display = '$name (${_formatWeightWithConversion(double.tryParse(netWeight) ?? 0)} - $supplier)';
-            rawMaterialItems.add(
-              DropdownMenuItem<String>(
-                value: rm['id'].toString(),
-                child: Text(display, overflow: TextOverflow.ellipsis),
-              ),
-            );
-          }
+          double totalWeight = getTotalWeight();
+          double totalInitialValue = getTotalInitialValue();
+          double totalSellPrice = getTotalSellPrice();
+          String weightDisplay = _formatWeightWithConversion(totalWeight);
 
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              title: Text(
-                waste == null ? 'افزودن ضایعات جدید' : 'ویرایش ضایعات',
-                style: const TextStyle(fontWeight: FontWeight.w800,
-                    fontSize: 18),
+              title: Row(
+                children: [
+                  const Icon(Icons.delete_outline, color: Color(0xFFCB001D)),
+                  const SizedBox(width: 12),
+                  Text(
+                    waste == null ? 'ثبت ضایعات جدید (چند موردی)' : 'ویرایش ضایعات',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  ),
+                ],
               ),
               content: SizedBox(
-                width: 760,
+                width: 900,
+                height: MediaQuery.of(context).size.height * 0.8,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTextField(
-                        controller: invoiceNumberController,
-                        label: 'شماره بل',
-                        icon: Icons.receipt_outlined,
-                        keyboardType: TextInputType.number,
-                        hint: 'شماره بل را وارد کنید',
-                      ),
-                      const SizedBox(height: 12),
-
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFCB001D).withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: const Color(0xFFCB001D).withOpacity(0.1)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'اطلاعات ماده خام',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Color(0xFFCB001D),
-                              ),
+                      // Invoice header info
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: invoiceNumberController,
+                              label: 'شماره بل',
+                              icon: Icons.receipt_outlined,
+                              keyboardType: TextInputType.number,
+                              hint: 'شماره بل را وارد کنید',
                             ),
-                            const SizedBox(height: 8),
-                            DropdownButtonFormField<String>(
-                              decoration: InputDecoration(
-                                labelText: 'انتخاب ماده خام',
-                                labelStyle: TextStyle(
-                                    color: const Color(0xFFCB001D),
-                                    fontSize: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10),
-                              ),
-                              value: selectedRawMaterialId,
-                              items: rawMaterialItems,
-                              onChanged: (value) {
-                                setDialogState(() {
-                                  onRawMaterialSelected(value);
-                                });
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: dateController,
+                              label: 'تاریخ',
+                              icon: Icons.calendar_today_outlined,
+                              readOnly: true,
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    dateController.text = PersianDateConverter.gregorianToJalali(picked);
+                                    selectedEnglishDate = PersianDateConverter.getEnglishDate(picked);
+                                  });
+                                }
                               },
                             ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: rawMaterialPureWeightController,
-                                    decoration: InputDecoration(
-                                      labelText: 'وزن خالص ماده خام',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      contentPadding: const EdgeInsets
-                                          .symmetric(
-                                          horizontal: 12, vertical: 10),
-                                    ),
-                                    readOnly: true,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextField(
-                                    controller: rawMaterialFinalPriceController,
-                                    decoration: InputDecoration(
-                                      labelText: 'قیمت تمام شده ماده خام',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      contentPadding: const EdgeInsets
-                                          .symmetric(
-                                          horizontal: 12, vertical: 10),
-                                    ),
-                                    readOnly: true,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFFCB001D)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFCB001D).withOpacity(
-                                    0.06),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: const Color(0xFFCB001D).withOpacity(
-                                      0.1),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.info_outline,
-                                      color: Color(0xFFCB001D), size: 16),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'قیمت فی واحد (هر تن): ${wasteUnitPriceController.text} ${selectedCurrency}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF1A1A2E),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
-
-                      _buildTextField(
-                        controller: dateController,
-                        label: 'تاریخ',
-                        icon: Icons.calendar_today_outlined,
-                        readOnly: true,
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2030),
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              dateController.text = PersianDateConverter
-                                  .gregorianToJalali(picked);
-                              selectedEnglishDate = PersianDateConverter
-                                  .getEnglishDate(picked);
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                          controller: partyDetailsController,
-                          label: 'طرف حساب (منبع)',
-                          icon: Icons.business_outlined),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                          controller: wasteTypeController,
-                          label: 'نوع ضایعات',
-                          icon: Icons.category_outlined),
-                      const SizedBox(height: 12),
-
+                      
+                      // Customer info (shared across all items)
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1013,7 +829,7 @@ class _WastesPageState extends State<WastesPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              '👤 اطلاعات فروش به مشتری',
+                              '👤 اطلاعات مشتری فروش (مشترک)',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -1052,285 +868,336 @@ class _WastesPageState extends State<WastesPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-
+                      const SizedBox(height: 16),
+                      
+                      // ============ MULTI-ITEM SECTION ============
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildTextField(
-                                  controller: weightController,
-                                  label: 'وزن (کیلوگرم)',
-                                  icon: Icons.scale_outlined,
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (_) {
-                                    setDialogState(() {
-                                      updateTotalWeight();
-                                      if (selectedRawMaterial != null) {
-                                        calculateWasteValue();
-                                      }
-                                    });
-                                  },
-                                ),
-                                if (weight > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCB001D)
-                                            .withOpacity(0.06),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D)
-                                              .withOpacity(0.1),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius
-                                                  .circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D)
-                                                    .withOpacity(0.2),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              '$weight kg',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1A1A2E),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          const Icon(Icons.arrow_forward,
-                                              color: Color(0xFFCB001D),
-                                              size: 12),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFCB001D)
-                                                  .withOpacity(0.1),
-                                              borderRadius: BorderRadius
-                                                  .circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D)
-                                                    .withOpacity(0.3),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              weightInTons,
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFFCB001D),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
+                          const Text(
+                            '📋 لیست ضایعات',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Color(0xFFCB001D),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildTextField(
-                                  controller: quantityController,
-                                  label: 'تعداد',
-                                  hint: 'اختیاری - پیش‌فرض ۱',
-                                  icon: Icons.numbers_outlined,
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (_) {
-                                    setDialogState(() {
-                                      updateTotalWeight();
-                                    });
-                                  },
-                                ),
-                                if (quantity > 0 && weight > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFCB001D)
-                                            .withOpacity(0.06),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: const Color(0xFFCB001D)
-                                              .withOpacity(0.1),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius
-                                                  .circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D)
-                                                    .withOpacity(0.2),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} kg',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF1A1A2E),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          const Icon(Icons.arrow_forward,
-                                              color: Color(0xFFCB001D),
-                                              size: 12),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFCB001D)
-                                                  .withOpacity(0.1),
-                                              borderRadius: BorderRadius
-                                                  .circular(4),
-                                              border: Border.all(
-                                                color: const Color(0xFFCB001D)
-                                                    .withOpacity(0.3),
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              totalWeightInTons,
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFFCB001D),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setDialogState(() {
+                                _wasteItems.add({
+                                  'id': _nextItemIndex++,
+                                  'waste_type': '',
+                                  'party_details': '',
+                                  'weight': 0.0,
+                                  'quantity': 1.0,
+                                  'initial_value': 0.0,
+                                  'value': 0.0,
+                                  'sell_price': 0.0,
+                                  'description': '',
+                                  'wasteTypeCtrl': TextEditingController(),
+                                  'partyCtrl': TextEditingController(),
+                                  'weightCtrl': TextEditingController(),
+                                  'quantityCtrl': TextEditingController(),
+                                  'initialValueCtrl': TextEditingController(),
+                                  'sellPriceCtrl': TextEditingController(),
+                                });
+                              });
+                            },
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('افزودن ضایعات'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey.shade200,
+                              foregroundColor: const Color(0xFFCB001D),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              textStyle: const TextStyle(fontSize: 12),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: totalWeightController,
-                        label: 'مجموع وزن (تن)',
-                        icon: Icons.monitor_weight_outlined,
-                        readOnly: true,
-                      ),
-                      const SizedBox(height: 12),
-
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFCB001D).withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: const Color(0xFFCB001D).withOpacity(0.1)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.calculate,
-                                color: const Color(0xFFCB001D), size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              'وزن فی واحد (هر تن): ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                      const SizedBox(height: 8),
+                      
+                      ..._wasteItems.asMap().entries.map((entry) {
+                        int index = entry.key;
+                        Map<String, dynamic> item = entry.value;
+                        
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.grey.shade50,
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'ضایعات ${index + 1}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: Color(0xFFCB001D),
+                                    ),
+                                  ),
+                                  if (_wasteItems.length > 1)
+                                    IconButton(
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          _wasteItems.removeAt(index);
+                                        });
+                                      },
+                                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                ],
                               ),
-                            ),
-                            Text(
-                              '${wasteUnitPriceController.text} ${selectedCurrency}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Color(0xFFCB001D),
+                              const SizedBox(height: 8),
+                              
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: _buildTextField(
+                                      controller: item['wasteTypeCtrl'] as TextEditingController,
+                                      label: 'نوع ضایعات',
+                                      icon: Icons.category_outlined,
+                                      onChanged: (value) {
+                                        item['waste_type'] = value;
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    flex: 2,
+                                    child: _buildTextField(
+                                      controller: item['partyCtrl'] as TextEditingController,
+                                      label: 'طرف حساب',
+                                      icon: Icons.business_outlined,
+                                      onChanged: (value) {
+                                        item['party_details'] = value;
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
+                              const SizedBox(height: 8),
+                              
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller: item['weightCtrl'] as TextEditingController,
+                                      label: 'وزن (kg)',
+                                      icon: Icons.scale_outlined,
+                                      keyboardType: TextInputType.number,
+                                      onChanged: (value) {
+                                        item['weight'] = double.tryParse(value) ?? 0;
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller: item['quantityCtrl'] as TextEditingController,
+                                      label: 'تعداد',
+                                      icon: Icons.numbers_outlined,
+                                      keyboardType: TextInputType.number,
+                                      hint: 'پیش‌فرض ۱',
+                                      onChanged: (value) {
+                                        item['quantity'] = double.tryParse(value) ?? 1;
+                                        if (item['quantity'] <= 0) item['quantity'] = 1;
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller: item['initialValueCtrl'] as TextEditingController,
+                                      label: 'ارزش اولیه',
+                                      icon: Icons.monetization_on_outlined,
+                                      keyboardType: TextInputType.number,
+                                      hint: 'مثل 8000',
+                                      onChanged: (value) {
+                                        item['initial_value'] = double.tryParse(value) ?? 0;
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller: item['sellPriceCtrl'] as TextEditingController,
+                                      label: 'قیمت فروش',
+                                      icon: Icons.sell_outlined,
+                                      keyboardType: TextInputType.number,
+                                      onChanged: (value) {
+                                        item['sell_price'] = double.tryParse(value) ?? 0;
+                                        updateTotals();
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'ارزش',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.blue,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            (item['initial_value'] ?? 0) > 0 
+                                                ? (item['initial_value'] ?? 0).toString() 
+                                                : '0',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFFCB001D),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              
+                              // Show calculated total weight for this item
+                              if ((item['weight'] ?? 0) > 0) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCB001D).withOpacity(0.06),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(0xFFCB001D).withOpacity(0.1),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.2),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${(item['weight'] * item['quantity']).toStringAsFixed(((item['weight'] * item['quantity']) % 1 == 0 ? 0 : 2))} kg',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.arrow_forward, color: Color(0xFFCB001D), size: 12),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(0xFFCB001D).withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _formatWeightWithConversion(item['weight'] * item['quantity']),
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFCB001D),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Summary section
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.04),
+                          color: const Color(0xFFCB001D).withOpacity(0.06),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                          border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1)),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           children: [
-                            const Text(
-                              '💵 قیمت فروش',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Colors.blue,
+                            Expanded(
+                              child: _buildFinancialSummaryItem(
+                                'مجموع وزن',
+                                _formatWeightWithConversion(totalWeight),
+                                const Color(0xFFCB001D),
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'قیمت واقعی که ضایعات به آن فروخته می‌شود',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.blue.shade700,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildFinancialSummaryItem(
+                                'تعداد اقلام',
+                                _wasteItems.length.toString(),
+                                Colors.blue.shade700,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            _buildTextField(
-                              controller: sellPriceController,
-                              label: 'قیمت فروش (${selectedCurrency}) *',
-                              icon: Icons.sell_outlined,
-                              keyboardType: TextInputType.number,
-                              hint: 'مبلغ فروش واقعی را وارد کنید',
-                              onChanged: (_) {
-                                setDialogState(() {
-                                  updateTotals();
-                                });
-                              },
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildFinancialSummaryItem(
+                                'مجموع ارزش اولیه',
+                                totalInitialValue.toStringAsFixed(0),
+                                Colors.orange.shade700,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildFinancialSummaryItem(
+                                'مجموع قیمت فروش',
+                                '${totalSellPrice.toStringAsFixed(0)} ${selectedCurrency}',
+                                Colors.green.shade700,
+                              ),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 12),
-
+                      
+                      // Exchange rate and currency
                       Row(
                         children: [
                           Expanded(
@@ -1349,31 +1216,24 @@ class _WastesPageState extends State<WastesPage> {
                             child: _buildTextField(
                               controller: equivalentController,
                               label: selectedCurrency == 'AFN'
-                                  ? 'معادل به دالر (USD) - بر اساس قیمت فروش'
-                                  : 'معادل به افغانی (AFN) - بر اساس قیمت فروش',
+                                  ? 'معادل به دالر (USD)'
+                                  : 'معادل به افغانی (AFN)',
                               icon: Icons.currency_exchange,
                               readOnly: true,
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
+                          const SizedBox(width: 12),
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               value: selectedCurrency,
                               decoration: InputDecoration(
                                 labelText: 'واحد پول',
                                 border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(
-                                    Icons.request_quote_outlined),
+                                prefixIcon: const Icon(Icons.request_quote_outlined),
                               ),
                               items: const [
-                                DropdownMenuItem(value: 'USD',
-                                    child: Text('USD')),
-                                DropdownMenuItem(value: 'AFN',
-                                    child: Text('AFN')),
+                                DropdownMenuItem(value: 'USD', child: Text('USD')),
+                                DropdownMenuItem(value: 'AFN', child: Text('AFN')),
                               ],
                               onChanged: (value) {
                                 if (value == null) return;
@@ -1384,49 +1244,15 @@ class _WastesPageState extends State<WastesPage> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color: Colors.green.withOpacity(0.3)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '✅ وضعیت فروش',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'فروخته شده با قیمت: ${sellPriceController.text.isNotEmpty ? sellPriceController.text : '0'} ${selectedCurrency}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
-
+                      
                       _buildTextField(
                         controller: descriptionController,
-                        label: 'توضیحات',
+                        label: 'توضیحات (مشترک برای همه اقلام)',
                         icon: Icons.description_outlined,
-                        maxLines: 3,
+                        maxLines: 2,
                       ),
                     ],
                   ),
@@ -1434,141 +1260,144 @@ class _WastesPageState extends State<WastesPage> {
               ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('لغو',
-                        style: TextStyle(color: Colors.grey))),
-              // ============================================
-// FIXED SAVE BUTTON IN WASTES_PAGE
-// ============================================
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('لغو', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final invoiceNumber = invoiceNumberController.text.trim();
+                    if (invoiceNumber.isEmpty) {
+                      _showSnackbar('لطفاً شماره بل را وارد کنید', Colors.orange);
+                      return;
+                    }
 
-ElevatedButton.icon(
-  onPressed: () async {
-    if (selectedRawMaterialId == null ||
-        selectedRawMaterialId!.isEmpty) {
-      _showSnackbar('لطفاً یک ماده خام انتخاب کنید', Colors.orange);
-      return;
-    }
+                    // Check if at least one item has data
+                    bool hasValidItem = false;
+                    for (var item in _wasteItems) {
+                      if ((item['waste_type']?.toString().isNotEmpty == true ||
+                           item['party_details']?.toString().isNotEmpty == true) &&
+                          (item['weight'] ?? 0) > 0) {
+                        hasValidItem = true;
+                        break;
+                      }
+                    }
+                    if (!hasValidItem) {
+                      _showSnackbar('حداقل یک ضایعات معتبر باید وارد شود', Colors.orange);
+                      return;
+                    }
 
-    final invoiceNumber = invoiceNumberController.text.trim();
-    if (invoiceNumber.isEmpty) {
-      _showSnackbar('لطفاً شماره بل را وارد کنید', Colors.orange);
-      return;
-    }
+                    final currentDate = dateController.text.trim();
+                    final currentDateEn = selectedEnglishDate;
+                    final exchangeRate = double.tryParse(priceRateController.text.replaceAll(',', '')) ?? 1;
+                    final totalSellPriceSum = getTotalSellPrice();
+                    
+                    double afnEquivalent = 0;
+                    if (selectedCurrency == 'USD') {
+                      afnEquivalent = totalSellPriceSum * exchangeRate;
+                    } else {
+                      afnEquivalent = totalSellPriceSum;
+                    }
 
-    final sellPrice = double.tryParse(sellPriceController.text.trim().replaceAll(',', '')) ?? 0;
-    if (sellPrice <= 0) {
-      _showSnackbar('لطفاً قیمت فروش معتبر وارد کنید', Colors.orange);
-      return;
-    }
+                    try {
+                      List<int> insertedIds = [];
+                      
+                      for (var item in _wasteItems) {
+                        if ((item['waste_type']?.toString().isNotEmpty == true ||
+                             item['party_details']?.toString().isNotEmpty == true) &&
+                            (item['weight'] ?? 0) > 0) {
+                          
+                          final payload = {
+                            'invoice_number': invoiceNumber,
+                            'date': currentDate,
+                            'date_en': currentDateEn,
+                            'party_details': item['party_details']?.toString() ?? '',
+                            'waste_type': item['waste_type']?.toString() ?? '',
+                            'weight': item['weight'] ?? 0,
+                            'quantity': (item['quantity'] ?? 1) > 0 ? (item['quantity'] ?? 1) : 1,
+                            'initial_value': item['initial_value'] ?? 0,
+                            'value': item['initial_value'] ?? 0,  // value = initial_value
+                            'currency': selectedCurrency,
+                            'exchange_rate': exchangeRate,
+                            'description': descriptionController.text.trim(),
+                            'afn_equivalent': afnEquivalent,
+                            'is_sold': 1,
+                            'sell_currency': selectedCurrency,
+                            'sell_price': item['sell_price'] ?? 0,
+                            'sell_date': currentDate,
+                            'sell_date_en': currentDateEn,
+                            'sell_customer_name': sellCustomerNameController.text.trim(),
+                            'driver_name': driverNameController.text.trim(),
+                            'number_plate': numberPlateController.text.trim(),
+                            'raw_material_id': null,
+                            'waste_unit_price': null,
+                            'waste_final_price': null,
+                            'waste_raw_material_pure_weight': null,
+                          };
 
-    final currentDate = dateController.text.trim();
-    final currentDateEn = selectedEnglishDate;
-    
-    // ✅ CALCULATE INIT PRICE (VALUE) FROM RAW MATERIAL
-    double initPrice = 0;
-    final selectedRM = _rawMaterials.firstWhere(
-      (rm) => rm['id'].toString() == selectedRawMaterialId,
-      orElse: () => {},
-    );
-    
-    if (selectedRM.isNotEmpty) {
-      double pureWeight = double.tryParse(selectedRM['net_weight']?.toString() ?? '0') ?? 0;
-      double finalPrice = double.tryParse(selectedRM['final_price']?.toString() ?? '0') ?? 0;
-      String unit = selectedRM['unit'] ?? 'kg';
-      
-      // Convert pure weight to tons if in kg
-      double pureWeightInTons = pureWeight;
-      if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
-        pureWeightInTons = pureWeight / 1000;
-      }
-      
-      // Price per ton
-      double pricePerTon = 0;
-      if (pureWeightInTons > 0 && finalPrice > 0) {
-        pricePerTon = finalPrice / pureWeightInTons;
-      }
-      
-      // Waste weight in kg from user input
-      double wasteWeight = double.tryParse(weightController.text) ?? 0;
-      if (wasteWeight > 0 && pricePerTon > 0) {
-        // Convert waste weight to tons
-        double wasteWeightInTons = wasteWeight / 1000;
-        initPrice = wasteWeightInTons * pricePerTon;
-      }
-    }
+                          final id = await _db.insertWasteRecord(payload);
+                          if (id != -1) {
+                            insertedIds.add(id);
+                          }
+                        }
+                      }
 
-    // ✅ DEBUG PRINT
-    print('💰 WASTE VALUE (initPrice): $initPrice');
-    print('💰 SELL PRICE: $sellPrice');
-    print('💰 RAW MATERIAL ID: $selectedRawMaterialId');
+                      if (insertedIds.isEmpty) {
+                        _showSnackbar('❌ خطا در ذخیره ضایعات', Colors.red);
+                        return;
+                      }
 
-    final afnEquivalent = double.tryParse(equivalentController.text.trim().replaceAll(',', '')) ?? 0;
-
-    final payload = {
-      'invoice_number': invoiceNumber,
-      'date': currentDate,
-      'date_en': currentDateEn,
-      'party_details': partyDetailsController.text.trim(),
-      'waste_type': wasteTypeController.text.trim(),
-      'weight': double.tryParse(weightController.text) ?? 0,
-      'quantity': (() {
-        final q = double.tryParse(quantityController.text.trim()) ?? 0;
-        return q > 0 ? q : 1;
-      })(),
-      'value': initPrice, // ✅ THIS IS THE WASTE VALUE - MUST BE SAVED!
-      'currency': selectedCurrency,
-      'exchange_rate': double.tryParse(priceRateController.text.replaceAll(',', '')) ?? 1,
-      'description': descriptionController.text.trim(),
-      'afn_equivalent': afnEquivalent,
-      'is_sold': 1,
-      'sell_currency': selectedCurrency,
-      'sell_price': sellPrice,
-      'sell_date': currentDate,
-      'sell_date_en': currentDateEn,
-      'sell_customer_name': sellCustomerNameController.text.trim(),
-      'driver_name': driverNameController.text.trim(),
-      'number_plate': numberPlateController.text.trim(),
-      'raw_material_id': int.parse(selectedRawMaterialId!),
-      'waste_unit_price': double.tryParse(wasteUnitPriceController.text.replaceAll(',', '')) ?? 0,
-      'waste_final_price': double.tryParse(rawMaterialFinalPriceController.text.replaceAll(',', '')) ?? 0,
-      'waste_raw_material_pure_weight': double.tryParse(rawMaterialPureWeightController.text.replaceAll(',', '')) ?? 0,
-    };
-
-    // ✅ DEBUG PRINT PAYLOAD
-    print('📦 PAYLOAD: $payload');
-
-    try {
-      if (waste == null) {
-        await _db.insertWasteRecord(payload);
-      } else {
-        await _db.updateWasteRecord(waste['id'], payload);
-      }
-      if (!mounted) return;
-      Navigator.pop(context);
-      await _loadWastes();
-      _showSnackbar(
-          waste == null
-              ? 'ضایعات با موفقیت اضافه و فروخته شد ✅'
-              : 'ضایعات با موفقیت ویرایش شد',
-          Colors.green);
-      _showInvoiceModal(context, invoiceNumber, payload);
-    } catch (e) {
-      if (!mounted) return;
-      _showSnackbar('خطا در ذخیره ضایعات', Colors.red);
-    }
-  },
-  icon: const Icon(Icons.save_outlined),
-  label: Text(
-      waste == null ? 'افزودن و فروش ضایعات' : 'ذخیره تغییرات'),
-  style: ElevatedButton.styleFrom(
-    backgroundColor: const Color(0xFFCB001D),
-    foregroundColor: Colors.white,
-  ),
-),
+                      Navigator.pop(context);
+                      await _loadWastes();
+                      _showSnackbar('✅ ${insertedIds.length} ضایعات با موفقیت ثبت شد', Colors.green);
+                      
+                      // Show invoice modal with the consolidated data
+                      final updatedWastes = await _db.getWasteRecords();
+                      List<Map<String, dynamic>> invoiceItems = [];
+                      for (var w in updatedWastes) {
+                        if (w['invoice_number'] == invoiceNumber) {
+                          invoiceItems.add(w);
+                        }
+                      }
+                      
+                      if (invoiceItems.isNotEmpty) {
+                        final consolidated = Map<String, dynamic>.from(invoiceItems.first);
+                        consolidated['items'] = invoiceItems;
+                        _showInvoiceModal(context, invoiceNumber, consolidated);
+                      }
+                    } catch (e) {
+                      _showSnackbar('خطا در ذخیره ضایعات: $e', Colors.red);
+                    }
+                  },
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(waste == null ? 'ثبت ضایعات' : 'ذخیره تغییرات'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCB001D),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildFinancialSummaryItem(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          const SizedBox(height: 2),
+          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+        ],
       ),
     );
   }
@@ -1595,7 +1424,11 @@ ElevatedButton.icon(
     if (confirmed != true) return;
 
     try {
-      await _db.deleteWasteRecord(waste['id']);
+      // Delete all items with this invoice number
+      final items = _groupedWastes[waste['invoice_number']] ?? [];
+      for (var item in items) {
+        await _db.deleteWasteRecord(item['id']);
+      }
       await _loadWastes();
       _showSnackbar('ضایعات با موفقیت حذف شد', Colors.orange);
     } catch (e) {
@@ -1604,10 +1437,27 @@ ElevatedButton.icon(
   }
 
   // ============================================
-  // INVOICE MODAL
+  // INVOICE MODAL WITH MULTI-ITEM SUPPORT
   // ============================================
   void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice) {
     final l10n = AppLocalizations.of(context)!;
+    
+    // Extract items from invoice
+    List<Map<String, dynamic>> items = [];
+    if (invoice.containsKey('items') && invoice['items'] is List) {
+      items = List<Map<String, dynamic>>.from(invoice['items']);
+    } else {
+      // Single item fallback
+      items.add({
+        'waste_type': invoice['waste_type']?.toString() ?? '-',
+        'party_details': invoice['party_details']?.toString() ?? '',
+        'weight': double.tryParse(invoice['weight']?.toString() ?? '0') ?? 0,
+        'quantity': double.tryParse(invoice['quantity']?.toString() ?? '1') ?? 1,
+        'initial_value': double.tryParse(invoice['initial_value']?.toString() ?? '0') ?? 0,
+        'sell_price': double.tryParse(invoice['sell_price']?.toString() ?? '0') ?? 0,
+        'currency': invoice['currency']?.toString() ?? 'USD',
+      });
+    }
 
     showDialog(
       context: context,
@@ -1647,9 +1497,9 @@ ElevatedButton.icon(
                           const SizedBox(height: 25),
                           _buildInvoiceUpperSection(invoice, invoiceNumber, l10n),
                           const SizedBox(height: 25),
-                          _buildInvoiceTableWithData(invoice, l10n),
+                          _buildInvoiceTableWithItems(items, invoice, l10n),
                           const SizedBox(height: 20),
-                          _buildSaleFinancialSection(invoice, l10n),
+                          _buildSaleFinancialSection(items, invoice, l10n),
                           const SizedBox(height: 20),
                           _buildInvoiceSignatureRow(),
                           const SizedBox(height: 25),
@@ -1709,68 +1559,174 @@ ElevatedButton.icon(
     );
   }
 
-Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations l10n) {
-  return Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      border: Border.all(color: Colors.black, width: 1),
-      borderRadius: BorderRadius.circular(8),
-      color: Colors.grey.shade50,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  // ============================================
+  // INVOICE TABLE WITH MULTI-ITEM SUPPORT + INITIAL VALUE
+  // ============================================
+  Widget _buildInvoiceTableWithItems(List<Map<String, dynamic>> items, Map<String, dynamic> invoice, AppLocalizations l10n) {
+    const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
+    const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
+
+    List<List<String>> tableData = [];
+    int rowIndex = 1;
+    double totalWeightSum = 0;
+    double totalInitialValueSum = 0;
+    double totalSellPriceSum = 0;
+
+    for (var item in items) {
+      String wasteType = item['waste_type']?.toString() ?? '-';
+      String partyDetails = item['party_details']?.toString() ?? '';
+      double weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
+      double quantity = double.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      double initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+      double sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+      
+      double totalWeight = weight * quantity;
+      totalWeightSum += totalWeight;
+      totalInitialValueSum += initialValue;
+      totalSellPriceSum += sellPrice;
+
+      tableData.add([
+        rowIndex.toString(),
+        wasteType,
+        partyDetails,
+        _formatWeightWithConversion(weight),
+        quantity.toString(),
+        _formatWeightWithConversion(totalWeight),
+        initialValue.toStringAsFixed(0),
+        sellPrice.toStringAsFixed(0),
+      ]);
+      rowIndex++;
+    }
+
+    // Add summary row
+    tableData.add([
+      'مجموعه:',
+      '',
+      '',
+      '',
+      '',
+      _formatWeightWithConversion(totalWeightSum),
+      totalInitialValueSum.toStringAsFixed(0),
+      totalSellPriceSum.toStringAsFixed(0),
+    ]);
+
+    return Table(
+      border: TableBorder.all(color: Colors.black, width: 1),
+      columnWidths: const {
+        0: FixedColumnWidth(40),
+        1: FixedColumnWidth(90),
+        2: FixedColumnWidth(90),
+        3: FixedColumnWidth(70),
+        4: FixedColumnWidth(55),
+        5: FixedColumnWidth(80),
+        6: FixedColumnWidth(80),
+        7: FixedColumnWidth(90),
+      },
       children: [
-        const Text(
-          'اطلاعات مالی ضایعات',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
-        ),
-        const SizedBox(height: 10),
-        Row(
+        TableRow(
+          decoration: BoxDecoration(color: Colors.blue[100]),
           children: [
-            Expanded(
-              child: _buildSaleFinancialItem(
-                'قیمت فروش',
-                _formatNumber(invoice['sell_price']),
-                invoice['sell_currency']?.toString() ?? 'USD',
-                isTotal: true,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSaleFinancialItem(
-                'نرخ ارز',
-                invoice['exchange_rate']?.toString() ?? '1',
-                '',
-              ),
-            ),
-          ],
+            'شماره',
+            'نوع ضایعات',
+            'طرف حساب',
+            'وزن (تن)',
+            'تعداد',
+            'مجموع وزن (تن)',
+            'ارزش',
+            'قیمت فروش'
+          ].map((title) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            alignment: Alignment.center,
+            child: Text(title, style: headerFont, textAlign: TextAlign.center),
+          )).toList(),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildSaleFinancialItem(
-                'معادل افغانی',
-                _formatNumber(invoice['afn_equivalent']),
-                'AFN',
-                isTotal: true,
+        ...tableData.asMap().entries.map((entry) {
+          int index = entry.key;
+          List<String> row = entry.value;
+          bool isSummary = row[0] == 'مجموعه:';
+          return TableRow(
+            decoration: isSummary ? BoxDecoration(color: Colors.blue[50]) : null,
+            children: row.map((cellValue) => Container(
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              alignment: Alignment.center,
+              child: Text(
+                cellValue,
+                style: isSummary ? const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)) : bodyFont,
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSaleFinancialItem(
-                'واحد پول',
-                invoice['currency']?.toString() ?? 'USD',
-                '',
-              ),
-            ),
-          ],
-        ),
-        // ✅ REMOVED driver_name and number_plate from here - they're shown below
+            )).toList(),
+          );
+        }),
       ],
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildSaleFinancialSection(List<Map<String, dynamic>> items, Map<String, dynamic> invoice, AppLocalizations l10n) {
+    double totalSellPrice = 0;
+    double totalInitialValue = 0;
+    for (var item in items) {
+      totalSellPrice += double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+      totalInitialValue += double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black, width: 1),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.grey.shade50,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'اطلاعات مالی ضایعات',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSaleFinancialItem(
+                  'ارزش کل',
+                  _formatNumber(totalInitialValue),
+                  '',
+                  isTotal: true,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSaleFinancialItem(
+                  'قیمت فروش کل',
+                  _formatNumber(totalSellPrice),
+                  invoice['currency']?.toString() ?? 'USD',
+                  isTotal: true,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSaleFinancialItem(
+                  'نرخ ارز',
+                  invoice['exchange_rate']?.toString() ?? '1',
+                  '',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSaleFinancialItem(
+                  'معادل افغانی',
+                  _formatNumber(invoice['afn_equivalent']),
+                  'AFN',
+                  isTotal: true,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSaleFinancialItem(String label, String value, String currency, {bool isTotal = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1822,6 +1778,22 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
   }
 
   Widget _buildInvoiceUpperSection(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) {
+    // Get items info
+    List<Map<String, dynamic>> items = [];
+    if (invoice.containsKey('items') && invoice['items'] is List) {
+      items = List<Map<String, dynamic>>.from(invoice['items']);
+    }
+    
+    String wasteTypesDisplay = items.map((item) => item['waste_type']?.toString() ?? '').where((t) => t.isNotEmpty).join('، ');
+    if (wasteTypesDisplay.isEmpty) {
+      wasteTypesDisplay = invoice['waste_type']?.toString() ?? '-';
+    }
+    
+    String partyDisplay = items.map((item) => item['party_details']?.toString() ?? '').where((p) => p.isNotEmpty).join('، ');
+    if (partyDisplay.isEmpty) {
+      partyDisplay = invoice['party_details']?.toString() ?? '';
+    }
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.black, width: 1),
@@ -1937,9 +1909,11 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                               border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
                             ),
                             child: Text(
-                              invoice['waste_type']?.toString() ?? '-',
+                              wasteTypesDisplay,
                               style: const TextStyle(fontSize: 12),
                               textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
@@ -1953,7 +1927,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                     padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                     child: Row(
                       children: [
-                        const Text('تعداد', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const Text('تعداد اقلام', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Container(
@@ -1961,7 +1935,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                               border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
                             ),
                             child: Text(
-                              invoice['quantity']?.toString() ?? '1',
+                              invoice['item_count']?.toString() ?? '1',
                               style: const TextStyle(fontSize: 12),
                               textAlign: TextAlign.center,
                             ),
@@ -1985,7 +1959,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                   ),
                   child: Row(
                     children: [
-                      const Text('توضیحات', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const Text('طرف حساب', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Container(
@@ -1993,9 +1967,11 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                             border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
                           ),
                           child: Text(
-                            invoice['description']?.toString() ?? '',
+                            partyDisplay,
                             style: const TextStyle(fontSize: 12),
                             textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
@@ -2058,90 +2034,6 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildInvoiceTableWithData(Map<String, dynamic> invoice, AppLocalizations l10n) {
-    const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
-    const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
-
-    String wasteType = invoice['waste_type']?.toString() ?? '-';
-    String weight = invoice['weight']?.toString() ?? '0';
-    String quantity = invoice['quantity']?.toString() ?? '1';
-    double totalWeight = (double.tryParse(weight) ?? 0) * (double.tryParse(quantity) ?? 1);
-    String displayWeight = _formatWeightWithConversion(double.tryParse(weight) ?? 0);
-    String displayTotalWeight = _formatWeightWithConversion(totalWeight);
-
-    final columnHeaders = [
-      'شماره',
-      'نوع ضایعات',
-      'وزن (تن)',
-      'تعداد',
-      'مجموع وزن (تن)',
-      'قیمت فروش',
-    ];
-
-    List<List<String>> tableData = [
-      ['1', wasteType, displayWeight, quantity, displayTotalWeight, _formatNumber(invoice['sell_price'])],
-    ];
-
-    while (tableData.length < 10) {
-      tableData.add(['', '', '', '', '', '']);
-    }
-
-    return Table(
-      border: TableBorder.all(color: Colors.black, width: 1),
-      columnWidths: const {
-        0: FixedColumnWidth(40),
-        1: FixedColumnWidth(120),
-        2: FixedColumnWidth(80),
-        3: FixedColumnWidth(70),
-        4: FixedColumnWidth(90),
-        5: FixedColumnWidth(100),
-      },
-      children: [
-        TableRow(
-          decoration: BoxDecoration(color: Colors.blue[100]),
-          children: columnHeaders.map((title) => Container(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-            alignment: Alignment.center,
-            child: Text(title, style: headerFont, textAlign: TextAlign.center),
-          )).toList(),
-        ),
-        ...tableData.map((row) => TableRow(
-          children: row.map((cellValue) => Container(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-            alignment: Alignment.center,
-            child: Text(cellValue, style: bodyFont, textAlign: TextAlign.center),
-          )).toList(),
-        )),
-        TableRow(
-          decoration: BoxDecoration(color: Colors.blue[100]),
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: const Text('مجموعه :', style: headerFont),
-            ),
-            ...List.generate(2, (_) => const SizedBox.shrink()),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: Text(quantity, style: headerFont),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: Text(displayTotalWeight, style: headerFont),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              alignment: Alignment.center,
-              child: Text(_formatNumber(invoice['sell_price']), style: headerFont),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
@@ -2334,15 +2226,48 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
       ttf = pw.Font.helvetica();
     }
 
-    String getPdfValue(String key, {String defaultValue = '-'}) {
-      return invoice?[key]?.toString() ?? defaultValue;
+    // Extract items
+    List<Map<String, dynamic>> items = [];
+    if (invoice.containsKey('items') && invoice['items'] is List) {
+      items = List<Map<String, dynamic>>.from(invoice['items']);
+    } else {
+      items.add({
+        'waste_type': invoice['waste_type']?.toString() ?? '-',
+        'party_details': invoice['party_details']?.toString() ?? '',
+        'weight': double.tryParse(invoice['weight']?.toString() ?? '0') ?? 0,
+        'quantity': double.tryParse(invoice['quantity']?.toString() ?? '1') ?? 1,
+        'initial_value': double.tryParse(invoice['initial_value']?.toString() ?? '0') ?? 0,
+        'sell_price': double.tryParse(invoice['sell_price']?.toString() ?? '0') ?? 0,
+      });
     }
 
-    double weight = double.tryParse(getPdfValue('weight')) ?? 0;
-    double quantity = double.tryParse(getPdfValue('quantity', defaultValue: '1')) ?? 1;
-    double totalWeight = weight * quantity;
-    String displayWeight = _formatWeightWithConversion(weight);
-    String displayTotalWeight = _formatWeightWithConversion(totalWeight);
+    double totalWeight = 0;
+    double totalInitialValue = 0;
+    double totalSellPrice = 0;
+    List<List<String>> tableData = [];
+    int rowIndex = 1;
+
+    for (var item in items) {
+      double weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
+      double quantity = double.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      double initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+      double sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+      double totalItemWeight = weight * quantity;
+      totalWeight += totalItemWeight;
+      totalInitialValue += initialValue;
+      totalSellPrice += sellPrice;
+
+      tableData.add([
+        rowIndex.toString(),
+        item['waste_type']?.toString() ?? '-',
+        _formatWeightWithConversion(weight),
+        quantity.toString(),
+        _formatWeightWithConversion(totalItemWeight),
+        initialValue.toStringAsFixed(0),
+        sellPrice.toStringAsFixed(0),
+      ]);
+      rowIndex++;
+    }
 
     final pdf = pw.Document();
 
@@ -2393,11 +2318,9 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                           child: pw.Row(
                             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                             children: [
-                              pw.Expanded(child: pw.Text('مشتری فروش: ${getPdfValue('sell_customer_name')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
+                              pw.Expanded(child: pw.Text('مشتری فروش: ${invoice['sell_customer_name']?.toString() ?? '-'}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
                               pw.SizedBox(width: 12),
-                              pw.Expanded(child: pw.Text('نوع ضایعات: ${getPdfValue('waste_type')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
-                              pw.SizedBox(width: 12),
-                              pw.Expanded(child: pw.Text('تعداد: ${getPdfValue('quantity', defaultValue: '1')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
+                              pw.Expanded(child: pw.Text('تعداد اقلام: ${items.length.toString()}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black))),
                             ],
                           ),
                         ),
@@ -2412,13 +2335,13 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
                                 pw.Text('شماره بل: $invoiceNumber', style: pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold)),
                                 pw.SizedBox(height: 6),
-                                pw.Text('تاریخ شمسی: ${getPdfValue('date')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                                pw.Text('Date (EN): ${getPdfValue('date_en')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                                pw.Text('دریور: ${getPdfValue('driver_name')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                                pw.Text('پلیت: ${getPdfValue('number_plate')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('تاریخ شمسی: ${invoice['date']?.toString() ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('Date (EN): ${invoice['date_en']?.toString() ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('دریور: ${invoice['driver_name']?.toString() ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('پلیت: ${invoice['number_plate']?.toString() ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                               ]),
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                                pw.Text('واحد پول: ${getPdfValue('currency')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
+                                pw.Text('واحد پول: ${invoice['currency']?.toString() ?? 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
                                 pw.SizedBox(height: 6),
                                 pw.Text('وضعیت: ✅ فروخته شده', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.green)),
                               ]),
@@ -2440,20 +2363,12 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                               'وزن (تن)',
                               'تعداد',
                               'مجموع وزن (تن)',
+                              'ارزش',
                               'قیمت فروش',
-                              'واحد پول',
                             ],
-                            data: [
-                              [
-                                '1',
-                                getPdfValue('waste_type'),
-                                displayWeight,
-                                getPdfValue('quantity', defaultValue: '1'),
-                                displayTotalWeight,
-                                _formatNumber(getPdfValue('sell_price')),
-                                getPdfValue('currency'),
-                              ],
-                            ],
+                            data: tableData.isEmpty 
+                                ? [['1', '-', '0', '0', '0', '0', '0']]
+                                : tableData,
                           ),
                         ),
                         pw.SizedBox(height: 18),
@@ -2464,12 +2379,13 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                             children: [
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                                pw.Text('نرخ ارز: ${getPdfValue('exchange_rate')}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                                pw.Text('معادل افغانی: ${_formatNumber(getPdfValue('afn_equivalent'))} AFN', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('نرخ ارز: ${invoice['exchange_rate']?.toString() ?? '1'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('ارزش کل: ${_formatNumber(totalInitialValue)}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('معادل افغانی: ${_formatNumber(invoice['afn_equivalent'])} AFN', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                               ]),
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                                 pw.SizedBox(height: 6),
-                                pw.Text('قیمت فروش: ${_formatNumber(getPdfValue('sell_price'))} ${getPdfValue('sell_currency', defaultValue: getPdfValue('currency'))}', style: pw.TextStyle(font: ttf, fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                                pw.Text('قیمت فروش کل: ${_formatNumber(totalSellPrice)} ${invoice['currency']?.toString() ?? 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
                               ]),
                             ],
                           ),
@@ -2604,20 +2520,18 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                 color: const Color(0xFFCB001D).withOpacity(0.08),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.delete_outline, color: Color(0xFFCB001D),
-                  size: 28),
+              child: const Icon(Icons.delete_outline, color: Color(0xFFCB001D), size: 28),
             ),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'مدیریت کسرات',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1A1A)),
+                  'مدیریت ضایعات',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A)),
                 ),
                 const Text(
-                  'ثبت و مدیریت ضایعات و کسرات',
+                  'ثبت و مدیریت ضایعات (چند موردی در یک بل)',
                   style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               ],
@@ -2628,14 +2542,11 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
           children: [
             OutlinedButton.icon(
               onPressed: _importExcel,
-              icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D),
-                  size: 18),
-              label: const Text('Import Excel',
-                  style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
+              icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
+              label: const Text('Import Excel', style: TextStyle(color: Color(0xFFCB001D), fontSize: 12)),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFFCB001D)),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               ),
             ),
@@ -2643,7 +2554,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
             ElevatedButton.icon(
               onPressed: () => _showWasteDialog(),
               icon: const Icon(Icons.add_circle_outline),
-              label: const Text('ثبت کسرات جدید'),
+              label: const Text('ثبت ضایعات جدید'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFCB001D),
                 foregroundColor: Colors.white,
@@ -2658,32 +2569,29 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
 
   Widget _buildQuickStats() {
     final totalWastes = _wastes.length;
-    final totalAfn = _wastes.fold<double>(0, (sum, item) => sum +
-        (double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0));
-    final totalWeight = _wastes.fold<double>(0, (sum, item) => sum +
-        (double.tryParse(item['weight']?.toString() ?? '0') ?? 0));
+    final totalAfn = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0));
+    final totalWeight = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0));
     final totalWeightInTons = totalWeight / 1000;
-    final soldCount = _wastes.where((w) => w['is_sold'] == 1).length;
-    final soldTotal = _wastes.fold<double>(0, (sum, item) => sum +
-        (double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0));
+    final totalInitialValue = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0));
+    final totalItems = _wastes.fold<int>(0, (sum, item) {
+      final itemCountValue = item['item_count'];
+      final parsedItemCount = itemCountValue is num
+          ? itemCountValue.toInt()
+          : int.tryParse(itemCountValue?.toString() ?? '1') ?? 1;
+      return sum + parsedItemCount;
+    });
 
     return Row(
       children: [
-        _buildStatCard('تعداد', totalWastes.toString(), Icons.delete_outline,
-            const Color(0xFFCB001D)),
+        _buildStatCard('تعداد بل ها', totalWastes.toString(), Icons.receipt_long_outlined, const Color(0xFFCB001D)),
         const SizedBox(width: 12),
-        _buildStatCard('فروخته شده', soldCount.toString(), Icons.sell,
-            Colors.green.shade700),
+        _buildStatCard('تعداد اقلام', totalItems.toString(), Icons.list_alt, Colors.blue.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('کل فروش', _formatNumber(soldTotal), Icons.attach_money,
-            Colors.orange.shade700),
+        _buildStatCard('مجموع ارزش', _formatNumber(totalInitialValue), Icons.monetization_on, Colors.orange.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('جمع معادل افغانی', _formatNumber(totalAfn),
-            Icons.currency_exchange, Colors.green.shade700),
+        _buildStatCard('مجموع معادل افغانی', _formatNumber(totalAfn), Icons.currency_exchange, Colors.green.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('وزن (تن)',
-            '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 3)} تن',
-            Icons.scale, const Color(0xFFCB001D)),
+        _buildStatCard('وزن کل (تن)', '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 3)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
     );
   }
@@ -2695,25 +2603,17 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(0.04), blurRadius: 20,
-              offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
         ),
         child: Row(children: [
           Container(padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
               child: Icon(icon, color: color, size: 18)),
           const SizedBox(width: 10),
-          Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
             const SizedBox(height: 4),
-            Text(value,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A1A))),
+            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
           ])),
         ]),
       ),
@@ -2721,15 +2621,13 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
   }
 
   Widget _buildFilterAndSearch() {
-    final filters = ['همه', 'کسرات', 'فروخته شده', 'فروخته نشده'];
+    final filters = ['همه', 'ضایعات', 'فروخته شده'];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(
-            color: Colors.black.withOpacity(0.04), blurRadius: 20,
-            offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
       ),
       child: Row(children: [
         Expanded(
@@ -2737,18 +2635,11 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
             controller: _searchController,
             onChanged: (value) => setState(() => _searchQuery = value),
             decoration: InputDecoration(
-              hintText: 'جستجو بر اساس طرف، نوع کسرات یا شماره...',
+              hintText: 'جستجو بر اساس طرف، نوع ضایعات یا شماره...',
               prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade200)),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade200)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFCB001D),
-                      width: 2)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2)),
             ),
           ),
         ),
@@ -2756,11 +2647,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
         ...filters.map((filter) => Padding(
           padding: const EdgeInsets.only(left: 8),
           child: FilterChip(
-            label: Text(filter,
-                style: TextStyle(
-                    color: _selectedFilter == filter ? Colors.white : Colors
-                        .grey.shade700,
-                    fontWeight: FontWeight.w600)),
+            label: Text(filter, style: TextStyle(color: _selectedFilter == filter ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w600)),
             selected: _selectedFilter == filter,
             onSelected: (selected) => setState(() => _selectedFilter = filter),
             selectedColor: const Color(0xFFCB001D),
@@ -2775,8 +2662,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
   // ==================== MAIN TABLE ====================
   Widget _buildMainTable() {
     if (_isLoading) {
-      return const Center(
-          child: CircularProgressIndicator(color: Color(0xFFCB001D)));
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
     }
 
     if (_wastes.isEmpty) {
@@ -2786,8 +2672,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
           children: [
             const Icon(Icons.delete_outline, size: 48, color: Colors.grey),
             const SizedBox(height: 12),
-            const Text('هیچ ضایعاتی یافت نشد',
-                style: TextStyle(fontSize: 14, color: Colors.grey)),
+            const Text('هیچ ضایعاتی یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
           ],
         ),
       );
@@ -2795,25 +2680,16 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
 
     final filteredData = _wastes.where((waste) {
       final search = _searchQuery.toLowerCase();
-      final matchesSearch = (waste['party_details'] ?? '').toString()
-          .toLowerCase()
-          .contains(search) ||
-          (waste['waste_type'] ?? '').toString().toLowerCase().contains(
-              search) ||
-          (waste['invoice_number'] ?? '').toString().toLowerCase().contains(
-              search) ||
-          (waste['description'] ?? '').toString().toLowerCase().contains(search) ||
-          (waste['sell_customer_name'] ?? '').toString().toLowerCase().contains(
-              search);
+      final matchesSearch = (waste['party_details'] ?? '').toString().toLowerCase().contains(search) ||
+          (waste['display_waste_types'] ?? '').toString().toLowerCase().contains(search) ||
+          (waste['invoice_number'] ?? '').toString().toLowerCase().contains(search) ||
+          (waste['sell_customer_name'] ?? '').toString().toLowerCase().contains(search);
 
       if (_selectedFilter == 'فروخته شده') {
         return matchesSearch && waste['is_sold'] == 1;
-      } else if (_selectedFilter == 'فروخته نشده') {
-        return matchesSearch && waste['is_sold'] != 1;
-      } else if (_selectedFilter == 'کسرات') {
-        return matchesSearch && waste['waste_type']?.isNotEmpty == true;
+      } else if (_selectedFilter == 'ضایعات') {
+        return matchesSearch;
       }
-
       return matchesSearch;
     }).toList();
 
@@ -2829,9 +2705,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(
-            color: Colors.black.withOpacity(0.04), blurRadius: 20,
-            offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
@@ -2848,13 +2722,10 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                   children: [
                     // ===== HEADER ROW =====
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFCB001D).withOpacity(0.05),
-                        border: Border(
-                            bottom: BorderSide(color: Colors.grey.shade200,
-                                width: 1)),
+                        border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
                       ),
                       child: Row(
                         children: [
@@ -2863,13 +2734,12 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                           _buildHeaderCell('شماره بل', 100),
                           _buildHeaderCell('تاریخ', 100),
                           _buildHeaderCell('مشتری فروش', 140),
-                          _buildHeaderCell('نوع کسرات', 130),
-                          _buildHeaderCell('وزن (تن)', 90),
-                          _buildHeaderCell('تعداد', 70),
-                          _buildHeaderCell('مجموع وزن', 110),
+                          _buildHeaderCell('نوع ضایعات', 150),
+                          _buildHeaderCell('تعداد اقلام', 80),
+                          _buildHeaderCell('وزن کل (تن)', 110),
+                          _buildHeaderCell('ارزش', 100),
                           _buildHeaderCell('قیمت فروش', 120),
                           _buildHeaderCell('واحد پول', 70),
-                          _buildHeaderCell('نرخ تبدیل', 90),
                           _buildHeaderCell('معادل افغانی', 120),
                           _buildHeaderCell('دریور', 100),
                           _buildHeaderCell('پلیت', 100),
@@ -2880,8 +2750,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                     if (paged.isEmpty)
                       const Padding(
                         padding: EdgeInsets.all(40),
-                        child: Text('هیچ داده‌ای یافت نشد',
-                            style: TextStyle(color: Colors.grey)),
+                        child: Text('هیچ داده‌ای یافت نشد', style: TextStyle(color: Colors.grey)),
                       )
                     else
                       ...paged.asMap().entries.map((entry) {
@@ -2890,22 +2759,26 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                         final id = waste['id'] as int;
                         final isSelected = _selectedWastes.contains(id);
                         bool isSold = waste['is_sold'] == 1;
-                        String displayWeight = _getDisplayWeight(waste['weight']);
-                        String totalWeightDisplay = _getTotalWeightDisplay(
-                            waste['weight'], waste['quantity']);
-                        String sellDisplay = isSold
-                            ? '${_formatNumber(waste['sell_price'])}'
-                            : '-';
+                        String displayTotalWeight = _formatWeightWithConversion(double.tryParse(waste['total_weight']?.toString() ?? '0') ?? 0);
+                        String displayWasteTypes = waste['display_waste_types']?.toString() ?? waste['waste_type']?.toString() ?? '-';
+                        int itemCount = waste['item_count'] ?? 1;
+                        double totalSellPrice = 0;
+                        double totalInitialValue = 0;
+                        if (waste.containsKey('items') && waste['items'] is List) {
+                          for (var item in waste['items']) {
+                            totalSellPrice += double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+                            totalInitialValue += double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+                          }
+                        } else {
+                          totalSellPrice = double.tryParse(waste['sell_price']?.toString() ?? '0') ?? 0;
+                          totalInitialValue = double.tryParse(waste['initial_value']?.toString() ?? '0') ?? 0;
+                        }
 
                         return Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFCB001D)
-                                .withOpacity(0.04) : null,
-                            border: Border(
-                                bottom: BorderSide(
-                                    color: Colors.grey.shade100, width: 1)),
+                            color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
+                            border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
                           ),
                           child: Row(
                             children: [
@@ -2916,14 +2789,11 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                                   onChanged: (_) => _toggleSelection(id),
                                   activeColor: const Color(0xFFCB001D),
                                   checkColor: Colors.white,
-                                  materialTapTargetSize: MaterialTapTargetSize
-                                      .shrinkWrap,
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
                               _buildDataCell((start + index + 1).toString(), 50),
-                              _buildDataCell(
-                                  waste['invoice_number']?.toString() ?? '-',
-                                  100, isBold: true),
+                              _buildDataCell(waste['invoice_number']?.toString() ?? '-', 100, isBold: true),
                               Container(
                                 width: 100,
                                 child: Column(
@@ -2931,73 +2801,44 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                                   children: [
                                     Text(
                                       waste['date_en'] ?? '-',
-                                      style: const TextStyle(
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1A1A2E),
-                                      ),
+                                      style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
                                       textAlign: TextAlign.center,
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       waste['date'] ?? '-',
-                                      style: const TextStyle(
-                                        fontSize: 7,
-                                        color: Color(0xFFCB001D),
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                      style: const TextStyle(fontSize: 7, color: Color(0xFFCB001D), fontWeight: FontWeight.w500),
                                       textAlign: TextAlign.center,
                                     ),
                                   ],
                                 ),
                               ),
-                              _buildDataCell(
-                                  waste['sell_customer_name']?.toString() ?? '-',
-                                  140),
-                              _buildDataCell(
-                                  waste['waste_type']?.toString() ?? '-', 130),
-                              _buildDataCell(displayWeight, 90),
-                              _buildDataCell(
-                                  (waste['quantity'] != null && waste[
-                                      'quantity'] != 1 && waste['quantity'] != 0)
-                                      ? _formatNumber(waste['quantity'])
-                                      : '-',
-                                  70),
-                              _buildDataCell(totalWeightDisplay, 110,
-                                  isBold: true, color: const Color(0xFFCB001D)),
-                              _buildDataCell(sellDisplay, 120,
-                                  isBold: true, color: Colors.green.shade700),
-                              _buildDataCell(
-                                  waste['currency']?.toString() ?? '-', 70),
-                              _buildDataCell(
-                                  _formatNumber(waste['exchange_rate']), 90),
-                              _buildDataCell(
-                                  _formatNumber(waste['afn_equivalent']), 120),
-                              _buildDataCell(
-                                  waste['driver_name']?.toString() ?? '-', 100),
-                              _buildDataCell(
-                                  waste['number_plate']?.toString() ?? '-', 100),
+                              _buildDataCell(waste['sell_customer_name']?.toString() ?? '-', 140),
+                              _buildDataCell(displayWasteTypes, 150),
+                              _buildDataCell(itemCount.toString(), 80, isBold: true, color: Colors.blue.shade700),
+                              _buildDataCell(displayTotalWeight, 110, isBold: true, color: const Color(0xFFCB001D)),
+                              _buildDataCell(_formatNumber(totalInitialValue), 100, isBold: true, color: Colors.orange.shade700),
+                              _buildDataCell(_formatNumber(totalSellPrice), 120, isBold: true, color: Colors.green.shade700),
+                              _buildDataCell(waste['currency']?.toString() ?? '-', 70),
+                              _buildDataCell(_formatNumber(waste['afn_equivalent']), 120),
+                              _buildDataCell(waste['driver_name']?.toString() ?? '-', 100),
+                              _buildDataCell(waste['number_plate']?.toString() ?? '-', 100),
                               SizedBox(
                                 width: 200,
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     IconButton(
-                                      onPressed: () => _showWasteDialog(
-                                          waste: waste),
-                                      icon: Icon(Icons.edit_outlined,
-                                          color: Colors.blue.shade700, size: 20),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 30, minHeight: 30),
+                                      onPressed: () => _showWasteDialog(waste: waste),
+                                      icon: Icon(Icons.edit_outlined, color: Colors.blue.shade700, size: 20),
+                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                                       padding: EdgeInsets.zero,
                                       tooltip: 'ویرایش',
                                     ),
                                     IconButton(
                                       onPressed: () => _deleteWaste(waste),
-                                      icon: Icon(Icons.delete_outline,
-                                          color: Colors.red.shade400, size: 20),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 30, minHeight: 30),
+                                      icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 20),
+                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                                       padding: EdgeInsets.zero,
                                       tooltip: 'حذف',
                                     ),
@@ -3005,10 +2846,8 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                                       onPressed: () {
                                         _showInvoiceModal(context, waste['invoice_number'] ?? '-', waste);
                                       },
-                                      icon: const Icon(Icons.visibility_outlined,
-                                          color: Color(0xFFCB001D), size: 20),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 30, minHeight: 30),
+                                      icon: const Icon(Icons.visibility_outlined, color: Color(0xFFCB001D), size: 20),
+                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                                       padding: EdgeInsets.zero,
                                       tooltip: 'مشاهده فاکتور',
                                     ),
@@ -3016,10 +2855,8 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                                       onPressed: () async {
                                         await _printInvoicePdf(waste, waste['invoice_number'] ?? '-', AppLocalizations.of(context)!);
                                       },
-                                      icon: const Icon(Icons.print_outlined,
-                                          color: Color(0xFFCB001D), size: 20),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 30, minHeight: 30),
+                                      icon: const Icon(Icons.print_outlined, color: Color(0xFFCB001D), size: 20),
+                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                                       padding: EdgeInsets.zero,
                                       tooltip: 'چاپ',
                                     ),
@@ -3044,23 +2881,19 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                 bottomLeft: Radius.circular(14),
                 bottomRight: Radius.circular(14),
               ),
-              border: Border(
-                  top: BorderSide(color: Colors.grey.shade200, width: 1)),
+              border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    const Text('نمایش',
-                        style: TextStyle(fontSize: 12,
-                            color: Color(0xFF888888))),
+                    const Text('نمایش', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
                     const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       decoration: BoxDecoration(
-                        border: Border.all(
-                            color: const Color(0xFFCB001D).withOpacity(0.2)),
+                        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: DropdownButtonHideUnderline(
@@ -3070,28 +2903,22 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                           items: _pageSizeOptions.map((size) {
                             return DropdownMenuItem<int>(
                               value: size,
-                              child: Text(size.toString(),
-                                  style: const TextStyle(
-                                      color: Color(0xFF1A1A2E), fontSize: 12)),
+                              child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
                             );
                           }).toList(),
                           dropdownColor: Colors.white,
-                          icon: Icon(Icons.arrow_drop_down,
-                              color: const Color(0xFFCB001D), size: 18),
+                          icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
                         ),
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Text('در هر صفحه',
-                        style: TextStyle(fontSize: 12,
-                            color: Colors.grey.shade600)),
+                    Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                   ],
                 ),
                 Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_ios,
-                          color: Color(0xFFCB001D), size: 16),
+                      icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFCB001D), size: 16),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(minWidth: 30),
                       onPressed: () {
@@ -3104,8 +2931,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                       tooltip: 'اسکرول به چپ',
                     ),
                     IconButton(
-                      icon: const Icon(Icons.arrow_forward_ios,
-                          color: Color(0xFFCB001D), size: 16),
+                      icon: const Icon(Icons.arrow_forward_ios, color: Color(0xFFCB001D), size: 16),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(minWidth: 30),
                       onPressed: () {
@@ -3120,27 +2946,20 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
                     const SizedBox(width: 8),
                     Text(
                       'صفحه $_currentPage از ${totalPages == 0 ? 1 : totalPages}',
-                      style: const TextStyle(fontSize: 12,
-                          color: Color(0xFF888888)),
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
                     ),
                     const SizedBox(width: 12),
                     IconButton(
-                      icon: const Icon(Icons.chevron_right,
-                          color: Color(0xFFCB001D), size: 20),
+                      icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
-                      onPressed: _currentPage > 1
-                          ? () => _changePage(_currentPage - 1)
-                          : null,
+                      onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
                     ),
                     IconButton(
-                      icon: const Icon(Icons.chevron_left,
-                          color: Color(0xFFCB001D), size: 20),
+                      icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
-                      onPressed: _currentPage < totalPages
-                          ? () => _changePage(_currentPage + 1)
-                          : null,
+                      onPressed: _currentPage < totalPages ? () => _changePage(_currentPage + 1) : null,
                     ),
                   ],
                 ),
@@ -3199,8 +3018,7 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
     );
   }
 
-  Widget _buildDataCell(String text, double width,
-      {bool isBold = false, Color? color}) {
+  Widget _buildDataCell(String text, double width, {bool isBold = false, Color? color}) {
     return SizedBox(
       width: width,
       child: Text(
@@ -3241,14 +3059,9 @@ Widget _buildSaleFinancialSection(Map<String, dynamic> invoice, AppLocalizations
         hintText: hint,
         labelStyle: TextStyle(color: Colors.grey.shade600),
         prefixIcon: Icon(icon, color: const Color(0xFFCB001D), size: 20),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300)),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300)),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCB001D), width: 2)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
       onChanged: onChanged,

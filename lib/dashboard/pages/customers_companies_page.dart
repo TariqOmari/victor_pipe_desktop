@@ -21,6 +21,12 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
   String _searchQuery = '';
   String _selectedTab = 'customers';
 
+  // ============================================
+  // SELECTION SETS FOR BULK DELETE
+  // ============================================
+  final Set<int> _selectedCustomers = {};
+  final Set<int> _selectedCompanies = {};
+
   // Customer form controllers
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _customerNicknameController = TextEditingController();
@@ -80,6 +86,8 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
           };
         }).toList();
         _isLoading = false;
+        _selectedCustomers.clear();
+        _selectedCompanies.clear();
       });
     } catch (e) {
       if (!mounted) return;
@@ -281,6 +289,7 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
         if (!mounted) return;
         setState(() {
           _customers.removeWhere((c) => c['id'] == customer['id']);
+          _selectedCustomers.remove(customer['id']);
         });
         _showSnackbar(l10n.customerDeletedSuccess, Colors.red);
       },
@@ -450,10 +459,337 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
         if (!mounted) return;
         setState(() {
           _companies.removeWhere((c) => c['id'] == company['id']);
+          _selectedCompanies.remove(company['id']);
         });
         _showSnackbar(l10n.companyDeletedSuccess, Colors.red);
       },
     );
+  }
+
+  // ============================================================
+  // BULK DELETE - SELECTED CUSTOMERS / COMPANIES
+  // ============================================================
+  void _showBulkDeleteDialog(BuildContext context, bool isCustomer, AppLocalizations l10n) {
+    final selectedSet = isCustomer ? _selectedCustomers : _selectedCompanies;
+    final count = selectedSet.length;
+    if (count == 0) return;
+
+    final sourceList = isCustomer ? _customers : _companies;
+    final selectedEntities = sourceList
+        .where((e) => selectedSet.contains(e['id'] as int))
+        .toList();
+
+    final entityLabel = isCustomer ? 'مشتری' : 'شرکت';
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_sweep, color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'حذف $entityLabel‌های انتخاب شده',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'هشدار!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'شما در حال حذف $count $entityLabel هستید. '
+                              'این عمل قابل بازگشت نیست!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '$entityLabel‌های زیر حذف خواهند شد:',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: selectedEntities.map((entity) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '• ${entity['name'] ?? '-'}${entity['phone'] != null && entity['phone'].toString().isNotEmpty ? ' — ${entity['phone']}' : ''}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF1A1A1A)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performBulkDelete(isCustomer, selectedSet.toList(), l10n);
+              },
+              icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
+              label: Text('حذف $count مورد', style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BULK DELETE - ALL CUSTOMERS / COMPANIES
+  // ============================================================
+  void _showDeleteAllDialog(BuildContext context, bool isCustomer, AppLocalizations l10n) {
+    final sourceList = isCustomer ? _customers : _companies;
+    final count = sourceList.length;
+    if (count == 0) return;
+
+    final entityLabel = isCustomer ? 'مشتری' : 'شرکت';
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dangerous, color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'حذف تمام $entityLabel‌ها',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.withOpacity(0.3), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'هشدار جدی!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'شما در حال حذف تمام $count $entityLabel هستید.\n'
+                    'این عمل کاملاً غیرقابل بازگشت است!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performDeleteAll(isCustomer, l10n);
+              },
+              icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
+              label: const Text('حذف همه', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PERFORM BULK DELETE
+  // ============================================================
+  Future<void> _performBulkDelete(bool isCustomer, List<int> ids, AppLocalizations l10n) async {
+    setState(() => _isLoading = true);
+    try {
+      int deletedCount = 0;
+      for (final id in ids) {
+        final result = isCustomer
+            ? await _db.deleteCustomer(id)
+            : await _db.deleteCompany(id);
+        if (result != -1) deletedCount++;
+      }
+
+      if (!mounted) return;
+
+      if (deletedCount > 0) {
+        final label = isCustomer ? 'مشتری' : 'شرکت';
+        _showSnackbar('✅ $deletedCount $label با موفقیت حذف شد', Colors.green);
+        if (isCustomer) {
+          _selectedCustomers.clear();
+        } else {
+          _selectedCompanies.clear();
+        }
+        await _loadData();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // PERFORM DELETE ALL
+  // ============================================================
+  Future<void> _performDeleteAll(bool isCustomer, AppLocalizations l10n) async {
+    setState(() => _isLoading = true);
+    try {
+      final sourceList = isCustomer ? _customers : _companies;
+      int deletedCount = 0;
+
+      for (final entity in sourceList) {
+        final id = entity['id'] as int;
+        final result = isCustomer
+            ? await _db.deleteCustomer(id)
+            : await _db.deleteCompany(id);
+        if (result != -1) deletedCount++;
+      }
+
+      if (!mounted) return;
+
+      if (deletedCount > 0) {
+        final label = isCustomer ? 'مشتری' : 'شرکت';
+        _showSnackbar('🗑️ تمام $deletedCount $label حذف شدند', Colors.red.shade700);
+        if (isCustomer) {
+          _selectedCustomers.clear();
+        } else {
+          _selectedCompanies.clear();
+        }
+        await _loadData();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
   }
 
   // ======================== Transaction History Display ========================
@@ -835,6 +1171,10 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     final totalTransactions = transactions.length;
     final entityType = (entity['type'] ?? '').toString().trim();
     final typeLabel = entityType.isNotEmpty ? entityType : (isCustomer ? l10n.individual : l10n.corporate);
+    final entityId = entity['id'] as int;
+    final isSelected = isCustomer
+        ? _selectedCustomers.contains(entityId)
+        : _selectedCompanies.contains(entityId);
     
     int totalAmount = 0;
     for (var t in transactions) {
@@ -849,8 +1189,6 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     final Color primaryColor = isCustomer 
         ? const Color(0xFF2563EB)
         : const Color(0xFF7C3AED);
-    
-    final IconData mainIcon = isCustomer ? Icons.person_rounded : Icons.business_center_rounded;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -859,14 +1197,18 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: isSelected
+                ? primaryColor.withOpacity(0.15)
+                : Colors.black.withOpacity(0.06),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
-          color: primaryColor.withOpacity(0.15),
-          width: 1.5,
+          color: isSelected
+              ? primaryColor
+              : primaryColor.withOpacity(0.15),
+          width: isSelected ? 2 : 1.5,
         ),
       ),
       child: Column(
@@ -882,6 +1224,35 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
             ),
             child: Row(
               children: [
+                // ===== SELECTION CHECKBOX =====
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Checkbox(
+                    value: isSelected,
+                    onChanged: (v) {
+                      setState(() {
+                        if (isCustomer) {
+                          if (v == true) {
+                            _selectedCustomers.add(entityId);
+                          } else {
+                            _selectedCustomers.remove(entityId);
+                          }
+                        } else {
+                          if (v == true) {
+                            _selectedCompanies.add(entityId);
+                          } else {
+                            _selectedCompanies.remove(entityId);
+                          }
+                        }
+                      });
+                    },
+                    activeColor: primaryColor,
+                    checkColor: Colors.white,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Container(
                   width: 48,
                   height: 48,
@@ -1187,12 +1558,32 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
     );
   }
 
+  // ============================================
+  // UPDATED HEADER WITH BULK ACTION BUTTONS
+  // ============================================
   Widget _buildHeader(bool isCustomer, AppLocalizations l10n) {
     final count = isCustomer ? _customers.length : _companies.length;
     final title = isCustomer ? l10n.customersCompaniesPage : l10n.companiesListPage;
     final icon = isCustomer
         ? Icons.people_alt_outlined
         : Icons.business_outlined;
+
+    final selectedSet = isCustomer ? _selectedCustomers : _selectedCompanies;
+    final hasSelection = selectedSet.isNotEmpty;
+
+    // Select-all on current tab
+    final filteredList = isCustomer
+        ? _customers.where((c) {
+            final haystack = '${c['name'] ?? ''} ${c['nickname'] ?? ''} ${c['phone'] ?? ''} ${c['type'] ?? ''}'.toLowerCase();
+            return haystack.contains(_searchQuery.trim().toLowerCase());
+          }).toList()
+        : _companies.where((c) {
+            final haystack = '${c['name'] ?? ''} ${c['phone'] ?? ''} ${c['email'] ?? ''} ${c['type'] ?? ''}'.toLowerCase();
+            return haystack.contains(_searchQuery.trim().toLowerCase());
+          }).toList();
+
+    final allSelected = filteredList.isNotEmpty &&
+        filteredList.every((e) => selectedSet.contains(e['id'] as int));
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1236,31 +1627,135 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
             ),
           ],
         ),
-        ElevatedButton.icon(
-          onPressed: isCustomer ? _addCustomer : _addCompany,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFCB001D),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+        Row(
+          children: [
+            // ===== SELECT ALL / DESELECT ALL BUTTON =====
+            if (filteredList.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    if (allSelected) {
+                      if (isCustomer) {
+                        _selectedCustomers.clear();
+                      } else {
+                        _selectedCompanies.clear();
+                      }
+                    } else {
+                      for (final e in filteredList) {
+                        if (isCustomer) {
+                          _selectedCustomers.add(e['id'] as int);
+                        } else {
+                          _selectedCompanies.add(e['id'] as int);
+                        }
+                      }
+                    }
+                  });
+                },
+                icon: Icon(
+                  allSelected ? Icons.deselect : Icons.select_all,
+                  color: const Color(0xFFCB001D),
+                  size: 18,
+                ),
+                label: Text(
+                  allSelected ? 'لغو انتخاب همه' : 'انتخاب همه',
+                  style: const TextStyle(color: Color(0xFFCB001D), fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFFCB001D)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (filteredList.isNotEmpty) const SizedBox(width: 10),
+
+            // ===== SELECTED COUNT BADGE =====
+            if (hasSelection)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCB001D).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${selectedSet.length} انتخاب شده',
+                      style: const TextStyle(
+                        color: Color(0xFFCB001D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (hasSelection) const SizedBox(width: 8),
+
+            // ===== BULK DELETE BUTTON =====
+            if (hasSelection)
+              ElevatedButton.icon(
+                onPressed: () => _showBulkDeleteDialog(context, isCustomer, l10n),
+                icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+                label: Text(
+                  'حذف ${selectedSet.length} مورد',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (hasSelection) const SizedBox(width: 10),
+
+            // ===== DELETE ALL BUTTON =====
+            if (count > 0)
+              OutlinedButton.icon(
+                onPressed: () => _showDeleteAllDialog(context, isCustomer, l10n),
+                icon: Icon(Icons.delete_forever, color: Colors.red.shade700, size: 18),
+                label: Text(
+                  'حذف همه',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (count > 0) const SizedBox(width: 10),
+
+            // ===== ADD BUTTON =====
+            ElevatedButton.icon(
+              onPressed: isCustomer ? _addCustomer : _addCompany,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
+              ),
+              icon: const Icon(Icons.add, size: 20),
+              label: Text(
+                isCustomer ? l10n.addCustomer : l10n.addCompany,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-            elevation: 0,
-          ),
-          icon: const Icon(Icons.add, size: 20),
-          label: Text(
-            isCustomer ? l10n.addCustomer : l10n.addCompany,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          ],
         ),
       ],
     );
   }
 
   Widget _buildSearchAndFilter(AppLocalizations l10n) {
+    final selectedSet = _selectedTab == 'customers' ? _selectedCustomers : _selectedCompanies;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1313,6 +1808,24 @@ class _CustomersCompaniesPageState extends State<CustomersCompaniesPage> {
               ),
             ),
           ),
+          // ===== FOOTER-STYLE SELECTION INFO =====
+          if (selectedSet.isNotEmpty) ...[
+            const SizedBox(width: 12),
+            Text(
+              'انتخاب شده: ${selectedSet.length}',
+              style: const TextStyle(fontSize: 12, color: Color(0xFFCB001D), fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () => _showBulkDeleteDialog(context, _selectedTab == 'customers', l10n),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFCB001D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text('حذف انتخاب شده‌ها', style: TextStyle(fontSize: 12)),
+            ),
+          ],
         ],
       ),
     );

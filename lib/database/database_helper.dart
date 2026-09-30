@@ -278,6 +278,611 @@ class DatabaseHelper {
     }
   }
 
+
+
+    // ============ BULK DELETE PRODUCED PRODUCTS ============
+
+  /// Delete multiple produced products by their IDs
+  /// Also deletes their associated production_logs (via CASCADE or manual)
+  Future<int> deleteMultipleProducedProducts(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    try {
+      final db = await database;
+      
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(ids.length, '?').join(',');
+        
+        // Delete production logs first (in case CASCADE isn't enabled)
+        await db.delete(
+          'production_logs',
+          where: 'produced_product_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+        
+        // Delete the produced products
+        final deleted = await db.delete(
+          'produced_products',
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+        
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted produced products and their logs');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting multiple produced products: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL produced products and ALL production logs
+  Future<int> deleteAllProducedProducts() async {
+    try {
+      final db = await database;
+      
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        // Delete all production logs
+        await db.delete('production_logs');
+        
+        // Delete all produced products
+        final deleted = await db.delete('produced_products');
+        
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted produced products and all logs');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all produced products: $e');
+      return -1;
+    }
+  }
+
+
+    // ============ BULK DELETE RAW MATERIALS ============
+
+  /// Delete multiple raw materials by their IDs
+  /// Also deletes their associated supplier_loans and loan payments
+  Future<int> deleteMultipleRawMaterials(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(ids.length, '?').join(',');
+
+        // Find all supplier_loans linked to these raw materials
+        final loans = await db.query(
+          'supplier_loans',
+          where: 'raw_material_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        // Delete all payments for those loans
+        for (var loan in loans) {
+          await db.delete(
+            'supplier_loan_payments',
+            where: 'loan_id = ?',
+            whereArgs: [loan['id']],
+          );
+        }
+
+        // Delete the supplier_loans themselves
+        if (loans.isNotEmpty) {
+          await db.delete(
+            'supplier_loans',
+            where: 'raw_material_id IN ($placeholders)',
+            whereArgs: ids,
+          );
+        }
+
+        // Delete the raw materials
+        final deleted = await db.delete(
+          'raw_materials',
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted raw materials and their loans');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting multiple raw materials: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL raw materials and their associated loans/payments
+  Future<int> deleteAllRawMaterials() async {
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        // Delete all supplier_loan_payments (child of supplier_loans)
+        await db.delete('supplier_loan_payments');
+
+        // Delete all supplier_loans (they reference raw_materials)
+        await db.delete('supplier_loans');
+
+        // Delete all raw materials
+        final deleted = await db.delete('raw_materials');
+
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted raw materials and all loans');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all raw materials: $e');
+      return -1;
+    }
+  }
+
+  // ============ BULK DELETE SALES INVOICES ============
+
+  /// Delete multiple sales invoices by their IDs
+  Future<int> deleteMultipleSalesInvoices(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(ids.length, '?').join(',');
+
+        // Delete associated invoice_items (if any)
+        await db.delete(
+          'invoice_items',
+          where: 'invoice_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        // Delete associated sell_loan_payments via sell_loans
+        final loans = await db.query(
+          'sell_loans',
+          where: 'sale_invoice_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+        for (var loan in loans) {
+          await db.delete(
+            'sell_loan_payments',
+            where: 'loan_id = ?',
+            whereArgs: [loan['id']],
+          );
+        }
+        if (loans.isNotEmpty) {
+          await db.delete(
+            'sell_loans',
+            where: 'sale_invoice_id IN ($placeholders)',
+            whereArgs: ids,
+          );
+        }
+
+        // Delete the sales invoices
+        final deleted = await db.delete(
+          'sales_invoices',
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted sales invoices');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting multiple sales invoices: $e');
+      return -1;
+    }
+  }
+
+  /// Delete sales invoices by invoice_numbers (since UI groups by number)
+  Future<int> deleteSalesInvoicesByNumbers(List<String> invoiceNumbers) async {
+    if (invoiceNumbers.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(invoiceNumbers.length, '?').join(',');
+
+        // Get all IDs matching those invoice numbers
+        final rows = await db.query(
+          'sales_invoices',
+          columns: ['id'],
+          where: 'invoice_number IN ($placeholders)',
+          whereArgs: invoiceNumbers,
+        );
+        final ids = rows.map((r) => r['id'] as int).toList();
+
+        if (ids.isEmpty) {
+          await db.execute('COMMIT');
+          return 0;
+        }
+
+        final idPlaceholders = List.filled(ids.length, '?').join(',');
+
+        // Delete invoice_items
+        await db.delete(
+          'invoice_items',
+          where: 'invoice_id IN ($idPlaceholders)',
+          whereArgs: ids,
+        );
+
+        // Delete sell_loan_payments + sell_loans
+        final loans = await db.query(
+          'sell_loans',
+          where: 'sale_invoice_id IN ($idPlaceholders)',
+          whereArgs: ids,
+        );
+        for (var loan in loans) {
+          await db.delete(
+            'sell_loan_payments',
+            where: 'loan_id = ?',
+            whereArgs: [loan['id']],
+          );
+        }
+        if (loans.isNotEmpty) {
+          await db.delete(
+            'sell_loans',
+            where: 'sale_invoice_id IN ($idPlaceholders)',
+            whereArgs: ids,
+          );
+        }
+
+        // Delete sales invoices
+        final deleted = await db.delete(
+          'sales_invoices',
+          where: 'id IN ($idPlaceholders)',
+          whereArgs: ids,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted sales invoices by numbers');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting sales invoices by numbers: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL sales invoices and their associated data
+  Future<int> deleteAllSalesInvoices() async {
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        await db.delete('invoice_items');
+        await db.delete('sell_loan_payments');
+        await db.delete('sell_loans');
+        final deleted = await db.delete('sales_invoices');
+
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted sales invoices');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all sales invoices: $e');
+      return -1;
+    }
+  }
+
+
+    // ============ BULK DELETE RETURNED SALES ============
+
+  /// Restore stock then delete the sales invoices by their IDs
+  /// WARNING: This restores stock for returned items before deleting.
+  /// For full invoice delete (removing the entire record), we do NOT restore stock.
+  Future<int> deleteMultipleSalesInvoicesRaw(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(ids.length, '?').join(',');
+
+        // Delete associated invoice_items
+        await db.delete(
+          'invoice_items',
+          where: 'invoice_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        // Delete sell_loan_payments + sell_loans
+        final loans = await db.query(
+          'sell_loans',
+          where: 'sale_invoice_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+        for (var loan in loans) {
+          await db.delete(
+            'sell_loan_payments',
+            where: 'loan_id = ?',
+            whereArgs: [loan['id']],
+          );
+        }
+        if (loans.isNotEmpty) {
+          await db.delete(
+            'sell_loans',
+            where: 'sale_invoice_id IN ($placeholders)',
+            whereArgs: ids,
+          );
+        }
+
+        // Delete the sales invoices
+        final deleted = await db.delete(
+          'sales_invoices',
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted returned sales invoices');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting returned sales invoices: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL returned sales invoices (only the ones marked as returned)
+  Future<int> deleteAllReturnedSalesInvoices() async {
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        // Get all returned invoice IDs
+        final rows = await db.query(
+          'sales_invoices',
+          columns: ['id'],
+          where: 'is_back_returned = ?',
+          whereArgs: [1],
+        );
+        final ids = rows.map((r) => r['id'] as int).toList();
+
+        if (ids.isEmpty) {
+          await db.execute('COMMIT');
+          return 0;
+        }
+
+        final placeholders = List.filled(ids.length, '?').join(',');
+
+        // Delete invoice_items
+        await db.delete(
+          'invoice_items',
+          where: 'invoice_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        // Delete sell_loan_payments + sell_loans
+        final loans = await db.query(
+          'sell_loans',
+          where: 'sale_invoice_id IN ($placeholders)',
+          whereArgs: ids,
+        );
+        for (var loan in loans) {
+          await db.delete(
+            'sell_loan_payments',
+            where: 'loan_id = ?',
+            whereArgs: [loan['id']],
+          );
+        }
+        if (loans.isNotEmpty) {
+          await db.delete(
+            'sell_loans',
+            where: 'sale_invoice_id IN ($placeholders)',
+            whereArgs: ids,
+          );
+        }
+
+        // Delete returned sales invoices only
+        final deleted = await db.delete(
+          'sales_invoices',
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted returned sales invoices');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all returned sales invoices: $e');
+      return -1;
+    }
+  }
+  
+    // ============ BULK DELETE SERVICE INVOICES ============
+
+  /// Delete multiple service invoices by their invoice numbers
+  /// (since the UI groups by invoice_number)
+  Future<int> deleteServiceInvoicesByNumbers(List<String> invoiceNumbers) async {
+    if (invoiceNumbers.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(invoiceNumbers.length, '?').join(',');
+        final deleted = await db.delete(
+          'service_invoices',
+          where: 'invoice_number IN ($placeholders)',
+          whereArgs: invoiceNumbers,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted service invoices by numbers');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting service invoices by numbers: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL service invoices
+  Future<int> deleteAllServiceInvoices() async {
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final deleted = await db.delete('service_invoices');
+
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted service invoices');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all service invoices: $e');
+      return -1;
+    }
+  }
+
+    // ============ BULK DELETE DAILY EXPENSES ============
+
+  /// Delete multiple daily expenses by their IDs
+  Future<int> deleteMultipleDailyExpenses(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(ids.length, '?').join(',');
+        final deleted = await db.delete(
+          'daily_expenses',
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted daily expenses');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting multiple daily expenses: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL daily expenses
+  Future<int> deleteAllDailyExpenses() async {
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final deleted = await db.delete('daily_expenses');
+
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted daily expenses');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all daily expenses: $e');
+      return -1;
+    }
+  }
+  // ============ BULK DELETE WASTE RECORDS ============
+
+  /// Delete multiple waste records by their invoice numbers
+  /// (since the UI groups by invoice_number)
+  Future<int> deleteWasteRecordsByNumbers(List<String> invoiceNumbers) async {
+    if (invoiceNumbers.isEmpty) return 0;
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final placeholders = List.filled(invoiceNumbers.length, '?').join(',');
+        final deleted = await db.delete(
+          'waste_material_losses',
+          where: 'invoice_number IN ($placeholders)',
+          whereArgs: invoiceNumbers,
+        );
+
+        await db.execute('COMMIT');
+        print('✅ Deleted $deleted waste records by numbers');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting waste records by numbers: $e');
+      return -1;
+    }
+  }
+
+  /// Delete ALL waste records
+  Future<int> deleteAllWasteRecords() async {
+    try {
+      final db = await database;
+
+      await db.execute('BEGIN TRANSACTION');
+      try {
+        final deleted = await db.delete('waste_material_losses');
+
+        await db.execute('COMMIT');
+        print('✅ Deleted ALL $deleted waste records');
+        return deleted;
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ Error deleting all waste records: $e');
+      return -1;
+    }
+  }
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     try {
       print('🔄 Upgrading database from version $oldVersion to $newVersion...');
@@ -1457,61 +2062,58 @@ if (oldVersion < 38) {
 
   // ============ PRODUCT STOCK MANAGEMENT ============
 
-  Future<bool> deductProductStock(int productId, double weightToDeduct, String unit) async {
-    try {
-      final db = await database;
-      
-      final product = await db.query(
-        'produced_products',
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-      
-      if (product.isEmpty) {
-        print('❌ Product not found: $productId');
-        return false;
-      }
-      
-      final currentStock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
-      final productUnit = product.first['unit']?.toString() ?? '';
-      final totalWeight = double.tryParse(product.first['total_weight']?.toString() ?? '0') ?? 0;
-      
-      double weightToDeductInKg = _convertToKg(weightToDeduct, unit);
-      double currentStockInKg = _convertToKg(currentStock, productUnit);
-      
-      if (currentStock == 0 && totalWeight > 0) {
-        await db.update(
-          'produced_products',
-          {'remaining_stock': totalWeight},
-          where: 'id = ?',
-          whereArgs: [productId],
-        );
-        currentStockInKg = _convertToKg(totalWeight, productUnit);
-      }
-      
-      if (weightToDeductInKg > currentStockInKg) {
-        print('❌ Insufficient stock! Available: ${currentStockInKg}kg, Requested: ${weightToDeductInKg}kg');
-        return false;
-      }
-      
-      double newStockInKg = currentStockInKg - weightToDeductInKg;
-      double newStockInProductUnit = _convertFromKg(newStockInKg, productUnit);
-      
-      await db.update(
-        'produced_products',
-        {'remaining_stock': newStockInProductUnit},
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-      
-      print('✅ Product $productId stock updated: ${currentStockInKg}kg -> ${newStockInKg}kg');
-      return true;
-      
-    } catch (e) {
-      print('❌ Error deducting product stock: $e');
+  Future<bool> deductProductStock(int productId, double weightToDeductInKg) async {
+  try {
+    final db = await database;
+    
+    final product = await db.query(
+      'produced_products',
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+    
+    if (product.isEmpty) {
+      print('❌ Product not found: $productId');
       return false;
     }
+    
+    final currentStock = double.tryParse(product.first['remaining_stock']?.toString() ?? '0') ?? 0;
+    final totalWeight = double.tryParse(product.first['total_weight']?.toString() ?? '0') ?? 0;
+    
+    // If remaining_stock is 0, initialize it with total_weight
+    double actualStock = currentStock;
+    if (actualStock == 0 && totalWeight > 0) {
+      actualStock = totalWeight;
+      await db.update(
+        'produced_products',
+        {'remaining_stock': totalWeight},
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+    }
+    
+    if (weightToDeductInKg > actualStock) {
+      print('❌ Insufficient stock! Available: ${actualStock}kg, Requested: ${weightToDeductInKg}kg');
+      return false;
+    }
+    
+    double newStock = actualStock - weightToDeductInKg;
+    
+    await db.update(
+      'produced_products',
+      {'remaining_stock': newStock},
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+    
+    print('✅ Product $productId stock: ${actualStock}kg -> ${newStock}kg');
+    return true;
+    
+  } catch (e) {
+    print('❌ Error deducting product stock: $e');
+    return false;
   }
+}
 
   double _convertToKg(double weight, String unit) {
     if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
@@ -1530,6 +2132,24 @@ if (oldVersion < 38) {
     }
     return weightInKg;
   }
+
+
+  Future<List<Map<String, dynamic>>> getProductSalesHistory(int productId) async {
+  try {
+    final db = await database;
+    return await db.query(
+      'sales_invoices',
+      where: 'produced_product_id = ? AND (sale_type = ? OR sale_type IS NULL)',
+      whereArgs: [productId, 'فروش'],
+      orderBy: 'date_en ASC, created_at ASC',
+    );
+  } catch (e) {
+    print('❌ Error getting product sales history: $e');
+    return [];
+  }
+}
+
+
 
   Future<Map<String, dynamic>> getProductStock(int productId) async {
     try {

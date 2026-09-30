@@ -29,6 +29,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   DateTime? _selectedDate;
   String _selectedCurrency = 'همه';
 
+  // ✅ Selection state for bulk delete
+  final Set<int> _selectedIds = {};
+
   final TextEditingController _invoiceNumberController = TextEditingController();
   final TextEditingController _registrationNumberController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
@@ -39,14 +42,24 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   final TextEditingController _exchangeRateController = TextEditingController();
   final TextEditingController _equivalentController = TextEditingController();
 
+  // ✅ UPDATED: Categories exactly as per your image
   final List<String> _categories = [
     'همه',
-    'سوخت',
-    'مواد اولیه',
-    'حقوق کارگران',
-    'تعمیرات',
-    'حمل و نقل',
-    'سایر',
+    'معاشات پرسونل فابریکه',
+    'اداری',
+    'اعاشه',
+    'تیلیفون/انترنت',
+    'ترانسپورت',
+    'مصرفیه برق',
+    'ترمیم ماشین آلات',
+    'برزه جات ماشین آلات',
+    'روغنيات ماشین آلات و جرب',
+    'کاری مواد',
+    'پطرول موتر فابریکه',
+    'ترمیم موتر فابریکه',
+    'مالیات و مصارف اسناد',
+    'مصارف اداری بیرونی',
+    'مصرف دفتر فروشات',
   ];
 
   final List<String> _currencies = [
@@ -132,6 +145,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           });
         }
         _isLoading = false;
+        _selectedIds.clear();
       });
     } catch (e) {
       if (!mounted) return;
@@ -1223,6 +1237,329 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     );
   }
 
+  // ============================================================
+  // BULK DELETE - SELECTED EXPENSES
+  // ============================================================
+  void _showBulkDeleteDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _selectedIds.length;
+    if (count == 0) return;
+
+    final selectedExpenses = _expensesData
+        .where((e) => _selectedIds.contains(e['id'] as int))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_sweep,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'حذف هزینه‌های انتخاب شده',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'هشدار!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'شما در حال حذف $count هزینه هستید. '
+                              'این عمل قابل بازگشت نیست!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'هزینه‌های زیر حذف خواهند شد:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: selectedExpenses.map((expense) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '• ${expense['invoiceNumber'] ?? expense['registrationNumber'] ?? '-'} — ${expense['category'] ?? '-'}',
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF1A1A1A)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performBulkDelete(_selectedIds.toList());
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: Text('حذف $count مورد',
+                  style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BULK DELETE - ALL EXPENSES
+  // ============================================================
+  void _showDeleteAllDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _expensesData.length;
+    if (count == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dangerous,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'حذف تمام هزینه‌ها',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: Colors.red.withOpacity(0.3), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'هشدار جدی!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'شما در حال حذف تمام $count هزینه هستید.\n'
+                    'این عمل کاملاً غیرقابل بازگشت است!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performDeleteAll();
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: const Text('حذف همه',
+                  style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PERFORM BULK DELETE
+  // ============================================================
+  Future<void> _performBulkDelete(List<int> ids) async {
+    setState(() => _isLoading = true);
+    try {
+      final deleted = await _db.deleteMultipleDailyExpenses(ids);
+      if (!mounted) return;
+
+      if (deleted > 0) {
+        _showSnackBar('✅ $deleted هزینه با موفقیت حذف شد', Colors.green);
+        _selectedIds.clear();
+        await _loadExpenses();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackBar('❌ خطا در حذف هزینه‌ها', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackBar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // PERFORM DELETE ALL
+  // ============================================================
+  Future<void> _performDeleteAll() async {
+    setState(() => _isLoading = true);
+    try {
+      final deleted = await _db.deleteAllDailyExpenses();
+      if (!mounted) return;
+
+      if (deleted >= 0) {
+        _showSnackBar('🗑️ تمام $deleted هزینه حذف شدند',
+            Colors.red.shade700);
+        _selectedIds.clear();
+        await _loadExpenses();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackBar('❌ خطا در حذف تمام هزینه‌ها', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackBar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // TOGGLE SELECT ALL ON CURRENT PAGE
+  // ============================================================
+  void _toggleSelectAllOnPage(List<Map<String, dynamic>> data) {
+    setState(() {
+      final pageIds = data.map((e) => e['id'] as int).toList();
+      final allSelected = pageIds.every((id) => _selectedIds.contains(id));
+      if (allSelected) {
+        _selectedIds.removeAll(pageIds);
+      } else {
+        _selectedIds.addAll(pageIds);
+      }
+    });
+  }
+
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1400,6 +1737,59 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         ),
         Row(
           children: [
+            if (_selectedIds.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCB001D).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_selectedIds.length} ${l10n.selected}',
+                      style: const TextStyle(
+                        color: Color(0xFFCB001D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_selectedIds.isNotEmpty) const SizedBox(width: 8),
+            if (_selectedIds.isNotEmpty)
+              ElevatedButton.icon(
+                onPressed: () => _showBulkDeleteDialog(context, l10n),
+                icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+                label: Text(
+                  'حذف ${_selectedIds.length} مورد',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_selectedIds.isNotEmpty) const SizedBox(width: 10),
+            if (_expensesData.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () => _showDeleteAllDialog(context, l10n),
+                icon: Icon(Icons.delete_forever, color: Colors.red.shade700, size: 18),
+                label: Text(
+                  'حذف همه',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_expensesData.isNotEmpty) const SizedBox(width: 10),
             OutlinedButton.icon(
               onPressed: _importExcel,
               icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
@@ -1673,6 +2063,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   // BUILD EXPENSES TABLE
   // ============================================================
   Widget _buildExpensesTable(List<Map<String, dynamic>> data, AppLocalizations l10n) {
+    final allSelectedOnPage = data.isNotEmpty &&
+        data.every((e) => _selectedIds.contains(e['id'] as int));
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1701,6 +2094,16 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
             ),
             child: Row(
               children: [
+                SizedBox(
+                  width: 40,
+                  child: Checkbox(
+                    value: allSelectedOnPage,
+                    onChanged: (_) => _toggleSelectAllOnPage(data),
+                    activeColor: const Color(0xFFCB001D),
+                    checkColor: Colors.white,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
                 Expanded(flex: 1, child: Text('شماره بل', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text('شماره ثبت', style: const TextStyle(fontWeight: FontWeight.w600))),
                 Expanded(flex: 1, child: Text(l10n.persianDate, style: const TextStyle(fontWeight: FontWeight.w600))),
@@ -1743,16 +2146,37 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   Widget _buildTableRow(Map<String, dynamic> expense, AppLocalizations l10n) {
     double price = expense['price'] is double ? expense['price'] as double : 0.0;
     String priceDisplay = price.toStringAsFixed(0);
+    final isSelected = _selectedIds.contains(expense['id'] as int);
     
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
         border: Border(
           bottom: BorderSide(color: Colors.grey.shade100, width: 1),
         ),
       ),
       child: Row(
         children: [
+          SizedBox(
+            width: 40,
+            child: Checkbox(
+              value: isSelected,
+              onChanged: (_) {
+                setState(() {
+                  final id = expense['id'] as int;
+                  if (_selectedIds.contains(id)) {
+                    _selectedIds.remove(id);
+                  } else {
+                    _selectedIds.add(id);
+                  }
+                });
+              },
+              activeColor: const Color(0xFFCB001D),
+              checkColor: Colors.white,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
           Expanded(
             flex: 1,
             child: Text(
@@ -1947,20 +2371,39 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     );
   }
 
+  // ✅ UPDATED: Color mapping for the new categories
   Color _getCategoryColor(String category) {
     switch (category) {
-      case 'سوخت':
-        return Colors.orange.shade700;
-      case 'مواد اولیه':
-        return Colors.blue.shade700;
-      case 'حقوق کارگران':
+      case 'معاشات پرسونل فابریکه':
         return Colors.purple.shade700;
-      case 'تعمیرات':
+      case 'اداری':
+        return Colors.blue.shade700;
+      case 'اعاشه':
+        return Colors.orange.shade700;
+      case 'تیلیفون/انترنت':
+        return Colors.teal.shade700;
+      case 'ترانسپورت':
+        return Colors.indigo.shade700;
+      case 'مصرفیه برق':
+        return Colors.amber.shade800;
+      case 'ترمیم ماشین آلات':
         return Colors.red.shade700;
-      case 'حمل و نقل':
+      case 'برزه جات ماشین آلات':
+        return Colors.brown.shade700;
+      case 'روغنيات ماشین آلات و جرب':
+        return Colors.deepOrange.shade700;
+      case 'کاری مواد':
+        return Colors.cyan.shade700;
+      case 'پطرول موتر فابریکه':
         return Colors.green.shade700;
-      case 'سایر':
-        return Colors.grey.shade700;
+      case 'ترمیم موتر فابریکه':
+        return Colors.pink.shade700;
+      case 'مالیات و مصارف اسناد':
+        return Colors.deepPurple.shade700;
+      case 'مصارف اداری بیرونی':
+        return Colors.lightBlue.shade700;
+      case 'مصرف دفتر فروشات':
+        return Colors.lime.shade800;
       default:
         return Colors.grey.shade700;
     }

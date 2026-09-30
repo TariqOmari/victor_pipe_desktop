@@ -326,12 +326,8 @@ class _ServicesPageState extends State<ServicesPage> {
           continue;
         }
 
-        final existing = await _db.getServiceInvoiceByNumber(invoiceNumber);
-        if (existing != null) {
-          skippedCount++;
-          errors.add('ردیف ' + (i+1).toString() + ': شماره فاکتور "' + invoiceNumber + '" تکراری است');
-          continue;
-        }
+        // REMOVED: Duplicate invoice number check
+        // Invoice numbers CAN be duplicated (multiple service items per invoice)
 
         double totalWeight = _parseNumber(totalWeightStr);
         double unitPrice = _parseNumber(unitPriceStr);
@@ -556,15 +552,32 @@ class _ServicesPageState extends State<ServicesPage> {
         double totalPrice = 0;
         double totalFinalPrice = 0;
         String unit = 'TON';
+
+        // ✅ New: per-currency totals
+        double totalSellAfn = 0;
+        double totalSellUsd = 0;
         
         for (var item in items) {
           final weight = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
           final price = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
           final fPrice = double.tryParse(item['final_price']?.toString() ?? '0') ?? 0;
+          final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+          final cur = item['currency']?.toString() ?? 'USD';
+
           totalWeight += weight;
           totalPrice += price;
           totalFinalPrice = fPrice;
           if (item['unit'] != null) unit = item['unit'].toString();
+
+          // ✅ Convert each item to both currencies
+          // For services, "final_price" is the item final amount in its own currency
+          if (cur == 'USD') {
+            totalSellUsd += fPrice;
+            totalSellAfn += fPrice * rate;
+          } else {
+            totalSellAfn += fPrice;
+            totalSellUsd += rate > 0 ? fPrice / rate : 0;
+          }
         }
         
         consolidated['total_weight'] = totalWeight;
@@ -572,6 +585,10 @@ class _ServicesPageState extends State<ServicesPage> {
         consolidated['final_price'] = totalFinalPrice;
         consolidated['unit'] = unit;
         consolidated['service_count'] = items.length;
+
+        // ✅ New totals
+        consolidated['total_sell_afn'] = totalSellAfn;
+        consolidated['total_sell_usd'] = totalSellUsd;
         
         final serviceTypes = items.map((item) => item['service_type']?.toString() ?? '').where((name) => name.isNotEmpty).toList();
         consolidated['service_types'] = serviceTypes;
@@ -586,6 +603,7 @@ class _ServicesPageState extends State<ServicesPage> {
       setState(() {
         _services = consolidatedServices;
         _isLoading = false;
+        _selectedServices.clear();
       });
     } catch (e) {
       if (!mounted) return;
@@ -619,11 +637,6 @@ class _ServicesPageState extends State<ServicesPage> {
       text: service?['customer_address']?.toString() ?? ''
     );
     
-    // Exchange rate controller
-    final exchangeRateController = TextEditingController(
-      text: service?['exchange_rate']?.toString() ?? '65'
-    );
-    
     // Expense Controllers - Shared across all service items (in AFN)
     final loadingController = TextEditingController(
       text: service?['loading_cost']?.toString() ?? ''
@@ -641,26 +654,59 @@ class _ServicesPageState extends State<ServicesPage> {
     final dateController = TextEditingController(
       text: service?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate()
     );
-    String selectedCurrency = service?['currency']?.toString() ?? 'USD';
     String selectedEnglishDate = service?['date_en']?.toString() ?? 
         PersianDateConverter.getEnglishDate(DateTime.now());
 
-    // Add initial empty service item
-    _serviceItems.add({
-      'id': _nextServiceItemIndex++,
-      'service_type': '',
-      'size': '',
-      'thickness': '',
-      'total_weight': 0.0,
-      'unit': 'TON',
-      'unit_price': 0.0,
-      'total_price': 0.0,
-      'serviceTypeCtrl': TextEditingController(),
-      'sizeCtrl': TextEditingController(),
-      'thicknessCtrl': TextEditingController(),
-      'weightCtrl': TextEditingController(),
-      'unitPriceCtrl': TextEditingController(),
-    });
+    // If editing, load existing items
+    if (service != null && service['items'] is List && (service['items'] as List).isNotEmpty) {
+      final existingItems = List<Map<String, dynamic>>.from(service['items']);
+      for (var item in existingItems) {
+        double w = double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0;
+        double up = double.tryParse(item['unit_price']?.toString() ?? '0') ?? 0;
+        double tp = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+        double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        String cur = item['currency']?.toString() ?? 'USD';
+
+        _serviceItems.add({
+          'id': item['id'],
+          'service_type': item['service_type']?.toString() ?? '',
+          'size': item['size']?.toString() ?? '',
+          'thickness': item['thickness']?.toString() ?? '',
+          'total_weight': w,
+          'unit': item['unit']?.toString() ?? 'TON',
+          'unit_price': up,
+          'total_price': tp,
+          'currency': cur,
+          'exchange_rate': rate,
+          'serviceTypeCtrl': TextEditingController(text: item['service_type']?.toString() ?? ''),
+          'sizeCtrl': TextEditingController(text: item['size']?.toString() ?? ''),
+          'thicknessCtrl': TextEditingController(text: item['thickness']?.toString() ?? ''),
+          'weightCtrl': TextEditingController(text: w > 0 ? w.toString() : ''),
+          'unitPriceCtrl': TextEditingController(text: up > 0 ? up.toString() : ''),
+          'rateCtrl': TextEditingController(text: rate.toString()),
+        });
+      }
+    } else {
+      // Add initial empty service item
+      _serviceItems.add({
+        'id': _nextServiceItemIndex++,
+        'service_type': '',
+        'size': '',
+        'thickness': '',
+        'total_weight': 0.0,
+        'unit': 'TON',
+        'unit_price': 0.0,
+        'total_price': 0.0,
+        'currency': 'USD',
+        'exchange_rate': 65.0,
+        'serviceTypeCtrl': TextEditingController(),
+        'sizeCtrl': TextEditingController(),
+        'thicknessCtrl': TextEditingController(),
+        'weightCtrl': TextEditingController(),
+        'unitPriceCtrl': TextEditingController(),
+        'rateCtrl': TextEditingController(text: '65'),
+      });
+    }
 
     // Helper function to calculate totals
     double getTotalWeight() {
@@ -685,6 +731,37 @@ class _ServicesPageState extends State<ServicesPage> {
       return total;
     }
 
+    // ✅ Two totals - each item's own currency converted
+    double getTotalAfn() {
+      double total = 0;
+      for (var item in _serviceItems) {
+        final tp = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+        final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        final cur = item['currency']?.toString() ?? 'USD';
+        if (cur == 'USD') {
+          total += tp * rate;
+        } else {
+          total += tp;
+        }
+      }
+      return total;
+    }
+
+    double getTotalUsd() {
+      double total = 0;
+      for (var item in _serviceItems) {
+        final tp = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+        final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        final cur = item['currency']?.toString() ?? 'USD';
+        if (cur == 'USD') {
+          total += tp;
+        } else {
+          total += rate > 0 ? tp / rate : 0;
+        }
+      }
+      return total;
+    }
+
     void updateServiceItemTotals(Map<String, dynamic> item) {
       double totalWeight = item['total_weight'] ?? 0;
       String unit = item['unit'] ?? 'TON';
@@ -702,39 +779,14 @@ class _ServicesPageState extends State<ServicesPage> {
         builder: (context, setDialogState) {
           double totalWeight = getTotalWeight();
           double totalPrice = getTotalPrice();
-          double exchangeRate = double.tryParse(exchangeRateController.text) ?? 65;
+          double totalAfn = getTotalAfn();
+          double totalUsd = getTotalUsd();
           
           // Get expense values (ALWAYS IN AFN)
           double loadingCost = double.tryParse(loadingController.text) ?? 0;
           double transferCost = double.tryParse(transferController.text) ?? 0;
           double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
           double discount = double.tryParse(discountController.text) ?? 0;
-          
-          // ✅ Calculate based on selected currency
-          double finalPrice;
-          double oppositeEquivalent;
-          String oppositeLabel;
-          
-          if (selectedCurrency == 'AFN') {
-            // When AFN: totalPrice is already in AFN
-            // Expenses are also in AFN, so no conversion needed
-            finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-            // Opposite (USD) = AFN / exchangeRate
-            oppositeEquivalent = exchangeRate > 0 ? finalPrice / exchangeRate : 0;
-            oppositeLabel = 'معادل به دالر (USD)';
-          } else {
-            // When USD: totalPrice is in USD
-            // Expenses are in AFN - convert to USD
-            double loadingCostUSD = exchangeRate > 0 ? loadingCost / exchangeRate : 0;
-            double transferCostUSD = exchangeRate > 0 ? transferCost / exchangeRate : 0;
-            double clearanceCostUSD = exchangeRate > 0 ? clearanceCost / exchangeRate : 0;
-            double discountUSD = exchangeRate > 0 ? discount / exchangeRate : 0;
-            
-            finalPrice = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
-            // Opposite (AFN) = USD * exchangeRate
-            oppositeEquivalent = finalPrice * exchangeRate;
-            oppositeLabel = 'معادل به افغانی (AFN)';
-          }
 
           return Directionality(
             textDirection: TextDirection.rtl,
@@ -744,7 +796,7 @@ class _ServicesPageState extends State<ServicesPage> {
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
               ),
               content: SizedBox(
-                width: 900,
+                width: 950,
                 height: MediaQuery.of(context).size.height * 0.85,
                 child: SingleChildScrollView(
                   child: Column(
@@ -801,6 +853,7 @@ class _ServicesPageState extends State<ServicesPage> {
                       ..._serviceItems.asMap().entries.map((entry) {
                         int index = entry.key;
                         Map<String, dynamic> item = entry.value;
+                        String itemCurrency = item['currency']?.toString() ?? 'USD';
                         
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -982,6 +1035,48 @@ class _ServicesPageState extends State<ServicesPage> {
                                   ),
                                 ],
                               ),
+
+                              const SizedBox(height: 8),
+
+                              // ✅ Currency + Rate PER ITEM
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: itemCurrency,
+                                      decoration: InputDecoration(
+                                        labelText: l10n.currency,
+                                        border: const OutlineInputBorder(),
+                                        prefixIcon: const Icon(Icons.currency_exchange, color: Color(0xFFCB001D)),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'USD', child: Text('USD')),
+                                        DropdownMenuItem(value: 'AFN', child: Text('AFN')),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setDialogState(() {
+                                          item['currency'] = value;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller: item['rateCtrl'] as TextEditingController,
+                                      label: itemCurrency == 'USD' ? 'نرخ ارز (USD→AFN)' : 'نرخ ارز (AFN→USD)',
+                                      icon: Icons.currency_exchange,
+                                      keyboardType: TextInputType.number,
+                                      l10n: l10n,
+                                      onChanged: (value) {
+                                        item['exchange_rate'] = double.tryParse(value) ?? 1;
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         );
@@ -1000,11 +1095,14 @@ class _ServicesPageState extends State<ServicesPage> {
                               'unit': 'TON',
                               'unit_price': 0.0,
                               'total_price': 0.0,
+                              'currency': 'USD',
+                              'exchange_rate': 65.0,
                               'serviceTypeCtrl': TextEditingController(),
                               'sizeCtrl': TextEditingController(),
                               'thicknessCtrl': TextEditingController(),
                               'weightCtrl': TextEditingController(),
                               'unitPriceCtrl': TextEditingController(),
+                              'rateCtrl': TextEditingController(text: '65'),
                             });
                           });
                         },
@@ -1078,47 +1176,6 @@ class _ServicesPageState extends State<ServicesPage> {
                       
                       const SizedBox(height: 16),
                       
-                      // Exchange Rate & Currency Section
-                      _buildSectionTitle('نرخ ارز و ارز', l10n),
-                      const SizedBox(height: 8),
-                      
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: exchangeRateController,
-                              label: 'نرخ ارز (USD به AFN) *',
-                              icon: Icons.currency_exchange,
-                              keyboardType: TextInputType.number,
-                              l10n: l10n,
-                              onChanged: (_) => setDialogState(() {}),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: selectedCurrency,
-                              decoration: InputDecoration(
-                                labelText: l10n.currency,
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.currency_exchange, color: Color(0xFFCB001D)),
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'USD', child: Text('USD')),
-                                DropdownMenuItem(value: 'AFN', child: Text('AFN')),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setDialogState(() {
-                                  selectedCurrency = value;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      
                       // Financial Summary
                       _buildSectionTitle(l10n.financialInfo, l10n),
                       const SizedBox(height: 8),
@@ -1130,53 +1187,50 @@ class _ServicesPageState extends State<ServicesPage> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1)),
                         ),
-                        child: Row(
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'مجموع وزن',
-                                '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} تن',
-                                const Color(0xFFCB001D),
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع وزن',
+                                    '${totalWeight.toStringAsFixed(totalWeight % 1 == 0 ? 0 : 2)} تن',
+                                    const Color(0xFFCB001D),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'تعداد خدمات',
+                                    _serviceItems.length.toString(),
+                                    Colors.blue.shade700,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'قیمت کل (${selectedCurrency})',
-                                '${selectedCurrency == 'AFN' ? 'AFN ' : '\$'}${totalPrice.toStringAsFixed(0)}',
-                                const Color(0xFFCB001D),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'تعداد خدمات',
-                                _serviceItems.length.toString(),
-                                Colors.blue.shade700,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'قیمت نهایی (${selectedCurrency})',
-                                '${selectedCurrency == 'AFN' ? 'AFN ' : '\$'}${finalPrice.toStringAsFixed(2)}',
-                                const Color(0xFFCB001D),
-                              ),
+                            const SizedBox(height: 10),
+                            // ✅ TWO TOTALS: USD & AFN (each item's own currency converted)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع قیمت (دالر)',
+                                    totalUsd.toStringAsFixed(2),
+                                    Colors.green.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع قیمت (افغانی)',
+                                    totalAfn.toStringAsFixed(0),
+                                    Colors.purple.shade700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      // Opposite Currency Equivalent
-                      _buildTextField(
-                        controller: TextEditingController(
-                          text: oppositeEquivalent.toStringAsFixed(2)
-                        ),
-                        label: oppositeLabel,
-                        icon: Icons.currency_exchange,
-                        readOnly: true,
-                        l10n: l10n,
                       ),
                       const SizedBox(height: 12),
                       
@@ -1239,59 +1293,27 @@ class _ServicesPageState extends State<ServicesPage> {
                       return;
                     }
                     
-                    if (service == null) {
-                      final existing = await _db.getServiceInvoiceByNumber(invoiceNumber);
-                      if (existing != null) {
-                        _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
-                        return;
+                    // REMOVED: Duplicate check for new service
+                    // Invoice numbers can be duplicated
+                    if (service != null) {
+                      // ===== FIX: delete old rows when editing =====
+                      final oldItems = (service['items'] is List)
+                          ? List<Map<String, dynamic>>.from(service['items'])
+                          : <Map<String, dynamic>>[];
+                      for (var oldItem in oldItems) {
+                        if (oldItem['id'] != null) {
+                          await _db.deleteServiceInvoice(oldItem['id'] as int);
+                        }
                       }
+                      // ============================================
                     }
-                    
-                    // Calculate totals from all items
-                    double totalWeight = 0;
-                    double totalPrice = 0;
-                    for (var item in _serviceItems) {
-                      double weight = item['total_weight'] ?? 0;
-                      String unit = item['unit'] ?? 'TON';
-                      if (unit == 'KG' || unit == 'kg' || unit == 'کیلوگرم') {
-                        totalWeight += weight / 1000;
-                      } else {
-                        totalWeight += weight;
-                      }
-                      totalPrice += item['total_price'] ?? 0;
-                    }
-                    
-                    double exchangeRate = double.tryParse(exchangeRateController.text) ?? 65;
                     
                     // Get expense values (ALWAYS IN AFN)
                     double loadingCost = double.tryParse(loadingController.text) ?? 0;
                     double transferCost = double.tryParse(transferController.text) ?? 0;
                     double clearanceCost = double.tryParse(clearanceController.text) ?? 0;
                     double discount = double.tryParse(discountController.text) ?? 0;
-                    
-                    // ✅ Calculate based on selected currency
-                    double finalPrice;
-                    double oppositeEquivalent;
-                    
-                    if (selectedCurrency == 'AFN') {
-                      // AFN: totalPrice is in AFN
-                      // Expenses are in AFN, no conversion
-                      finalPrice = totalPrice + loadingCost + transferCost + clearanceCost - discount;
-                      // ✅ Save USD equivalent (AFN / rate)
-                      oppositeEquivalent = exchangeRate > 0 ? finalPrice / exchangeRate : 0;
-                    } else {
-                      // USD: totalPrice is in USD
-                      // Expenses are in AFN - convert to USD
-                      double loadingCostUSD = exchangeRate > 0 ? loadingCost / exchangeRate : 0;
-                      double transferCostUSD = exchangeRate > 0 ? transferCost / exchangeRate : 0;
-                      double clearanceCostUSD = exchangeRate > 0 ? clearanceCost / exchangeRate : 0;
-                      double discountUSD = exchangeRate > 0 ? discount / exchangeRate : 0;
-                      
-                      finalPrice = totalPrice + loadingCostUSD + transferCostUSD + clearanceCostUSD - discountUSD;
-                      // ✅ Save AFN equivalent (USD * rate)
-                      oppositeEquivalent = finalPrice * exchangeRate;
-                    }
-                    
+
                     // Create separate invoice rows for each service item with SAME invoice number
                     List<int> insertedIds = [];
                     
@@ -1302,6 +1324,42 @@ class _ServicesPageState extends State<ServicesPage> {
                         double itemTotalWeight = item['total_weight'] ?? 0;
                         String itemUnit = item['unit'] ?? 'TON';
                         double itemTotalPrice = item['total_price'] ?? 0;
+                        String itemCurrency = item['currency']?.toString() ?? 'USD';
+                        double itemRate = double.tryParse(item['rateCtrl'].text) ?? 65.0;
+                        
+                        // ✅ Convert expenses (AFN) into item's currency, then add
+                        double loadingCostItem;
+                        double transferCostItem;
+                        double clearanceCostItem;
+                        double discountItem;
+                        
+                        if (itemCurrency == 'AFN') {
+                          // Expenses already in AFN
+                          loadingCostItem = loadingCost;
+                          transferCostItem = transferCost;
+                          clearanceCostItem = clearanceCost;
+                          discountItem = discount;
+                        } else {
+                          // Convert AFN → USD
+                          loadingCostItem = itemRate > 0 ? loadingCost / itemRate : 0;
+                          transferCostItem = itemRate > 0 ? transferCost / itemRate : 0;
+                          clearanceCostItem = itemRate > 0 ? clearanceCost / itemRate : 0;
+                          discountItem = itemRate > 0 ? discount / itemRate : 0;
+                        }
+                        
+                        double itemFinalPrice = itemTotalPrice 
+                            + loadingCostItem 
+                            + transferCostItem 
+                            + clearanceCostItem 
+                            - discountItem;
+                        
+                        // ✅ Opposite equivalent (used as afn_equivalent field)
+                        double itemAfnEquivalent;
+                        if (itemCurrency == 'USD') {
+                          itemAfnEquivalent = itemFinalPrice * itemRate;
+                        } else {
+                          itemAfnEquivalent = itemFinalPrice;
+                        }
                         
                         final payload = {
                           'invoice_number': invoiceNumber,
@@ -1315,14 +1373,14 @@ class _ServicesPageState extends State<ServicesPage> {
                           'unit': itemUnit,
                           'unit_price': item['unit_price'] ?? 0,
                           'total_price': itemTotalPrice,
-                          'currency': selectedCurrency,
-                          'exchange_rate': exchangeRate,
+                          'currency': itemCurrency,
+                          'exchange_rate': itemRate,
                           'loading_cost': loadingCost,
                           'transfer_cost': transferCost,
                           'clearance_cost': clearanceCost,
                           'discount': discount,
-                          'final_price': finalPrice,
-                          'afn_equivalent': oppositeEquivalent,
+                          'final_price': itemFinalPrice,
+                          'afn_equivalent': itemAfnEquivalent,
                           'date': dateController.text.trim(),
                           'date_en': selectedEnglishDate,
                         };
@@ -1399,6 +1457,8 @@ class _ServicesPageState extends State<ServicesPage> {
           'unit': invoice['unit']?.toString() ?? 'TON',
           'unit_price': double.tryParse(invoice['unit_price']?.toString() ?? '0') ?? 0,
           'total_price': double.tryParse(invoice['total_price']?.toString() ?? '0') ?? 0,
+          'currency': invoice['currency']?.toString() ?? 'USD',
+          'exchange_rate': double.tryParse(invoice['exchange_rate']?.toString() ?? '65') ?? 65,
         });
       }
     }
@@ -1482,7 +1542,6 @@ class _ServicesPageState extends State<ServicesPage> {
                             ),
                             child: Column(
                               children: [
-                                // Row 1: Customer & Invoice Number
                                 Container(
                                   decoration: const BoxDecoration(
                                     border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
@@ -1539,7 +1598,6 @@ class _ServicesPageState extends State<ServicesPage> {
                                     ],
                                   ),
                                 ),
-                                // Row 2: Phone & Date
                                 Container(
                                   decoration: const BoxDecoration(
                                     border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
@@ -1596,7 +1654,6 @@ class _ServicesPageState extends State<ServicesPage> {
                                     ],
                                   ),
                                 ),
-                                // Row 3: Address & Date EN
                                 Row(
                                   children: [
                                     Expanded(
@@ -1726,16 +1783,17 @@ class _ServicesPageState extends State<ServicesPage> {
   }
 
   // ============================================
-  // SERVICE INVOICE TABLE
+  // SERVICE INVOICE TABLE (per-row currency + rate)
   // ============================================
   Widget _buildServiceInvoiceTable(List<Map<String, dynamic>> items, Map<String, dynamic> invoice, AppLocalizations l10n) {
-    const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
-    const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
+    const headerFont = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black);
+    const bodyFont = TextStyle(fontSize: 10, color: Colors.black);
 
     List<List<String>> tableData = [];
     int rowIndex = 1;
     double totalWeightSum = 0;
-    double totalPriceSum = 0;
+    double totalPriceAfnSum = 0;
+    double totalPriceUsdSum = 0;
 
     for (var item in items) {
       String serviceType = item['service_type']?.toString() ?? '-';
@@ -1745,9 +1803,18 @@ class _ServicesPageState extends State<ServicesPage> {
       String unit = item['unit']?.toString() ?? 'TON';
       double unitPrice = item['unit_price'] ?? 0;
       double totalPrice = item['total_price'] ?? 0;
+      String cur = item['currency']?.toString() ?? 'USD';
+      double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
 
       totalWeightSum += totalWeight;
-      totalPriceSum += totalPrice;
+
+      if (cur == 'USD') {
+        totalPriceUsdSum += totalPrice;
+        totalPriceAfnSum += totalPrice * rate;
+      } else {
+        totalPriceAfnSum += totalPrice;
+        totalPriceUsdSum += rate > 0 ? totalPrice / rate : 0;
+      }
 
       String displayWeight = unit == 'KG' || unit == 'kg' 
           ? (totalWeight / 1000).toStringAsFixed(2)
@@ -1762,13 +1829,15 @@ class _ServicesPageState extends State<ServicesPage> {
         '$displayWeight $displayUnit',
         unitPrice.toStringAsFixed(0),
         totalPrice.toStringAsFixed(0),
+        cur,
+        rate.toStringAsFixed(0),
       ]);
       rowIndex++;
     }
 
     // Add empty rows to fill table
     while (tableData.length < 4) {
-      tableData.add(['', '', '', '', '', '', '']);
+      tableData.add(['', '', '', '', '', '', '', '', '']);
     }
 
     // Summary row
@@ -1778,22 +1847,26 @@ class _ServicesPageState extends State<ServicesPage> {
       '',
       '',
       totalWeightSum > 0 
-          ? '${(totalWeightSum / 1000).toStringAsFixed(2)} تن'
+          ? '${totalWeightSum.toStringAsFixed(2)} تن'
           : '0',
       '',
-      totalPriceSum.toStringAsFixed(0),
+      '',
+      '',
+      '',
     ]);
 
     return Table(
       border: TableBorder.all(color: Colors.black, width: 1),
       columnWidths: const {
-        0: FixedColumnWidth(40),
-        1: FixedColumnWidth(100),
-        2: FixedColumnWidth(70),
-        3: FixedColumnWidth(70),
-        4: FixedColumnWidth(90),
-        5: FixedColumnWidth(80),
-        6: FixedColumnWidth(90),
+        0: FixedColumnWidth(35),
+        1: FixedColumnWidth(90),
+        2: FixedColumnWidth(55),
+        3: FixedColumnWidth(55),
+        4: FixedColumnWidth(75),
+        5: FixedColumnWidth(65),
+        6: FixedColumnWidth(75),
+        7: FixedColumnWidth(45),
+        8: FixedColumnWidth(50),
       },
       children: [
         TableRow(
@@ -1806,6 +1879,8 @@ class _ServicesPageState extends State<ServicesPage> {
             'مجموع وزن',
             'قیمت واحد',
             'قیمت کل',
+            'واحد پول',
+            'نرخ ارز',
           ].map((title) => Container(
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
             alignment: Alignment.center,
@@ -1834,7 +1909,7 @@ class _ServicesPageState extends State<ServicesPage> {
   }
 
   // ============================================
-  // SERVICE FINANCIAL SUMMARY
+  // SERVICE FINANCIAL SUMMARY (AFN + USD totals)
   // ============================================
   Widget _buildServiceFinancialSummary(Map<String, dynamic> invoice, AppLocalizations l10n) {
     List<Map<String, dynamic>> items = [];
@@ -1844,30 +1919,36 @@ class _ServicesPageState extends State<ServicesPage> {
       items.add({
         'total_price': double.tryParse(invoice['total_price']?.toString() ?? '0') ?? 0,
         'total_weight': double.tryParse(invoice['total_weight']?.toString() ?? '0') ?? 0,
+        'currency': invoice['currency']?.toString() ?? 'USD',
+        'exchange_rate': double.tryParse(invoice['exchange_rate']?.toString() ?? '65') ?? 65,
       });
     }
 
-    double totalPrice = 0;
+    // ✅ Two totals: sum each item's total_price, converted to both currencies
+    double totalAfn = 0;
+    double totalUsd = 0;
+    double discountAfn = 0;
+    double discountUsd = 0;
+
     for (var item in items) {
-      totalPrice += double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+      final tp = double.tryParse(item['total_price']?.toString() ?? '0') ?? 0;
+      final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+      final cur = item['currency']?.toString() ?? 'USD';
+      final disc = double.tryParse(item['discount']?.toString() ?? '0') ?? 0;
+
+      if (cur == 'USD') {
+        totalUsd += tp;
+        totalAfn += tp * rate;
+      } else {
+        totalAfn += tp;
+        totalUsd += rate > 0 ? tp / rate : 0;
+      }
+      // Discount is always AFN
+      discountAfn += disc;
+      discountUsd += rate > 0 ? disc / rate : 0;
     }
 
-    double finalPrice = double.tryParse(invoice['final_price']?.toString() ?? '0') ?? 0;
-    double discount = double.tryParse(invoice['discount']?.toString() ?? '0') ?? 0;
-    double afnEquivalent = double.tryParse(invoice['afn_equivalent']?.toString() ?? '0') ?? 0;
-    String currency = invoice['currency']?.toString() ?? 'USD';
     double exchangeRate = double.tryParse(invoice['exchange_rate']?.toString() ?? '65') ?? 65;
-
-    // ✅ Determine opposite currency label and value
-    String oppositeLabel;
-    String oppositeValue;
-    if (currency == 'USD') {
-      oppositeLabel = 'معادل به افغانی';
-      oppositeValue = '${_formatCurrency(afnEquivalent)} AFN';
-    } else {
-      oppositeLabel = 'معادل به دالر';
-      oppositeValue = '\$${_formatCurrency(afnEquivalent)}';
-    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1898,11 +1979,11 @@ class _ServicesPageState extends State<ServicesPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'مجموع قیمت کل',
+                        'مجموع قیمت (دالر)',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
                       ),
                       Text(
-                        '${currency == 'AFN' ? 'AFN ' : '\$'}${_formatCurrency(totalPrice)}',
+                        '\$${_formatCurrency(totalUsd)}',
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFCB001D)),
                       ),
                     ],
@@ -1914,44 +1995,20 @@ class _ServicesPageState extends State<ServicesPage> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Colors.purple.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                    border: Border.all(color: Colors.purple.withOpacity(0.3), width: 1),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'نرخ ارز',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
+                        'مجموع قیمت (افغانی)',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.purple.shade700),
                       ),
                       Text(
-                        exchangeRate.toString(),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.green.withOpacity(0.3), width: 1),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        oppositeLabel,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.green.shade700),
-                      ),
-                      Text(
-                        oppositeValue,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                        'AFN ${_formatCurrency(totalAfn)}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple.shade700),
                       ),
                     ],
                   ),
@@ -1978,7 +2035,7 @@ class _ServicesPageState extends State<ServicesPage> {
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.orange.shade700),
                       ),
                       Text(
-                        'AFN ${_formatCurrency(discount)}',
+                        'AFN ${_formatCurrency(discountAfn)}',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
                       ),
                     ],
@@ -1990,20 +2047,20 @@ class _ServicesPageState extends State<ServicesPage> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.08),
+                    color: Colors.green.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.purple.withOpacity(0.3), width: 1),
+                    border: Border.all(color: Colors.green.withOpacity(0.3), width: 1),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'قیمت نهایی',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.purple.shade700),
+                        'معادل (دالر)',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.green.shade700),
                       ),
                       Text(
-                        '${currency == 'AFN' ? 'AFN ' : '\$'}${_formatCurrency(finalPrice)}',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple.shade700),
+                        '\$${_formatCurrency(totalUsd - (exchangeRate > 0 ? discountAfn / exchangeRate : 0))}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade700),
                       ),
                     ],
                   ),
@@ -2045,6 +2102,8 @@ class _ServicesPageState extends State<ServicesPage> {
           'unit': invoice['unit']?.toString() ?? 'TON',
           'unit_price': double.tryParse(invoice['unit_price']?.toString() ?? '0') ?? 0,
           'total_price': double.tryParse(invoice['total_price']?.toString() ?? '0') ?? 0,
+          'currency': invoice['currency']?.toString() ?? 'USD',
+          'exchange_rate': double.tryParse(invoice['exchange_rate']?.toString() ?? '65') ?? 65,
         });
       }
     }
@@ -2052,7 +2111,8 @@ class _ServicesPageState extends State<ServicesPage> {
     List<List<String>> tableData = [];
     int rowIndex = 1;
     double totalWeightSum = 0;
-    double totalPriceSum = 0;
+    double totalPriceAfnSum = 0;
+    double totalPriceUsdSum = 0;
 
     for (var item in items) {
       String serviceType = item['service_type']?.toString() ?? '-';
@@ -2062,9 +2122,18 @@ class _ServicesPageState extends State<ServicesPage> {
       String unit = item['unit']?.toString() ?? 'TON';
       double unitPrice = item['unit_price'] ?? 0;
       double totalPrice = item['total_price'] ?? 0;
+      String cur = item['currency']?.toString() ?? 'USD';
+      double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
 
       totalWeightSum += totalWeight;
-      totalPriceSum += totalPrice;
+
+      if (cur == 'USD') {
+        totalPriceUsdSum += totalPrice;
+        totalPriceAfnSum += totalPrice * rate;
+      } else {
+        totalPriceAfnSum += totalPrice;
+        totalPriceUsdSum += rate > 0 ? totalPrice / rate : 0;
+      }
 
       String displayWeight = unit == 'KG' || unit == 'kg' 
           ? (totalWeight / 1000).toStringAsFixed(2)
@@ -2176,12 +2245,10 @@ class _ServicesPageState extends State<ServicesPage> {
                             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                             children: [
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                                pw.Text('${l10n.totalPrice}: ${_formatCurrency(totalPriceSum)} ${getPdfValue('currency')}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
-                                pw.Text('${l10n.discount}: ${_formatCurrency(invoice['discount'])} AFN', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
+                                pw.Text('مجموع دالر: ${totalPriceUsdSum.toStringAsFixed(2)} USD', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.green)),
                               ]),
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                                pw.Text('${l10n.amountDue}: ${_formatCurrency(invoice['final_price'])} ${getPdfValue('currency') != '-' ? getPdfValue('currency') : 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
-                                pw.Text('${invoice['currency'] == 'USD' ? l10n.afnEquivalent : 'USD Equivalent'}: ${_formatCurrency(invoice['afn_equivalent'])} ${invoice['currency'] == 'USD' ? 'AFN' : 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.grey700)),
+                                pw.Text('مجموع افغانی: ${_formatCurrency(totalPriceAfnSum)} AFN', style: pw.TextStyle(font: ttf, fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
                               ]),
                             ],
                           ),
@@ -2519,11 +2586,334 @@ class _ServicesPageState extends State<ServicesPage> {
     if (confirmed != true) return;
 
     try {
-      await _db.deleteServiceInvoice(service['id']);
+      // Delete ALL items with same invoice number
+      final items = (service['items'] is List)
+          ? List<Map<String, dynamic>>.from(service['items'])
+          : <Map<String, dynamic>>[];
+      if (items.isNotEmpty) {
+        for (var it in items) {
+          if (it['id'] != null) {
+            await _db.deleteServiceInvoice(it['id'] as int);
+          }
+        }
+      } else {
+        await _db.deleteServiceInvoice(service['id']);
+      }
       await _loadServices();
       _showSnackbar(l10n.serviceDeletedSuccess, Colors.orange);
     } catch (e) {
       _showSnackbar(l10n.errorDeletingService, Colors.red);
+    }
+  }
+
+  // ============================================================
+  // BULK DELETE - SELECTED SERVICES
+  // ============================================================
+  void _showBulkDeleteDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _selectedServices.length;
+    if (count == 0) return;
+
+    final selectedServices = _services
+        .where((s) => _selectedServices.contains(
+            (s['invoice_number'] ?? s['id'] ?? '').toString()))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_sweep,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'حذف خدمات انتخاب شده',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'هشدار!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'شما در حال حذف $count فاکتور خدمت هستید. '
+                              'تمام اقلام این فاکتورها نیز پاک می‌شوند. '
+                              'این عمل قابل بازگشت نیست!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'خدمات زیر حذف خواهند شد:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: selectedServices.map((service) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '• ${service['invoice_number'] ?? '-'} — ${service['customer_name'] ?? '-'}',
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF1A1A1A)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performBulkDelete(_selectedServices.toList());
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: Text('حذف $count مورد',
+                  style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BULK DELETE - ALL SERVICES
+  // ============================================================
+  void _showDeleteAllDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _services.length;
+    if (count == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dangerous,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'حذف تمام خدمات',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: Colors.red.withOpacity(0.3), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'هشدار جدی!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'شما در حال حذف تمام $count فاکتور خدمت هستید.\n'
+                    'تمام اقلام این فاکتورها نیز پاک خواهند شد.\n'
+                    'این عمل کاملاً غیرقابل بازگشت است!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performDeleteAll();
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: const Text('حذف همه',
+                  style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PERFORM BULK DELETE
+  // ============================================================
+  Future<void> _performBulkDelete(List<String> invoiceNumbers) async {
+    setState(() => _isLoading = true);
+    try {
+      final deleted = await _db.deleteServiceInvoicesByNumbers(invoiceNumbers);
+      if (!mounted) return;
+
+      if (deleted > 0) {
+        _showSnackbar('✅ $deleted فاکتور خدمت با موفقیت حذف شد', Colors.green);
+        _selectedServices.clear();
+        await _loadServices();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف خدمات', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // PERFORM DELETE ALL
+  // ============================================================
+  Future<void> _performDeleteAll() async {
+    setState(() => _isLoading = true);
+    try {
+      final deleted = await _db.deleteAllServiceInvoices();
+      if (!mounted) return;
+
+      if (deleted >= 0) {
+        _showSnackbar('🗑️ تمام $deleted فاکتور خدمت حذف شدند',
+            Colors.red.shade700);
+        _selectedServices.clear();
+        await _loadServices();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف تمام خدمات', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
     }
   }
 
@@ -2563,6 +2953,59 @@ class _ServicesPageState extends State<ServicesPage> {
         ),
         Row(
           children: [
+            if (_selectedServices.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCB001D).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_selectedServices.length} ${l10n.selected}',
+                      style: const TextStyle(
+                        color: Color(0xFFCB001D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_selectedServices.isNotEmpty) const SizedBox(width: 8),
+            if (_selectedServices.isNotEmpty)
+              ElevatedButton.icon(
+                onPressed: () => _showBulkDeleteDialog(context, l10n),
+                icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+                label: Text(
+                  'حذف ${_selectedServices.length} مورد',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_selectedServices.isNotEmpty) const SizedBox(width: 10),
+            if (_services.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () => _showDeleteAllDialog(context, l10n),
+                icon: Icon(Icons.delete_forever, color: Colors.red.shade700, size: 18),
+                label: Text(
+                  'حذف همه',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_services.isNotEmpty) const SizedBox(width: 10),
             OutlinedButton.icon(
               onPressed: _importExcel,
               icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
@@ -2596,8 +3039,16 @@ class _ServicesPageState extends State<ServicesPage> {
   Widget _buildQuickStats(AppLocalizations l10n) {
     final totalServices = _services.length;
     
-    // Calculate total revenue from final_price of each service
-    final totalRevenue = _services.fold<double>(0, (sum, item) => sum + (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0));
+    // Calculate total USD and AFN
+    double totalUsd = 0;
+    double totalAfn = 0;
+    
+    for (var service in _services) {
+      final usd = double.tryParse(service['total_sell_usd']?.toString() ?? '0') ?? 0;
+      final afn = double.tryParse(service['total_sell_afn']?.toString() ?? '0') ?? 0;
+      totalUsd += usd;
+      totalAfn += afn;
+    }
     
     // Calculate total weight
     double totalWeightInTons = 0;
@@ -2611,16 +3062,13 @@ class _ServicesPageState extends State<ServicesPage> {
       }
     }
     
-    // Calculate USD total
-    final usdTotal = _services.fold<double>(0, (sum, item) => sum + ((item['currency'] == 'USD' ? (double.tryParse(item['final_price']?.toString() ?? '0') ?? 0) : 0)));
-    
     return Row(
       children: [
-        _buildStatCard(l10n.totalRevenue, '\$${_formatCurrency(totalRevenue)}', Icons.attach_money_outlined, const Color(0xFFCB001D)),
-        const SizedBox(width: 12),
         _buildStatCard(l10n.totalServicesCount, totalServices.toString(), Icons.design_services_outlined, Colors.blue.shade700),
         const SizedBox(width: 12),
-        _buildStatCard(l10n.usdTotalServices, '\$${_formatCurrency(usdTotal)}', Icons.currency_exchange, Colors.green.shade700),
+        _buildStatCard('مجموع دالر', '\$${_formatCurrency(totalUsd)}', Icons.attach_money, Colors.green.shade700),
+        const SizedBox(width: 12),
+        _buildStatCard('مجموع افغانی', 'AFN ${_formatCurrency(totalAfn)}', Icons.currency_exchange, Colors.purple.shade700),
         const SizedBox(width: 12),
         _buildStatCard('مجموع وزن', '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 2)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
@@ -2763,13 +3211,12 @@ Widget _buildServicesTable(List<Map<String, dynamic>> data, AppLocalizations l10
                           _buildHeaderCell(l10n.customerPhone, 110),
                           _buildHeaderCell('خدمات', 140),
                           _buildHeaderCell('مجموع وزن', 90),
-                          _buildHeaderCell('قیمت کل', 100),
+                          _buildHeaderCell('مجموع دالر', 110),
+                          _buildHeaderCell('مجموع افغانی', 110),
                           _buildHeaderCell('بارگیری (AFN)', 90),
                           _buildHeaderCell('حمل (AFN)', 90),
                           _buildHeaderCell('ترخیص (AFN)', 90),
                           _buildHeaderCell('تخفیف (AFN)', 90),
-                          _buildHeaderCell('قیمت نهایی (USD)', 110),
-                          _buildHeaderCell('معادل (AFN)', 100),
                           _buildHeaderCell('تاریخ', 100),
                           _buildHeaderCell(l10n.actions, 140),
                         ],
@@ -2804,30 +3251,10 @@ Widget _buildServicesTable(List<Map<String, dynamic>> data, AppLocalizations l10
                         double transferCost = double.tryParse(service['transfer_cost']?.toString() ?? '0') ?? 0;
                         double clearanceCost = double.tryParse(service['clearance_cost']?.toString() ?? '0') ?? 0;
                         double discount = double.tryParse(service['discount']?.toString() ?? '0') ?? 0;
-                        String currency = service['currency']?.toString() ?? 'USD';
-                        
-                        double exchangeRate = double.tryParse(service['exchange_rate']?.toString() ?? '65') ?? 65;
-                        if (exchangeRate <= 0) exchangeRate = 1;
-                        
-                        double finalPriceRaw = double.tryParse(service['final_price']?.toString() ?? '0') ?? 0;
-                        double totalPriceRaw = double.tryParse(service['total_price']?.toString() ?? '0') ?? 0;
-                        
-                        // ✅ FINAL PRICE: always USD
-                        // If currency is USD → use directly
-                        // If currency is AFN → convert to USD
-                        double finalPriceUSD = currency == 'USD' 
-                            ? finalPriceRaw 
-                            : finalPriceRaw / exchangeRate;
-                        double totalPriceUSD = currency == 'USD' 
-                            ? totalPriceRaw 
-                            : totalPriceRaw / exchangeRate;
-                        
-                        // ✅ EQUIVALENT: always AFN
-                        // If currency is AFN → use directly
-                        // If currency is USD → convert to AFN
-                        double equivalentAFN = currency == 'AFN' 
-                            ? finalPriceRaw 
-                            : finalPriceRaw * exchangeRate;
+
+                        // ✅ Read the precomputed totals
+                        double totalUsd = double.tryParse(service['total_sell_usd']?.toString() ?? '0') ?? 0;
+                        double totalAfn = double.tryParse(service['total_sell_afn']?.toString() ?? '0') ?? 0;
                         
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -2894,8 +3321,8 @@ Widget _buildServicesTable(List<Map<String, dynamic>> data, AppLocalizations l10
                                 ),
                               ),
                               _buildDataCell(displayWeight, 90),
-                              // قمیت کل — always in the original currency (as user entered)
-                              _buildDataCell('\$${_formatCurrency(totalPriceUSD)}', 100),
+                              _buildDataCell('\$${_formatCurrency(totalUsd)}', 110, isBold: true, color: Colors.green.shade700),
+                              _buildDataCell('AFN ${_formatCurrency(totalAfn)}', 110, isBold: true, color: Colors.purple.shade700),
                               
                               _buildDataCell(
                                 loadingCost > 0 ? _formatCurrency(loadingCost) : '-', 
@@ -2917,11 +3344,6 @@ Widget _buildServicesTable(List<Map<String, dynamic>> data, AppLocalizations l10
                                 90, 
                                 color: discount > 0 ? Colors.red.shade700 : Colors.grey,
                               ),
-                              
-                              // ✅ قیمت نهایی — ALWAYS USD
-                              _buildDataCell('\$${_formatCurrency(finalPriceUSD)}', 110, isBold: true, color: const Color(0xFFCB001D)),
-                              // ✅ معادل — ALWAYS AFN
-                              _buildDataCell('AFN ${_formatCurrency(equivalentAFN)}', 100, color: Colors.green.shade700),
                               _buildDataCell(service['date'] ?? '-', 100),
                               
                               SizedBox(
@@ -3008,9 +3430,9 @@ Widget _buildServicesTable(List<Map<String, dynamic>> data, AppLocalizations l10
                 Text('${l10n.selected}: ${_selectedServices.length}'),
                 const SizedBox(width: 12),
                 ElevatedButton(
-                  onPressed: _selectedServices.isEmpty ? null : () {
-                    // Bulk actions placeholder
-                  },
+                  onPressed: _selectedServices.isEmpty
+                      ? null
+                      : () => _showBulkDeleteDialog(context, l10n),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFCB001D),
                     foregroundColor: Colors.white,

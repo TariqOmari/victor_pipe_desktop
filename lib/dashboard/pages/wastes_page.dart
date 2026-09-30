@@ -217,56 +217,48 @@ class _WastesPageState extends State<WastesPage> {
       int sellCustomerNameIndex = -1;
       int driverNameIndex = -1;
       int numberPlateIndex = -1;
-      int initialValueIndex = -1;  // ADDED
+      int initialValueIndex = -1;
 
       for (int i = 0; i < headers.length; i++) {
-        String h = headers[i];
-        String hLower = h.toLowerCase();
+  String h = headers[i];
+  String hLower = h.toLowerCase().trim();
 
-        if (hLower.contains('شماره') || hLower.contains('فاکتور') ||
-            hLower.contains('invoice')) {
-          invoiceNumberIndex = i;
-        } else if (hLower.contains('تاریخ') || hLower.contains('date')) {
-          dateIndex = i;
-        } else if (hLower.contains('طرف') || hLower.contains('خریدار') ||
-            hLower.contains('فروشنده') || hLower.contains('party')) {
-          partyDetailsIndex = i;
-        } else if (hLower.contains('نوع ضایعات') || hLower.contains('ضایعات') ||
-            hLower.contains('waste') || hLower.contains('type')) {
-          wasteTypeIndex = i;
-        } else if (hLower.contains('وزن') && !hLower.contains('ناخالص') &&
-            !hLower.contains('خالص') || hLower.contains('weight')) {
-          weightIndex = i;
-        } else if (hLower.contains('تعداد') || hLower.contains('quantity') ||
-            hLower.contains('quantity')) {
-          quantityIndex = i;
-        } else if (hLower.contains('ارز') || hLower.contains('واحد پول') ||
-            hLower.contains('currency')) {
-          currencyIndex = i;
-        } else if (hLower.contains('نرخ') || hLower.contains('exchange') ||
-            hLower.contains('rate')) {
-          exchangeRateIndex = i;
-        } else if (hLower.contains('معادل') || hLower.contains('afn') ||
-            hLower.contains('افغانی')) {
-          afnEquivalentIndex = i;
-        } else if (hLower.contains('توضیحات') || hLower.contains('شرح') ||
-            hLower.contains('description')) {
-          descriptionIndex = i;
-        } else if (hLower.contains('قیمت فروش') || hLower.contains('sell price') ||
-            hLower.contains('sell_price')) {
-          sellPriceIndex = i;
-        } else if (hLower.contains('مشتری فروش') || hLower.contains('sell customer') ||
-            hLower.contains('buyer')) {
-          sellCustomerNameIndex = i;
-        } else if (hLower.contains('دریور') || hLower.contains('driver')) {
-          driverNameIndex = i;
-        } else if (hLower.contains('پلیت') || hLower.contains('plate')) {
-          numberPlateIndex = i;
-        } else if (hLower.contains('ارزش اولیه') || hLower.contains('ارزش') ||
-            hLower.contains('initial value') || hLower.contains('initial_value')) {
-          initialValueIndex = i;
-        }
-      }
+  // Check SPECIFIC / LONGER headers first
+  if (hLower.contains('شماره') || hLower.contains('فاکتور') || hLower.contains('invoice')) {
+    invoiceNumberIndex = i;
+  } else if (hLower.contains('تاریخ') || hLower.contains('date')) {
+    dateIndex = i;
+  } else if (hLower.contains('طرف') || hLower.contains('خریدار') ||
+             hLower.contains('فروشنده') || hLower.contains('party')) {
+    partyDetailsIndex = i;
+  } else if (hLower.contains('نوع ضایعات') || hLower.contains('ضایعات') ||
+             hLower.contains('waste') || hLower.contains('type')) {
+    wasteTypeIndex = i;
+  } else if ((hLower.contains('وزن') && !hLower.contains('ناخالص') && !hLower.contains('خالص')) ||
+             hLower.contains('weight')) {
+    weightIndex = i;
+  } else if (hLower.contains('تعداد') || hLower.contains('quantity')) {
+    quantityIndex = i;
+  } else if (hLower.contains('واحد پول') || hLower.contains('currency')) {
+    currencyIndex = i;
+  } else if (hLower.contains('نرخ') || hLower.contains('exchange rate') || hLower.contains('exchange_rate')) {
+    exchangeRateIndex = i;
+  } else if (hLower.contains('معادل') || hLower.contains('afn') || hLower.contains('افغانی')) {
+    afnEquivalentIndex = i;
+  } else if (hLower.contains('توضیحات') || hLower.contains('شرح') || hLower.contains('description')) {
+    descriptionIndex = i;
+  } else if (hLower.contains('قیمت فروش') || hLower.contains('sell price') || hLower.contains('sell_price')) {
+    sellPriceIndex = i;
+  } else if (hLower.contains('مشتری فروش') || hLower.contains('sell customer') || hLower.contains('buyer')) {
+    sellCustomerNameIndex = i;
+  } else if (hLower.contains('دریور') || hLower.contains('driver')) {
+    driverNameIndex = i;
+  } else if (hLower.contains('پلیت') || hLower.contains('plate')) {
+    numberPlateIndex = i;
+  } else if (hLower == 'ارزش' || hLower.contains('initial value') || hLower.contains('initial_value')) {
+    initialValueIndex = i;
+  }
+}
 
       if (dateIndex == -1) {
         return {
@@ -378,7 +370,6 @@ class _WastesPageState extends State<WastesPage> {
           }
           String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
 
-          // Use initial_value if value is not set
           double valueToUse = initialValue > 0 ? initialValue : sellPrice;
 
           Map<String, dynamic> waste = {
@@ -388,7 +379,7 @@ class _WastesPageState extends State<WastesPage> {
             'party_details': partyDetails,
             'waste_type': wasteType,
             'weight': weight,
-            'quantity': quantity > 0 ? quantity : 1,
+            'quantity': quantity,
             'initial_value': initialValue,
             'value': valueToUse,
             'currency': currencyFinal,
@@ -542,99 +533,130 @@ class _WastesPageState extends State<WastesPage> {
   // ============================================
   // LOAD WASTES WITH GROUPING
   // ============================================
-  Future<void> _loadWastes() async {
-    setState(() => _isLoading = true);
-    try {
-      final list = await _db.getWasteRecords();
-      
-      // Group by invoice_number
-      final Map<String, List<Map<String, dynamic>>> grouped = {};
-      for (var item in list) {
-        final invoiceNumber = item['invoice_number']?.toString() ?? 'unknown';
-        if (!grouped.containsKey(invoiceNumber)) {
-          grouped[invoiceNumber] = [];
-        }
-        grouped[invoiceNumber]!.add(item);
+ Future<void> _loadWastes() async {
+  setState(() => _isLoading = true);
+  try {
+    final list = await _db.getWasteRecords();
+    
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (var item in list) {
+      final invoiceNumber = item['invoice_number']?.toString() ?? 'unknown';
+      if (!grouped.containsKey(invoiceNumber)) {
+        grouped[invoiceNumber] = [];
       }
-      
-      // Convert grouped to consolidated list
-      final List<Map<String, dynamic>> consolidatedWastes = [];
-      for (var entry in grouped.entries) {
-        final items = entry.value;
-        final firstItem = items.first;
-        
-        final consolidated = Map<String, dynamic>.from(firstItem);
-        consolidated['items'] = items;
-        
-        // Calculate totals
-        double totalWeight = 0;
-        double totalQuantity = 0;
-        double totalValue = 0;
-        double totalAfnEquivalent = 0;
-        double totalSellPrice = 0;
-        double totalInitialValue = 0;
-        
-        // Collect all unique waste types and party details
-        final Set<String> wasteTypes = {};
-        final Set<String> partyDetails = {};
-        
-        for (var item in items) {
-          final weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
-          final quantity = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
-          final value = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
-          final afn = double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0;
-          final sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
-          final initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
-          
-          totalWeight += weight;
-          totalQuantity += quantity;
-          totalValue += value;
-          totalAfnEquivalent += afn;
-          totalSellPrice += sellPrice;
-          totalInitialValue += initialValue;
-          
-          final wt = item['waste_type']?.toString() ?? '';
-          if (wt.isNotEmpty) wasteTypes.add(wt);
-          
-          final pd = item['party_details']?.toString() ?? '';
-          if (pd.isNotEmpty) partyDetails.add(pd);
-        }
-        
-        consolidated['total_weight'] = totalWeight;
-        consolidated['total_quantity'] = totalQuantity;
-        consolidated['value'] = totalValue;
-        consolidated['afn_equivalent'] = totalAfnEquivalent;
-        consolidated['sell_price'] = totalSellPrice;
-        consolidated['initial_value'] = totalInitialValue;
-        consolidated['item_count'] = items.length;
-        consolidated['waste_types'] = wasteTypes.toList();
-        consolidated['display_waste_types'] = wasteTypes.join('، ');
-        consolidated['party_details'] = partyDetails.join('، ');
-        
-        consolidatedWastes.add(consolidated);
-      }
-      
-      // Sort by date descending
-      consolidatedWastes.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
-      
-      if (!mounted) return;
-      setState(() {
-        _wastes = consolidatedWastes;
-        _groupedWastes = grouped;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      _showSnackbar('خطا در بارگذاری ضایعات', Colors.red);
+      grouped[invoiceNumber]!.add(item);
     }
+    
+    final List<Map<String, dynamic>> consolidatedWastes = [];
+    for (var entry in grouped.entries) {
+      final items = entry.value;
+      final firstItem = items.first;
+      
+      final consolidated = Map<String, dynamic>.from(firstItem);
+      consolidated['items'] = items;
+      
+      double totalWeight = 0;
+      double totalQuantity = 0;
+      double totalValue = 0;
+      double totalAfnEquivalent = 0;
+      double totalSellPrice = 0;
+      double totalInitialValue = 0;
+      double totalSellAfn = 0;
+      double totalSellUsd = 0;
+      double totalAfnEquiv = 0;
+      
+      final Set<String> wasteTypes = {};
+      final Set<String> partyDetails = {};
+      final Set<String> currencies = {};
+      final Set<String> descriptions = {};
+      final Set<String> exchangeRates = {};
+      
+      for (var item in items) {
+        final weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
+        final quantity = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
+        final value = double.tryParse(item['value']?.toString() ?? '0') ?? 0;
+        final sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+        final initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+        final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        final cur = item['currency']?.toString() ?? 'USD';
+        final afnEq = double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0;
+        
+        totalWeight += weight * (quantity > 0 ? quantity : 1);
+        totalQuantity += quantity;
+        totalValue += value;
+        totalSellPrice += sellPrice;
+        totalInitialValue += initialValue;
+        totalAfnEquiv += afnEq;
+        
+        if (cur == 'USD') {
+          totalSellUsd += sellPrice;
+          totalSellAfn += sellPrice * rate;
+          totalAfnEquivalent += sellPrice * rate;
+        } else {
+          totalSellAfn += sellPrice;
+          totalSellUsd += rate > 0 ? sellPrice / rate : 0;
+          totalAfnEquivalent += sellPrice;
+        }
+        
+        final wt = item['waste_type']?.toString() ?? '';
+        if (wt.isNotEmpty) wasteTypes.add(wt);
+        
+        final pd = item['party_details']?.toString() ?? '';
+        if (pd.isNotEmpty) partyDetails.add(pd);
+        
+        if (cur.isNotEmpty) currencies.add(cur);
+        
+        // Collect descriptions
+        final desc = item['description']?.toString() ?? '';
+        if (desc.isNotEmpty) descriptions.add(desc);
+        
+        // Collect exchange rates
+        final rateStr = item['exchange_rate']?.toString() ?? '';
+        if (rateStr.isNotEmpty && rateStr != '0' && rateStr != '1') {
+          exchangeRates.add(rateStr);
+        }
+      }
+      
+      consolidated['total_weight'] = totalWeight;
+      consolidated['total_quantity'] = totalQuantity;
+      consolidated['value'] = totalValue;
+      consolidated['afn_equivalent'] = totalAfnEquivalent;
+      consolidated['total_afn_equivalent'] = totalAfnEquiv;
+      consolidated['sell_price'] = totalSellPrice;
+      consolidated['initial_value'] = totalInitialValue;
+      consolidated['total_sell_afn'] = totalSellAfn;
+      consolidated['total_sell_usd'] = totalSellUsd;
+      consolidated['item_count'] = items.length;
+      consolidated['waste_types'] = wasteTypes.toList();
+      consolidated['display_waste_types'] = wasteTypes.join('، ');
+      consolidated['party_details'] = partyDetails.join('، ');
+      consolidated['display_currencies'] = currencies.join('، ');
+      consolidated['display_descriptions'] = descriptions.join('، ');
+      consolidated['display_exchange_rates'] = exchangeRates.join('، ');
+      
+      consolidatedWastes.add(consolidated);
+    }
+    
+    consolidatedWastes.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+    
+    if (!mounted) return;
+    setState(() {
+      _wastes = consolidatedWastes;
+      _groupedWastes = grouped;
+      _isLoading = false;
+      _selectedWastes.clear();
+    });
+  } catch (e) {
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    _showSnackbar('خطا در بارگذاری ضایعات', Colors.red);
   }
+}
 
   // ============================================
-  // SHOW WASTE DIALOG WITH MULTI-ITEM SUPPORT + INITIAL VALUE
+  // SHOW WASTE DIALOG
   // ============================================
   Future<void> _showWasteDialog({Map<String, dynamic>? waste}) async {
-    // Initialize multi-item support
     _wasteItems = [];
     _nextItemIndex = 1;
     
@@ -644,9 +666,6 @@ class _WastesPageState extends State<WastesPage> {
         text: waste?['date']?.toString() ?? PersianDateConverter.getCurrentPersianDate());
     final descriptionController = TextEditingController(
         text: waste?['description']?.toString() ?? '');
-    final priceRateController = TextEditingController(
-        text: waste?['exchange_rate']?.toString() ?? '1');
-    final equivalentController = TextEditingController(text: '');
     final sellCustomerNameController = TextEditingController(
         text: waste?['sell_customer_name']?.toString() ?? '');
     final driverNameController = TextEditingController(
@@ -654,20 +673,20 @@ class _WastesPageState extends State<WastesPage> {
     final numberPlateController = TextEditingController(
         text: waste?['number_plate']?.toString() ?? '');
 
-    String selectedCurrency = waste?['currency']?.toString() ?? 'USD';
     String selectedEnglishDate = waste?['date_en']?.toString() ?? PersianDateConverter.getEnglishDate(DateTime.now());
 
-    // If editing existing waste with items, populate items
     if (waste != null && waste.containsKey('items') && waste['items'] is List) {
       final existingItems = List<Map<String, dynamic>>.from(waste['items']);
       for (var item in existingItems) {
         double w = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
-        double q = double.tryParse(item['quantity']?.toString() ?? '0') ?? 1;
+        double q = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
         double iv = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
         double sp = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+        double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        String cur = item['currency']?.toString() ?? 'USD';
         
         _wasteItems.add({
-          'id': _nextItemIndex++,
+          'id': item['id'],
           'waste_type': item['waste_type']?.toString() ?? '',
           'party_details': item['party_details']?.toString() ?? '',
           'weight': w,
@@ -675,26 +694,30 @@ class _WastesPageState extends State<WastesPage> {
           'initial_value': iv,
           'value': iv,
           'sell_price': sp,
+          'currency': cur,
+          'exchange_rate': rate,
           'description': item['description']?.toString() ?? '',
           'wasteTypeCtrl': TextEditingController(text: item['waste_type']?.toString() ?? ''),
           'partyCtrl': TextEditingController(text: item['party_details']?.toString() ?? ''),
           'weightCtrl': TextEditingController(text: w > 0 ? w.toString() : ''),
-          'quantityCtrl': TextEditingController(text: q > 1 ? q.toString() : ''),
+          'quantityCtrl': TextEditingController(text: q > 0 ? q.toString() : ''),
           'initialValueCtrl': TextEditingController(text: iv > 0 ? iv.toString() : ''),
           'sellPriceCtrl': TextEditingController(text: sp > 0 ? sp.toString() : ''),
+          'rateCtrl': TextEditingController(text: rate.toString()),
         });
       }
     } else {
-      // Add one empty item
       _wasteItems.add({
         'id': _nextItemIndex++,
         'waste_type': '',
         'party_details': '',
         'weight': 0.0,
-        'quantity': 1.0,
+        'quantity': 0.0,
         'initial_value': 0.0,
         'value': 0.0,
         'sell_price': 0.0,
+        'currency': 'USD',
+        'exchange_rate': 1.0,
         'description': '',
         'wasteTypeCtrl': TextEditingController(),
         'partyCtrl': TextEditingController(),
@@ -702,6 +725,7 @@ class _WastesPageState extends State<WastesPage> {
         'quantityCtrl': TextEditingController(),
         'initialValueCtrl': TextEditingController(),
         'sellPriceCtrl': TextEditingController(),
+        'rateCtrl': TextEditingController(text: '1'),
       });
     }
 
@@ -713,7 +737,8 @@ class _WastesPageState extends State<WastesPage> {
     double getTotalWeight() {
       double total = 0;
       for (var item in _wasteItems) {
-        total += (item['weight'] ?? 0) * (item['quantity'] ?? 1);
+        final q = (item['quantity'] ?? 0) > 0 ? (item['quantity'] ?? 0) : 1;
+        total += (item['weight'] ?? 0) * q;
       }
       return total;
     }
@@ -726,27 +751,34 @@ class _WastesPageState extends State<WastesPage> {
       return total;
     }
 
-    double getTotalSellPrice() {
+    double getTotalSellAfn() {
       double total = 0;
       for (var item in _wasteItems) {
-        total += item['sell_price'] ?? 0;
+        final sp = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+        final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        final cur = item['currency']?.toString() ?? 'USD';
+        if (cur == 'USD') {
+          total += sp * rate;
+        } else {
+          total += sp;
+        }
       }
       return total;
     }
 
-    void updateTotals() {
-      final rate = double.tryParse(priceRateController.text) ?? 1;
-      final totalValue = getTotalSellPrice();
-      
-      if (selectedCurrency == 'AFN') {
-        equivalentController.text = totalValue > 0 && rate > 0
-            ? (totalValue / rate).toStringAsFixed(2)
-            : '0';
-      } else {
-        equivalentController.text = totalValue > 0 && rate > 0
-            ? (totalValue * rate).toStringAsFixed(0)
-            : '0';
+    double getTotalSellUsd() {
+      double total = 0;
+      for (var item in _wasteItems) {
+        final sp = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+        final rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+        final cur = item['currency']?.toString() ?? 'USD';
+        if (cur == 'USD') {
+          total += sp;
+        } else {
+          total += rate > 0 ? sp / rate : 0;
+        }
       }
+      return total;
     }
 
     await showDialog(
@@ -755,8 +787,8 @@ class _WastesPageState extends State<WastesPage> {
         builder: (context, setDialogState) {
           double totalWeight = getTotalWeight();
           double totalInitialValue = getTotalInitialValue();
-          double totalSellPrice = getTotalSellPrice();
-          String weightDisplay = _formatWeightWithConversion(totalWeight);
+          double totalSellAfn = getTotalSellAfn();
+          double totalSellUsd = getTotalSellUsd();
 
           return Directionality(
             textDirection: TextDirection.rtl,
@@ -772,13 +804,12 @@ class _WastesPageState extends State<WastesPage> {
                 ],
               ),
               content: SizedBox(
-                width: 900,
+                width: 950,
                 height: MediaQuery.of(context).size.height * 0.8,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Invoice header info
                       Row(
                         children: [
                           Expanded(
@@ -817,7 +848,6 @@ class _WastesPageState extends State<WastesPage> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // Customer info (shared across all items)
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -870,7 +900,6 @@ class _WastesPageState extends State<WastesPage> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // ============ MULTI-ITEM SECTION ============
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -890,10 +919,12 @@ class _WastesPageState extends State<WastesPage> {
                                   'waste_type': '',
                                   'party_details': '',
                                   'weight': 0.0,
-                                  'quantity': 1.0,
+                                  'quantity': 0.0,
                                   'initial_value': 0.0,
                                   'value': 0.0,
                                   'sell_price': 0.0,
+                                  'currency': 'USD',
+                                  'exchange_rate': 1.0,
                                   'description': '',
                                   'wasteTypeCtrl': TextEditingController(),
                                   'partyCtrl': TextEditingController(),
@@ -901,6 +932,7 @@ class _WastesPageState extends State<WastesPage> {
                                   'quantityCtrl': TextEditingController(),
                                   'initialValueCtrl': TextEditingController(),
                                   'sellPriceCtrl': TextEditingController(),
+                                  'rateCtrl': TextEditingController(text: '1'),
                                 });
                               });
                             },
@@ -920,6 +952,7 @@ class _WastesPageState extends State<WastesPage> {
                       ..._wasteItems.asMap().entries.map((entry) {
                         int index = entry.key;
                         Map<String, dynamic> item = entry.value;
+                        String itemCurrency = item['currency']?.toString() ?? 'USD';
                         
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -1009,8 +1042,7 @@ class _WastesPageState extends State<WastesPage> {
                                       keyboardType: TextInputType.number,
                                       hint: 'پیش‌فرض ۱',
                                       onChanged: (value) {
-                                        item['quantity'] = double.tryParse(value) ?? 1;
-                                        if (item['quantity'] <= 0) item['quantity'] = 1;
+                                        item['quantity'] = double.tryParse(value) ?? 0;
                                         setDialogState(() {});
                                       },
                                     ),
@@ -1043,52 +1075,52 @@ class _WastesPageState extends State<WastesPage> {
                                       keyboardType: TextInputType.number,
                                       onChanged: (value) {
                                         item['sell_price'] = double.tryParse(value) ?? 0;
-                                        updateTotals();
                                         setDialogState(() {});
                                       },
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.withOpacity(0.06),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                    child: _buildTextField(
+                                      controller: item['rateCtrl'] as TextEditingController,
+                                      label: itemCurrency == 'USD'
+                                          ? 'نرخ ارز (USD→AFN)'
+                                          : 'نرخ ارز (AFN→USD)',
+                                      icon: Icons.currency_exchange,
+                                      keyboardType: TextInputType.number,
+                                      onChanged: (value) {
+                                        item['exchange_rate'] = double.tryParse(value) ?? 1;
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: itemCurrency,
+                                      decoration: InputDecoration(
+                                        labelText: 'واحد پول',
+                                        border: const OutlineInputBorder(),
+                                        prefixIcon: const Icon(Icons.request_quote_outlined),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
                                       ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'ارزش',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w500,
-                                              color: Colors.blue,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            (item['initial_value'] ?? 0) > 0 
-                                                ? (item['initial_value'] ?? 0).toString() 
-                                                : '0',
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFFCB001D),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'USD', child: Text('USD')),
+                                        DropdownMenuItem(value: 'AFN', child: Text('AFN')),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setDialogState(() {
+                                          item['currency'] = value;
+                                        });
+                                      },
                                     ),
                                   ),
                                 ],
                               ),
                               
-                              // Show calculated total weight for this item
                               if ((item['weight'] ?? 0) > 0) ...[
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 6),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
@@ -1111,7 +1143,7 @@ class _WastesPageState extends State<WastesPage> {
                                           ),
                                         ),
                                         child: Text(
-                                          '${(item['weight'] * item['quantity']).toStringAsFixed(((item['weight'] * item['quantity']) % 1 == 0 ? 0 : 2))} kg',
+                                          '${(item['weight'] * ((item['quantity'] ?? 0) > 0 ? (item['quantity'] ?? 0) : 1)).toStringAsFixed(((item['weight'] * ((item['quantity'] ?? 0) > 0 ? (item['quantity'] ?? 0) : 1)) % 1 == 0 ? 0 : 2))} kg',
                                           style: const TextStyle(
                                             fontSize: 10,
                                             fontWeight: FontWeight.w600,
@@ -1132,7 +1164,7 @@ class _WastesPageState extends State<WastesPage> {
                                           ),
                                         ),
                                         child: Text(
-                                          _formatWeightWithConversion(item['weight'] * item['quantity']),
+                                          _formatWeightWithConversion(item['weight'] * ((item['quantity'] ?? 0) > 0 ? (item['quantity'] ?? 0) : 1)),
                                           style: const TextStyle(
                                             fontSize: 10,
                                             fontWeight: FontWeight.w700,
@@ -1151,7 +1183,6 @@ class _WastesPageState extends State<WastesPage> {
                       
                       const SizedBox(height: 16),
                       
-                      // Summary section
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1159,92 +1190,57 @@ class _WastesPageState extends State<WastesPage> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.1)),
                         ),
-                        child: Row(
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'مجموع وزن',
-                                _formatWeightWithConversion(totalWeight),
-                                const Color(0xFFCB001D),
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع وزن',
+                                    _formatWeightWithConversion(totalWeight),
+                                    const Color(0xFFCB001D),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'تعداد اقلام',
+                                    _wasteItems.length.toString(),
+                                    Colors.blue.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع ارزش اولیه',
+                                    totalInitialValue.toStringAsFixed(0),
+                                    Colors.orange.shade700,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'تعداد اقلام',
-                                _wasteItems.length.toString(),
-                                Colors.blue.shade700,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'مجموع ارزش اولیه',
-                                totalInitialValue.toStringAsFixed(0),
-                                Colors.orange.shade700,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildFinancialSummaryItem(
-                                'مجموع قیمت فروش',
-                                '${totalSellPrice.toStringAsFixed(0)} ${selectedCurrency}',
-                                Colors.green.shade700,
-                              ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع قیمت فروش (دالر)',
+                                    totalSellUsd.toStringAsFixed(2),
+                                    Colors.green.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildFinancialSummaryItem(
+                                    'مجموع قیمت فروش (افغانی)',
+                                    totalSellAfn.toStringAsFixed(0),
+                                    Colors.purple.shade700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      // Exchange rate and currency
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildTextField(
-                              controller: priceRateController,
-                              label: selectedCurrency == 'USD'
-                                  ? 'نرخ ارز (USD به AFN) *'
-                                  : 'نرخ ارز (AFN به USD) *',
-                              icon: Icons.currency_exchange,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setDialogState(updateTotals),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTextField(
-                              controller: equivalentController,
-                              label: selectedCurrency == 'AFN'
-                                  ? 'معادل به دالر (USD)'
-                                  : 'معادل به افغانی (AFN)',
-                              icon: Icons.currency_exchange,
-                              readOnly: true,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: selectedCurrency,
-                              decoration: InputDecoration(
-                                labelText: 'واحد پول',
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.request_quote_outlined),
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'USD', child: Text('USD')),
-                                DropdownMenuItem(value: 'AFN', child: Text('AFN')),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setDialogState(() {
-                                  selectedCurrency = value;
-                                  updateTotals();
-                                });
-                              },
-                            ),
-                          ),
-                        ],
                       ),
                       const SizedBox(height: 12),
                       
@@ -1271,7 +1267,6 @@ class _WastesPageState extends State<WastesPage> {
                       return;
                     }
 
-                    // Check if at least one item has data
                     bool hasValidItem = false;
                     for (var item in _wasteItems) {
                       if ((item['waste_type']?.toString().isNotEmpty == true ||
@@ -1288,23 +1283,35 @@ class _WastesPageState extends State<WastesPage> {
 
                     final currentDate = dateController.text.trim();
                     final currentDateEn = selectedEnglishDate;
-                    final exchangeRate = double.tryParse(priceRateController.text.replaceAll(',', '')) ?? 1;
-                    final totalSellPriceSum = getTotalSellPrice();
-                    
-                    double afnEquivalent = 0;
-                    if (selectedCurrency == 'USD') {
-                      afnEquivalent = totalSellPriceSum * exchangeRate;
-                    } else {
-                      afnEquivalent = totalSellPriceSum;
-                    }
 
                     try {
+                      if (waste != null) {
+                        final oldInvoiceNumber = waste['invoice_number']?.toString();
+                        if (oldInvoiceNumber != null && oldInvoiceNumber.isNotEmpty) {
+                          final oldItems = _groupedWastes[oldInvoiceNumber] ?? [];
+                          for (var oldItem in oldItems) {
+                            await _db.deleteWasteRecord(oldItem['id']);
+                          }
+                        }
+                      }
+
                       List<int> insertedIds = [];
                       
                       for (var item in _wasteItems) {
                         if ((item['waste_type']?.toString().isNotEmpty == true ||
                              item['party_details']?.toString().isNotEmpty == true) &&
                             (item['weight'] ?? 0) > 0) {
+                          
+                          final itemCurrency = item['currency']?.toString() ?? 'USD';
+                          final itemRate = double.tryParse(item['rateCtrl'].text.replaceAll(',', '')) ?? 1.0;
+                          final itemSellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0.0;
+                          
+                          double itemAfnEquivalent;
+                          if (itemCurrency == 'USD') {
+                            itemAfnEquivalent = itemSellPrice * itemRate;
+                          } else {
+                            itemAfnEquivalent = itemSellPrice;
+                          }
                           
                           final payload = {
                             'invoice_number': invoiceNumber,
@@ -1313,16 +1320,16 @@ class _WastesPageState extends State<WastesPage> {
                             'party_details': item['party_details']?.toString() ?? '',
                             'waste_type': item['waste_type']?.toString() ?? '',
                             'weight': item['weight'] ?? 0,
-                            'quantity': (item['quantity'] ?? 1) > 0 ? (item['quantity'] ?? 1) : 1,
+                            'quantity': item['quantity'] ?? 0,
                             'initial_value': item['initial_value'] ?? 0,
-                            'value': item['initial_value'] ?? 0,  // value = initial_value
-                            'currency': selectedCurrency,
-                            'exchange_rate': exchangeRate,
+                            'value': item['initial_value'] ?? 0,
+                            'currency': itemCurrency,
+                            'exchange_rate': itemRate,
                             'description': descriptionController.text.trim(),
-                            'afn_equivalent': afnEquivalent,
+                            'afn_equivalent': itemAfnEquivalent,
                             'is_sold': 1,
-                            'sell_currency': selectedCurrency,
-                            'sell_price': item['sell_price'] ?? 0,
+                            'sell_currency': itemCurrency,
+                            'sell_price': itemSellPrice,
                             'sell_date': currentDate,
                             'sell_date_en': currentDateEn,
                             'sell_customer_name': sellCustomerNameController.text.trim(),
@@ -1350,7 +1357,6 @@ class _WastesPageState extends State<WastesPage> {
                       await _loadWastes();
                       _showSnackbar('✅ ${insertedIds.length} ضایعات با موفقیت ثبت شد', Colors.green);
                       
-                      // Show invoice modal with the consolidated data
                       final updatedWastes = await _db.getWasteRecords();
                       List<Map<String, dynamic>> invoiceItems = [];
                       for (var w in updatedWastes) {
@@ -1424,7 +1430,6 @@ class _WastesPageState extends State<WastesPage> {
     if (confirmed != true) return;
 
     try {
-      // Delete all items with this invoice number
       final items = _groupedWastes[waste['invoice_number']] ?? [];
       for (var item in items) {
         await _db.deleteWasteRecord(item['id']);
@@ -1436,26 +1441,361 @@ class _WastesPageState extends State<WastesPage> {
     }
   }
 
+  // ============================================================
+  // BULK DELETE - SELECTED WASTES
+  // ============================================================
+  void _showBulkDeleteDialog(BuildContext context) {
+    final count = _selectedWastes.length;
+    if (count == 0) return;
+
+    final selectedWastes = _wastes
+        .where((w) => _selectedWastes.contains(w['id'] as int))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_sweep,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'حذف ضایعات انتخاب شده',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'هشدار!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'شما در حال حذف $count بل ضایعات هستید. '
+                              'تمام اقلام این بل‌ها نیز پاک می‌شوند. '
+                              'این عمل قابل بازگشت نیست!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'ضایعات زیر حذف خواهند شد:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: selectedWastes.map((waste) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '• ${waste['invoice_number'] ?? '-'} — ${waste['sell_customer_name'] ?? '-'}',
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF1A1A1A)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performBulkDelete(_selectedWastes.toList());
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: Text('حذف $count مورد',
+                  style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BULK DELETE - ALL WASTES
+  // ============================================================
+  void _showDeleteAllDialog(BuildContext context) {
+    final count = _wastes.length;
+    if (count == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dangerous,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'حذف تمام ضایعات',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: Colors.red.withOpacity(0.3), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'هشدار جدی!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'شما در حال حذف تمام $count بل ضایعات هستید.\n'
+                    'تمام اقلام این بل‌ها نیز پاک خواهند شد.\n'
+                    'این عمل کاملاً غیرقابل بازگشت است!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performDeleteAll();
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: const Text('حذف همه',
+                  style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PERFORM BULK DELETE
+  // ============================================================
+  Future<void> _performBulkDelete(List<int> wasteIds) async {
+    setState(() => _isLoading = true);
+    try {
+      final selectedWastes = _wastes
+          .where((w) => wasteIds.contains(w['id'] as int))
+          .toList();
+      
+      int deletedCount = 0;
+      for (var waste in selectedWastes) {
+        final invoiceNumber = waste['invoice_number']?.toString();
+        if (invoiceNumber != null) {
+          final items = _groupedWastes[invoiceNumber] ?? [];
+          for (var item in items) {
+            await _db.deleteWasteRecord(item['id']);
+            deletedCount++;
+          }
+        }
+      }
+      
+      if (!mounted) return;
+
+      if (deletedCount > 0) {
+        _showSnackbar('✅ $deletedCount رکورد ضایعات با موفقیت حذف شد', Colors.green);
+        _selectedWastes.clear();
+        await _loadWastes();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف ضایعات', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // PERFORM DELETE ALL
+  // ============================================================
+  Future<void> _performDeleteAll() async {
+    setState(() => _isLoading = true);
+    try {
+      int deletedCount = 0;
+      for (var waste in _wastes) {
+        final invoiceNumber = waste['invoice_number']?.toString();
+        if (invoiceNumber != null) {
+          final items = _groupedWastes[invoiceNumber] ?? [];
+          for (var item in items) {
+            await _db.deleteWasteRecord(item['id']);
+            deletedCount++;
+          }
+        }
+      }
+      
+      if (!mounted) return;
+
+      if (deletedCount > 0) {
+        _showSnackbar('🗑️ تمام $deletedCount رکورد ضایعات حذف شدند',
+            Colors.red.shade700);
+        _selectedWastes.clear();
+        await _loadWastes();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف تمام ضایعات', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
+  }
+
   // ============================================
-  // INVOICE MODAL WITH MULTI-ITEM SUPPORT
+  // INVOICE MODAL
   // ============================================
   void _showInvoiceModal(BuildContext context, String invoiceNumber, Map<String, dynamic> invoice) {
     final l10n = AppLocalizations.of(context)!;
     
-    // Extract items from invoice
     List<Map<String, dynamic>> items = [];
     if (invoice.containsKey('items') && invoice['items'] is List) {
       items = List<Map<String, dynamic>>.from(invoice['items']);
     } else {
-      // Single item fallback
       items.add({
         'waste_type': invoice['waste_type']?.toString() ?? '-',
         'party_details': invoice['party_details']?.toString() ?? '',
         'weight': double.tryParse(invoice['weight']?.toString() ?? '0') ?? 0,
-        'quantity': double.tryParse(invoice['quantity']?.toString() ?? '1') ?? 1,
+        'quantity': double.tryParse(invoice['quantity']?.toString() ?? '0') ?? 0,
         'initial_value': double.tryParse(invoice['initial_value']?.toString() ?? '0') ?? 0,
         'sell_price': double.tryParse(invoice['sell_price']?.toString() ?? '0') ?? 0,
         'currency': invoice['currency']?.toString() ?? 'USD',
+        'exchange_rate': double.tryParse(invoice['exchange_rate']?.toString() ?? '1') ?? 1,
       });
     }
 
@@ -1560,45 +1900,52 @@ class _WastesPageState extends State<WastesPage> {
   }
 
   // ============================================
-  // INVOICE TABLE WITH MULTI-ITEM SUPPORT + INITIAL VALUE
+  // INVOICE TABLE (per-row currency + نرخ ارز)
   // ============================================
   Widget _buildInvoiceTableWithItems(List<Map<String, dynamic>> items, Map<String, dynamic> invoice, AppLocalizations l10n) {
-    const headerFont = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black);
-    const bodyFont = TextStyle(fontSize: 11, color: Colors.black);
+    const headerFont = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black);
+    const bodyFont = TextStyle(fontSize: 10, color: Colors.black);
 
     List<List<String>> tableData = [];
     int rowIndex = 1;
     double totalWeightSum = 0;
-    double totalInitialValueSum = 0;
-    double totalSellPriceSum = 0;
+    double totalSellAfnSum = 0;
+    double totalSellUsdSum = 0;
 
     for (var item in items) {
       String wasteType = item['waste_type']?.toString() ?? '-';
       String partyDetails = item['party_details']?.toString() ?? '';
       double weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
-      double quantity = double.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-      double initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+      double quantity = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
       double sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+      String currency = item['currency']?.toString() ?? 'USD';
+      double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
       
-      double totalWeight = weight * quantity;
+      double totalWeight = weight * (quantity > 0 ? quantity : 1);
       totalWeightSum += totalWeight;
-      totalInitialValueSum += initialValue;
-      totalSellPriceSum += sellPrice;
+
+      if (currency == 'USD') {
+        totalSellUsdSum += sellPrice;
+        totalSellAfnSum += sellPrice * rate;
+      } else {
+        totalSellAfnSum += sellPrice;
+        totalSellUsdSum += rate > 0 ? sellPrice / rate : 0;
+      }
 
       tableData.add([
         rowIndex.toString(),
         wasteType,
         partyDetails,
         _formatWeightWithConversion(weight),
-        quantity.toString(),
+        quantity > 0 ? quantity.toString() : '',
         _formatWeightWithConversion(totalWeight),
-        initialValue.toStringAsFixed(0),
         sellPrice.toStringAsFixed(0),
+        currency,
+        rate.toStringAsFixed(0),
       ]);
       rowIndex++;
     }
 
-    // Add summary row
     tableData.add([
       'مجموعه:',
       '',
@@ -1606,21 +1953,23 @@ class _WastesPageState extends State<WastesPage> {
       '',
       '',
       _formatWeightWithConversion(totalWeightSum),
-      totalInitialValueSum.toStringAsFixed(0),
-      totalSellPriceSum.toStringAsFixed(0),
+      '',
+      '',
+      '',
     ]);
 
     return Table(
       border: TableBorder.all(color: Colors.black, width: 1),
       columnWidths: const {
-        0: FixedColumnWidth(40),
-        1: FixedColumnWidth(90),
-        2: FixedColumnWidth(90),
-        3: FixedColumnWidth(70),
-        4: FixedColumnWidth(55),
+        0: FixedColumnWidth(35),
+        1: FixedColumnWidth(85),
+        2: FixedColumnWidth(85),
+        3: FixedColumnWidth(65),
+        4: FixedColumnWidth(45),
         5: FixedColumnWidth(80),
         6: FixedColumnWidth(80),
-        7: FixedColumnWidth(90),
+        7: FixedColumnWidth(45),
+        8: FixedColumnWidth(55),
       },
       children: [
         TableRow(
@@ -1632,8 +1981,9 @@ class _WastesPageState extends State<WastesPage> {
             'وزن (تن)',
             'تعداد',
             'مجموع وزن (تن)',
-            'ارزش',
-            'قیمت فروش'
+            'قیمت فروش',
+            'واحد پول',
+            'نرخ ارز',
           ].map((title) => Container(
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
             alignment: Alignment.center,
@@ -1661,12 +2011,23 @@ class _WastesPageState extends State<WastesPage> {
     );
   }
 
+  // ============================================
+  // FINANCIAL SECTION (AFN + USD totals separately)
+  // ============================================
   Widget _buildSaleFinancialSection(List<Map<String, dynamic>> items, Map<String, dynamic> invoice, AppLocalizations l10n) {
-    double totalSellPrice = 0;
-    double totalInitialValue = 0;
+    double totalSellAfn = 0;
+    double totalSellUsd = 0;
     for (var item in items) {
-      totalSellPrice += double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
-      totalInitialValue += double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+      double sp = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
+      double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+      String cur = item['currency']?.toString() ?? 'USD';
+      if (cur == 'USD') {
+        totalSellUsd += sp;
+        totalSellAfn += sp * rate;
+      } else {
+        totalSellAfn += sp;
+        totalSellUsd += rate > 0 ? sp / rate : 0;
+      }
     }
 
     return Container(
@@ -1688,34 +2049,17 @@ class _WastesPageState extends State<WastesPage> {
             children: [
               Expanded(
                 child: _buildSaleFinancialItem(
-                  'ارزش کل',
-                  _formatNumber(totalInitialValue),
-                  '',
+                  'مجموع قیمت فروش (دالر)',
+                  totalSellUsd.toStringAsFixed(2),
+                  'USD',
                   isTotal: true,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildSaleFinancialItem(
-                  'قیمت فروش کل',
-                  _formatNumber(totalSellPrice),
-                  invoice['currency']?.toString() ?? 'USD',
-                  isTotal: true,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSaleFinancialItem(
-                  'نرخ ارز',
-                  invoice['exchange_rate']?.toString() ?? '1',
-                  '',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSaleFinancialItem(
-                  'معادل افغانی',
-                  _formatNumber(invoice['afn_equivalent']),
+                  'مجموع قیمت فروش (افغانی)',
+                  _formatNumber(totalSellAfn),
                   'AFN',
                   isTotal: true,
                 ),
@@ -1778,7 +2122,6 @@ class _WastesPageState extends State<WastesPage> {
   }
 
   Widget _buildInvoiceUpperSection(Map<String, dynamic> invoice, String invoiceNumber, AppLocalizations l10n) {
-    // Get items info
     List<Map<String, dynamic>> items = [];
     if (invoice.containsKey('items') && invoice['items'] is List) {
       items = List<Map<String, dynamic>>.from(invoice['items']);
@@ -2226,7 +2569,6 @@ class _WastesPageState extends State<WastesPage> {
       ttf = pw.Font.helvetica();
     }
 
-    // Extract items
     List<Map<String, dynamic>> items = [];
     if (invoice.containsKey('items') && invoice['items'] is List) {
       items = List<Map<String, dynamic>>.from(invoice['items']);
@@ -2235,33 +2577,45 @@ class _WastesPageState extends State<WastesPage> {
         'waste_type': invoice['waste_type']?.toString() ?? '-',
         'party_details': invoice['party_details']?.toString() ?? '',
         'weight': double.tryParse(invoice['weight']?.toString() ?? '0') ?? 0,
-        'quantity': double.tryParse(invoice['quantity']?.toString() ?? '1') ?? 1,
+        'quantity': double.tryParse(invoice['quantity']?.toString() ?? '0') ?? 0,
         'initial_value': double.tryParse(invoice['initial_value']?.toString() ?? '0') ?? 0,
         'sell_price': double.tryParse(invoice['sell_price']?.toString() ?? '0') ?? 0,
+        'currency': invoice['currency']?.toString() ?? 'USD',
+        'exchange_rate': double.tryParse(invoice['exchange_rate']?.toString() ?? '1') ?? 1,
       });
     }
 
     double totalWeight = 0;
     double totalInitialValue = 0;
-    double totalSellPrice = 0;
+    double totalSellAfn = 0;
+    double totalSellUsd = 0;
     List<List<String>> tableData = [];
     int rowIndex = 1;
 
     for (var item in items) {
       double weight = double.tryParse(item['weight']?.toString() ?? '0') ?? 0;
-      double quantity = double.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      double quantity = double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
       double initialValue = double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
       double sellPrice = double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
-      double totalItemWeight = weight * quantity;
+      double rate = double.tryParse(item['exchange_rate']?.toString() ?? '1') ?? 1;
+      String cur = item['currency']?.toString() ?? 'USD';
+      double totalItemWeight = weight * (quantity > 0 ? quantity : 1);
       totalWeight += totalItemWeight;
       totalInitialValue += initialValue;
-      totalSellPrice += sellPrice;
+
+      if (cur == 'USD') {
+        totalSellUsd += sellPrice;
+        totalSellAfn += sellPrice * rate;
+      } else {
+        totalSellAfn += sellPrice;
+        totalSellUsd += rate > 0 ? sellPrice / rate : 0;
+      }
 
       tableData.add([
         rowIndex.toString(),
         item['waste_type']?.toString() ?? '-',
         _formatWeightWithConversion(weight),
-        quantity.toString(),
+        quantity > 0 ? quantity.toString() : '',
         _formatWeightWithConversion(totalItemWeight),
         initialValue.toStringAsFixed(0),
         sellPrice.toStringAsFixed(0),
@@ -2341,7 +2695,6 @@ class _WastesPageState extends State<WastesPage> {
                                 pw.Text('پلیت: ${invoice['number_plate']?.toString() ?? ''}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                               ]),
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                                pw.Text('واحد پول: ${invoice['currency']?.toString() ?? 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black)),
                                 pw.SizedBox(height: 6),
                                 pw.Text('وضعیت: ✅ فروخته شده', style: pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.green)),
                               ]),
@@ -2379,13 +2732,12 @@ class _WastesPageState extends State<WastesPage> {
                             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                             children: [
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                                pw.Text('نرخ ارز: ${invoice['exchange_rate']?.toString() ?? '1'}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                                 pw.Text('ارزش کل: ${_formatNumber(totalInitialValue)}', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
-                                pw.Text('معادل افغانی: ${_formatNumber(invoice['afn_equivalent'])} AFN', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
+                                pw.Text('مجموع افغانی: ${_formatNumber(totalSellAfn)} AFN', style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey700)),
                               ]),
                               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                                 pw.SizedBox(height: 6),
-                                pw.Text('قیمت فروش کل: ${_formatNumber(totalSellPrice)} ${invoice['currency']?.toString() ?? 'USD'}', style: pw.TextStyle(font: ttf, fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+                                pw.Text('مجموع دالر: ${totalSellUsd.toStringAsFixed(2)} USD', style: pw.TextStyle(font: ttf, fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
                               ]),
                             ],
                           ),
@@ -2540,6 +2892,66 @@ class _WastesPageState extends State<WastesPage> {
         ),
         Row(
           children: [
+            // ===== SELECTED COUNT BADGE =====
+            if (_selectedWastes.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCB001D).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_selectedWastes.length} انتخاب شده',
+                      style: const TextStyle(
+                        color: Color(0xFFCB001D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_selectedWastes.isNotEmpty) const SizedBox(width: 8),
+            
+            // ===== BULK DELETE BUTTON =====
+            if (_selectedWastes.isNotEmpty)
+              ElevatedButton.icon(
+                onPressed: () => _showBulkDeleteDialog(context),
+                icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+                label: Text(
+                  'حذف ${_selectedWastes.length} مورد',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_selectedWastes.isNotEmpty) const SizedBox(width: 10),
+            
+            // ===== DELETE ALL BUTTON =====
+            if (_wastes.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () => _showDeleteAllDialog(context),
+                icon: Icon(Icons.delete_forever, color: Colors.red.shade700, size: 18),
+                label: Text(
+                  'حذف همه',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_wastes.isNotEmpty) const SizedBox(width: 10),
+            
+            // ===== IMPORT EXCEL =====
             OutlinedButton.icon(
               onPressed: _importExcel,
               icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
@@ -2551,6 +2963,8 @@ class _WastesPageState extends State<WastesPage> {
               ),
             ),
             const SizedBox(width: 10),
+            
+            // ===== ADD NEW WASTE =====
             ElevatedButton.icon(
               onPressed: () => _showWasteDialog(),
               icon: const Icon(Icons.add_circle_outline),
@@ -2569,7 +2983,8 @@ class _WastesPageState extends State<WastesPage> {
 
   Widget _buildQuickStats() {
     final totalWastes = _wastes.length;
-    final totalAfn = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['afn_equivalent']?.toString() ?? '0') ?? 0));
+    final totalAfn = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['total_sell_afn']?.toString() ?? '0') ?? 0));
+    final totalUsd = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['total_sell_usd']?.toString() ?? '0') ?? 0));
     final totalWeight = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['total_weight']?.toString() ?? '0') ?? 0));
     final totalWeightInTons = totalWeight / 1000;
     final totalInitialValue = _wastes.fold<double>(0, (sum, item) => sum + (double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0));
@@ -2589,7 +3004,9 @@ class _WastesPageState extends State<WastesPage> {
         const SizedBox(width: 12),
         _buildStatCard('مجموع ارزش', _formatNumber(totalInitialValue), Icons.monetization_on, Colors.orange.shade700),
         const SizedBox(width: 12),
-        _buildStatCard('مجموع معادل افغانی', _formatNumber(totalAfn), Icons.currency_exchange, Colors.green.shade700),
+        _buildStatCard('مجموع دالر', totalUsd.toStringAsFixed(2), Icons.attach_money, Colors.green.shade700),
+        const SizedBox(width: 12),
+        _buildStatCard('مجموع افغانی', _formatNumber(totalAfn), Icons.currency_exchange, Colors.purple.shade700),
         const SizedBox(width: 12),
         _buildStatCard('وزن کل (تن)', '${totalWeightInTons.toStringAsFixed(totalWeightInTons % 1 == 0 ? 0 : 3)} تن', Icons.scale, const Color(0xFFCB001D)),
       ],
@@ -2661,315 +3078,350 @@ class _WastesPageState extends State<WastesPage> {
 
   // ==================== MAIN TABLE ====================
   Widget _buildMainTable() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
-    }
+  if (_isLoading) {
+    return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
+  }
 
-    if (_wastes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.delete_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            const Text('هیچ ضایعاتی یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-
-    final filteredData = _wastes.where((waste) {
-      final search = _searchQuery.toLowerCase();
-      final matchesSearch = (waste['party_details'] ?? '').toString().toLowerCase().contains(search) ||
-          (waste['display_waste_types'] ?? '').toString().toLowerCase().contains(search) ||
-          (waste['invoice_number'] ?? '').toString().toLowerCase().contains(search) ||
-          (waste['sell_customer_name'] ?? '').toString().toLowerCase().contains(search);
-
-      if (_selectedFilter == 'فروخته شده') {
-        return matchesSearch && waste['is_sold'] == 1;
-      } else if (_selectedFilter == 'ضایعات') {
-        return matchesSearch;
-      }
-      return matchesSearch;
-    }).toList();
-
-    final totalPages = (filteredData.length / _rowsPerPage).ceil();
-    final start = (_currentPage - 1) * _rowsPerPage;
-    final end = start + _rowsPerPage;
-    final paged = filteredData.sublist(
-      start,
-      end > filteredData.length ? filteredData.length : end,
-    );
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
-      ),
+  if (_wastes.isEmpty) {
+    return Center(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ===== HEADER ROW =====
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCB001D).withOpacity(0.05),
-                        border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 40),
-                          _buildHeaderCell('#', 50),
-                          _buildHeaderCell('شماره بل', 100),
-                          _buildHeaderCell('تاریخ', 100),
-                          _buildHeaderCell('مشتری فروش', 140),
-                          _buildHeaderCell('نوع ضایعات', 150),
-                          _buildHeaderCell('تعداد اقلام', 80),
-                          _buildHeaderCell('وزن کل (تن)', 110),
-                          _buildHeaderCell('ارزش', 100),
-                          _buildHeaderCell('قیمت فروش', 120),
-                          _buildHeaderCell('واحد پول', 70),
-                          _buildHeaderCell('معادل افغانی', 120),
-                          _buildHeaderCell('دریور', 100),
-                          _buildHeaderCell('پلیت', 100),
-                          _buildHeaderCell('عملیات', 200),
-                        ],
-                      ),
-                    ),
-                    if (paged.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(40),
-                        child: Text('هیچ داده‌ای یافت نشد', style: TextStyle(color: Colors.grey)),
-                      )
-                    else
-                      ...paged.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final waste = entry.value;
-                        final id = waste['id'] as int;
-                        final isSelected = _selectedWastes.contains(id);
-                        bool isSold = waste['is_sold'] == 1;
-                        String displayTotalWeight = _formatWeightWithConversion(double.tryParse(waste['total_weight']?.toString() ?? '0') ?? 0);
-                        String displayWasteTypes = waste['display_waste_types']?.toString() ?? waste['waste_type']?.toString() ?? '-';
-                        int itemCount = waste['item_count'] ?? 1;
-                        double totalSellPrice = 0;
-                        double totalInitialValue = 0;
-                        if (waste.containsKey('items') && waste['items'] is List) {
-                          for (var item in waste['items']) {
-                            totalSellPrice += double.tryParse(item['sell_price']?.toString() ?? '0') ?? 0;
-                            totalInitialValue += double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
-                          }
-                        } else {
-                          totalSellPrice = double.tryParse(waste['sell_price']?.toString() ?? '0') ?? 0;
-                          totalInitialValue = double.tryParse(waste['initial_value']?.toString() ?? '0') ?? 0;
-                        }
-
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
-                            border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
-                          ),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 40,
-                                child: Checkbox(
-                                  value: isSelected,
-                                  onChanged: (_) => _toggleSelection(id),
-                                  activeColor: const Color(0xFFCB001D),
-                                  checkColor: Colors.white,
-                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                              _buildDataCell((start + index + 1).toString(), 50),
-                              _buildDataCell(waste['invoice_number']?.toString() ?? '-', 100, isBold: true),
-                              Container(
-                                width: 100,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      waste['date_en'] ?? '-',
-                                      style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      waste['date'] ?? '-',
-                                      style: const TextStyle(fontSize: 7, color: Color(0xFFCB001D), fontWeight: FontWeight.w500),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              _buildDataCell(waste['sell_customer_name']?.toString() ?? '-', 140),
-                              _buildDataCell(displayWasteTypes, 150),
-                              _buildDataCell(itemCount.toString(), 80, isBold: true, color: Colors.blue.shade700),
-                              _buildDataCell(displayTotalWeight, 110, isBold: true, color: const Color(0xFFCB001D)),
-                              _buildDataCell(_formatNumber(totalInitialValue), 100, isBold: true, color: Colors.orange.shade700),
-                              _buildDataCell(_formatNumber(totalSellPrice), 120, isBold: true, color: Colors.green.shade700),
-                              _buildDataCell(waste['currency']?.toString() ?? '-', 70),
-                              _buildDataCell(_formatNumber(waste['afn_equivalent']), 120),
-                              _buildDataCell(waste['driver_name']?.toString() ?? '-', 100),
-                              _buildDataCell(waste['number_plate']?.toString() ?? '-', 100),
-                              SizedBox(
-                                width: 200,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    IconButton(
-                                      onPressed: () => _showWasteDialog(waste: waste),
-                                      icon: Icon(Icons.edit_outlined, color: Colors.blue.shade700, size: 20),
-                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'ویرایش',
-                                    ),
-                                    IconButton(
-                                      onPressed: () => _deleteWaste(waste),
-                                      icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 20),
-                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'حذف',
-                                    ),
-                                    IconButton(
-                                      onPressed: () {
-                                        _showInvoiceModal(context, waste['invoice_number'] ?? '-', waste);
-                                      },
-                                      icon: const Icon(Icons.visibility_outlined, color: Color(0xFFCB001D), size: 20),
-                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'مشاهده فاکتور',
-                                    ),
-                                    IconButton(
-                                      onPressed: () async {
-                                        await _printInvoicePdf(waste, waste['invoice_number'] ?? '-', AppLocalizations.of(context)!);
-                                      },
-                                      icon: const Icon(Icons.print_outlined, color: Color(0xFFCB001D), size: 20),
-                                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                                      padding: EdgeInsets.zero,
-                                      tooltip: 'چاپ',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // ===== FOOTER (Pagination) =====
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(14),
-                bottomRight: Radius.circular(14),
-              ),
-              border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Text('نمایش', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: _rowsPerPage,
-                          onChanged: _changeItemsPerPage,
-                          items: _pageSizeOptions.map((size) {
-                            return DropdownMenuItem<int>(
-                              value: size,
-                              child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
-                            );
-                          }).toList(),
-                          dropdownColor: Colors.white,
-                          icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFCB001D), size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 30),
-                      onPressed: () {
-                        _scrollController.animateTo(
-                          _scrollController.offset - 300,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                      tooltip: 'اسکرول به چپ',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.arrow_forward_ios, color: Color(0xFFCB001D), size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 30),
-                      onPressed: () {
-                        _scrollController.animateTo(
-                          _scrollController.offset + 300,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                      tooltip: 'اسکرول به راست',
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'صفحه $_currentPage از ${totalPages == 0 ? 1 : totalPages}',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
-                    ),
-                    const SizedBox(width: 12),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: _currentPage < totalPages ? () => _changePage(_currentPage + 1) : null,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          const Icon(Icons.delete_outline, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          const Text('هیچ ضایعاتی یافت نشد', style: TextStyle(fontSize: 14, color: Colors.grey)),
         ],
       ),
     );
   }
+
+  final filteredData = _wastes.where((waste) {
+    final search = _searchQuery.toLowerCase();
+    final matchesSearch = (waste['party_details'] ?? '').toString().toLowerCase().contains(search) ||
+        (waste['display_waste_types'] ?? '').toString().toLowerCase().contains(search) ||
+        (waste['invoice_number'] ?? '').toString().toLowerCase().contains(search) ||
+        (waste['sell_customer_name'] ?? '').toString().toLowerCase().contains(search);
+
+    if (_selectedFilter == 'فروخته شده') {
+      return matchesSearch && waste['is_sold'] == 1;
+    } else if (_selectedFilter == 'ضایعات') {
+      return matchesSearch;
+    }
+    return matchesSearch;
+  }).toList();
+
+  final totalPages = (filteredData.length / _rowsPerPage).ceil();
+  final start = (_currentPage - 1) * _rowsPerPage;
+  final end = start + _rowsPerPage;
+  final paged = filteredData.sublist(
+    start,
+    end > filteredData.length ? filteredData.length : end,
+  );
+
+  final allSelectedOnPage = paged.isNotEmpty && paged.every((w) => _selectedWastes.contains(w['id'] as int));
+
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
+    ),
+    child: Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ===== HEADER ROW WITH SELECT ALL =====
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCB001D).withOpacity(0.05),
+                      border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 40,
+                          child: Checkbox(
+                            value: allSelectedOnPage,
+                            onChanged: (v) {
+                              setState(() {
+                                if (v == true) {
+                                  for (final w in paged) {
+                                    _selectedWastes.add(w['id'] as int);
+                                  }
+                                } else {
+                                  for (final w in paged) {
+                                    _selectedWastes.remove(w['id'] as int);
+                                  }
+                                }
+                              });
+                            },
+                            activeColor: const Color(0xFFCB001D),
+                            checkColor: Colors.white,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        _buildHeaderCell('#', 50),
+                        _buildHeaderCell('شماره بل', 100),
+                        _buildHeaderCell('تاریخ', 100),
+                        _buildHeaderCell('مشتری فروش', 140),
+                        _buildHeaderCell('نوع ضایعات', 150),
+                        _buildHeaderCell('تعداد اقلام', 80),
+                        _buildHeaderCell('وزن کل (تن)', 110),
+                        _buildHeaderCell('واحد پول', 90),
+                        _buildHeaderCell('نرخ ارز', 90),
+                        _buildHeaderCell('مجموع دالر', 110),
+                        _buildHeaderCell('مجموع افغانی', 120),
+                        _buildHeaderCell('معادل افغانی', 120),
+                        _buildHeaderCell('ارزش', 100),
+                        _buildHeaderCell('توضیحات', 200),
+                        _buildHeaderCell('دریور', 100),
+                        _buildHeaderCell('پلیت', 100),
+                        _buildHeaderCell('عملیات', 200),
+                      ],
+                    ),
+                  ),
+                  if (paged.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Text('هیچ داده‌ای یافت نشد', style: TextStyle(color: Colors.grey)),
+                    )
+                  else
+                    ...paged.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final waste = entry.value;
+                      final id = waste['id'] as int;
+                      final isSelected = _selectedWastes.contains(id);
+                      String displayTotalWeight = _formatWeightWithConversion(double.tryParse(waste['total_weight']?.toString() ?? '0') ?? 0);
+                      String displayWasteTypes = waste['display_waste_types']?.toString() ?? waste['waste_type']?.toString() ?? '-';
+                      int itemCount = waste['item_count'] ?? 1;
+                      double totalInitialValue = 0;
+                      if (waste.containsKey('items') && waste['items'] is List) {
+                        for (var item in waste['items']) {
+                          totalInitialValue += double.tryParse(item['initial_value']?.toString() ?? '0') ?? 0;
+                        }
+                      } else {
+                        totalInitialValue = double.tryParse(waste['initial_value']?.toString() ?? '0') ?? 0;
+                      }
+
+                      double totalUsd = double.tryParse(waste['total_sell_usd']?.toString() ?? '0') ?? 0;
+                      double totalAfn = double.tryParse(waste['total_sell_afn']?.toString() ?? '0') ?? 0;
+                      double totalAfnEquiv = double.tryParse(waste['total_afn_equivalent']?.toString() ?? '0') ?? 0;
+
+                      // ✅ NEW FIELDS
+                      String displayCurrency = waste['display_currencies']?.toString() ?? '';
+                      if (displayCurrency.isEmpty) {
+                        displayCurrency = waste['currency']?.toString() ?? '-';
+                      }
+                      String displayRate = waste['display_exchange_rates']?.toString() ?? '';
+                      if (displayRate.isEmpty) {
+                        final rateVal = waste['exchange_rate']?.toString() ?? '';
+                        displayRate = (rateVal.isEmpty || rateVal == '1') ? '-' : rateVal;
+                      }
+                      String displayDescription = waste['display_descriptions']?.toString() ?? '';
+                      if (displayDescription.isEmpty) {
+                        displayDescription = waste['description']?.toString() ?? '-';
+                      }
+                      if (displayDescription.isEmpty) displayDescription = '-';
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
+                          border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 40,
+                              child: Checkbox(
+                                value: isSelected,
+                                onChanged: (_) => _toggleSelection(id),
+                                activeColor: const Color(0xFFCB001D),
+                                checkColor: Colors.white,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                            _buildDataCell((start + index + 1).toString(), 50),
+                            _buildDataCell(waste['invoice_number']?.toString() ?? '-', 100, isBold: true),
+                            Container(
+                              width: 100,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    waste['date_en'] ?? '-',
+                                    style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    waste['date'] ?? '-',
+                                    style: const TextStyle(fontSize: 7, color: Color(0xFFCB001D), fontWeight: FontWeight.w500),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _buildDataCell(waste['sell_customer_name']?.toString() ?? '-', 140),
+                            _buildDataCell(displayWasteTypes, 150),
+                            _buildDataCell(itemCount.toString(), 80, isBold: true, color: Colors.blue.shade700),
+                            _buildDataCell(displayTotalWeight, 110, isBold: true, color: const Color(0xFFCB001D)),
+                            _buildDataCell(displayCurrency, 90, isBold: true, color: Colors.blue.shade700),
+                            _buildDataCell(displayRate, 90, isBold: true, color: Colors.teal.shade700),
+                            _buildDataCell(totalUsd.toStringAsFixed(2), 110, isBold: true, color: Colors.green.shade700),
+                            _buildDataCell(_formatNumber(totalAfn), 120, isBold: true, color: Colors.purple.shade700),
+                            _buildDataCell(_formatNumber(totalAfnEquiv), 120, isBold: true, color: Colors.deepPurple.shade700),
+                            _buildDataCell(_formatNumber(totalInitialValue), 100, isBold: true, color: Colors.orange.shade700),
+                            _buildDataCell(displayDescription, 200, color: Colors.grey.shade700),
+                            _buildDataCell(waste['driver_name']?.toString() ?? '-', 100),
+                            _buildDataCell(waste['number_plate']?.toString() ?? '-', 100),
+                            SizedBox(
+                              width: 200,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    onPressed: () => _showWasteDialog(waste: waste),
+                                    icon: Icon(Icons.edit_outlined, color: Colors.blue.shade700, size: 20),
+                                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'ویرایش',
+                                  ),
+                                  IconButton(
+                                    onPressed: () => _deleteWaste(waste),
+                                    icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 20),
+                                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'حذف',
+                                  ),
+                                  IconButton(
+                                    onPressed: () {
+                                      _showInvoiceModal(context, waste['invoice_number'] ?? '-', waste);
+                                    },
+                                    icon: const Icon(Icons.visibility_outlined, color: Color(0xFFCB001D), size: 20),
+                                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'مشاهده فاکتور',
+                                  ),
+                                  IconButton(
+                                    onPressed: () async {
+                                      await _printInvoicePdf(waste, waste['invoice_number'] ?? '-', AppLocalizations.of(context)!);
+                                    },
+                                    icon: const Icon(Icons.print_outlined, color: Color(0xFFCB001D), size: 20),
+                                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'چاپ',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // ===== FOOTER WITH SELECTION INFO =====
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(14),
+              bottomRight: Radius.circular(14),
+            ),
+            border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Text('نمایش', style: TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: _rowsPerPage,
+                        onChanged: _changeItemsPerPage,
+                        items: _pageSizeOptions.map((size) {
+                          return DropdownMenuItem<int>(
+                            value: size,
+                            child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
+                          );
+                        }).toList(),
+                        dropdownColor: Colors.white,
+                        icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text('در هر صفحه', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ],
+              ),
+              Row(
+                children: [
+                  if (_selectedWastes.isNotEmpty) ...[
+                    Text(
+                      'انتخاب شده: ${_selectedWastes.length}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFCB001D), fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () => _showBulkDeleteDialog(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFCB001D),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
+                      child: const Text('حذف انتخاب شده‌ها', style: TextStyle(fontSize: 12)),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Text(
+                    'صفحه $_currentPage از ${totalPages == 0 ? 1 : totalPages}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF888888)),
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentPage < totalPages ? () => _changePage(_currentPage + 1) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   void _toggleSelection(int id) {
     setState(() {

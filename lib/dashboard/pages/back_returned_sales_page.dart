@@ -31,6 +31,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
   String _searchQuery = '';
   int _currentPage = 0;
   int _rowsPerPage = 10;
+  final Set<String> _selectedInvoiceNumbers = {};
 
   // Helper to check if unit is weight-based
   bool _isWeightUnit(String unit) {
@@ -570,6 +571,7 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         _allSales = allSales;
         _returnedSales = returnedSales;
         _isLoading = false;
+        _selectedInvoiceNumbers.clear();
       });
     } catch (e) {
       print('❌ Error loading data: $e');
@@ -1402,6 +1404,339 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
     );
   }
 
+  // ============================================================
+  // BULK DELETE - SELECTED RETURNED SALES
+  // ============================================================
+  void _showBulkDeleteDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _selectedInvoiceNumbers.length;
+    if (count == 0) return;
+
+    final selectedSales = _returnedSales
+        .where((s) => _selectedInvoiceNumbers.contains(
+            (s['invoice_number'] ?? '').toString()))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_sweep,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'حذف برگشت‌های انتخاب شده',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'هشدار!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'شما در حال حذف $count برگشت هستید. '
+                              'تمام فاکتورهای اصلی این برگشت‌ها نیز پاک می‌شوند. '
+                              'این عمل قابل بازگشت نیست!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'برگشت‌های زیر حذف خواهند شد:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: selectedSales.map((sale) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '• ${sale['invoice_number'] ?? '-'} — ${sale['customer_name'] ?? '-'}',
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF1A1A1A)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                final ids = selectedSales
+                    .map((s) => s['id'] as int)
+                    .toList();
+                await _performBulkDelete(ids);
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: Text('حذف $count برگشت',
+                  style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BULK DELETE - ALL RETURNED SALES
+  // ============================================================
+  void _showDeleteAllDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _returnedSales.length;
+    if (count == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dangerous,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'حذف تمام برگشت‌ها',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: Colors.red.withOpacity(0.3), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'هشدار جدی!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'شما در حال حذف تمام $count برگشت هستید.\n'
+                    'تمام فاکتورهای اصلی این برگشت‌ها نیز پاک خواهند شد.\n'
+                    'این عمل کاملاً غیرقابل بازگشت است!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performDeleteAll();
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: const Text('حذف همه',
+                  style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PERFORM BULK DELETE
+  // ============================================================
+  Future<void> _performBulkDelete(List<int> ids) async {
+    setState(() => _isLoading = true);
+    try {
+      final deleted = await _db.deleteMultipleSalesInvoicesRaw(ids);
+      if (!mounted) return;
+
+      if (deleted > 0) {
+        _showSnackbar('✅ $deleted برگشت با موفقیت حذف شد', Colors.green);
+        _selectedInvoiceNumbers.clear();
+        await _loadData();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف برگشت‌ها', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // PERFORM DELETE ALL
+  // ============================================================
+  Future<void> _performDeleteAll() async {
+    setState(() => _isLoading = true);
+    try {
+      final deleted = await _db.deleteAllReturnedSalesInvoices();
+      if (!mounted) return;
+
+      if (deleted >= 0) {
+        _showSnackbar('🗑️ تمام $deleted برگشت حذف شدند',
+            Colors.red.shade700);
+        _selectedInvoiceNumbers.clear();
+        await _loadData();
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackbar('❌ خطا در حذف تمام برگشت‌ها', Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showSnackbar('❌ خطا: $e', Colors.red);
+    }
+  }
+
+  // ============================================================
+  // TOGGLE SELECT ALL ON CURRENT PAGE
+  // ============================================================
+  void _toggleSelectAllOnPage(List<Map<String, dynamic>> paged) {
+    setState(() {
+      final pageInvoiceNumbers = paged
+          .map((s) => (s['invoice_number'] ?? '').toString())
+          .where((n) => n.isNotEmpty)
+          .toList();
+      final allSelected = pageInvoiceNumbers
+          .every((n) => _selectedInvoiceNumbers.contains(n));
+      if (allSelected) {
+        _selectedInvoiceNumbers.removeAll(pageInvoiceNumbers);
+      } else {
+        _selectedInvoiceNumbers.addAll(pageInvoiceNumbers);
+      }
+    });
+  }
+
   // ============================================
   // UI BUILD METHODS
   // ============================================
@@ -1425,6 +1760,59 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
         ]),
         Row(
           children: [
+            if (_selectedInvoiceNumbers.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCB001D).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_selectedInvoiceNumbers.length} ${l10n.selected}',
+                      style: const TextStyle(
+                        color: Color(0xFFCB001D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_selectedInvoiceNumbers.isNotEmpty) const SizedBox(width: 8),
+            if (_selectedInvoiceNumbers.isNotEmpty)
+              ElevatedButton.icon(
+                onPressed: () => _showBulkDeleteDialog(context, l10n),
+                icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+                label: Text(
+                  'حذف ${_selectedInvoiceNumbers.length} مورد',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_selectedInvoiceNumbers.isNotEmpty) const SizedBox(width: 10),
+            if (_returnedSales.isNotEmpty)
+              OutlinedButton.icon(
+                onPressed: () => _showDeleteAllDialog(context, l10n),
+                icon: Icon(Icons.delete_forever, color: Colors.red.shade700, size: 18),
+                label: Text(
+                  'حذف همه',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            if (_returnedSales.isNotEmpty) const SizedBox(width: 10),
             OutlinedButton.icon(
               onPressed: _importExcel,
               icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),
@@ -1671,6 +2059,19 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  SizedBox(
+                    width: 40,
+                    child: Checkbox(
+                      value: paged.isNotEmpty &&
+                          paged.every((s) => _selectedInvoiceNumbers
+                              .contains((s['invoice_number'] ?? '').toString())),
+                      onChanged: (_) => _toggleSelectAllOnPage(paged),
+                      activeColor: Colors.white,
+                      checkColor: const Color(0xFFCB001D),
+                      side: const BorderSide(color: Colors.white, width: 1.5),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
                   _buildHeaderCell('شماره', 80),
                   _buildHeaderCell('مشتری', 90),
                   _buildHeaderCell('شرکت', 90),
@@ -1724,17 +2125,40 @@ class _BackReturnedSalesPageState extends State<BackReturnedSalesPage> {
                       double remainingCount = originalCount - returnedCount;
                       double remainingWeight = double.tryParse(sale['total_weight']?.toString() ?? '0') ?? 0;
                       double remainingPrice = double.tryParse(sale['final_price']?.toString() ?? '0') ?? 0;
+                      final invNumber = (sale['invoice_number'] ?? '').toString();
+                      final isSelected = _selectedInvoiceNumbers.contains(invNumber);
                       
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: isEven ? Colors.white : Colors.grey.shade50,
+                          color: isSelected
+                              ? const Color(0xFFCB001D).withOpacity(0.04)
+                              : (isEven ? Colors.white : Colors.grey.shade50),
                           border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
                         ),
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
+                              SizedBox(
+                                width: 40,
+                                child: Checkbox(
+                                  value: isSelected,
+                                  onChanged: (v) {
+                                    setState(() {
+                                      if (invNumber.isEmpty) return;
+                                      if (v == true) {
+                                        _selectedInvoiceNumbers.add(invNumber);
+                                      } else {
+                                        _selectedInvoiceNumbers.remove(invNumber);
+                                      }
+                                    });
+                                  },
+                                  activeColor: const Color(0xFFCB001D),
+                                  checkColor: Colors.white,
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
                               _buildDataCell(
                                 sale['invoice_number']?.toString() ?? '-',
                                 80,

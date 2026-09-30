@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as excel;
@@ -159,6 +158,160 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     }
   }
 
+  // ============================================================
+  // ✅ ROBUST HEADER NORMALIZER
+  // ============================================================
+  String _normalizeHeaderForMatch(String input) {
+    if (input.isEmpty) return '';
+    return input
+        .replaceAll('\u200e', '')
+        .replaceAll('\u200f', '')
+        .replaceAll('\u200c', '')
+        .replaceAll('\u200d', '')
+        .replaceAll('\uFEFF', '')
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('"', '')
+        .replaceAll("'", '')
+        .replaceAll('«', '')
+        .replaceAll('»', '')
+        .replaceAll('ي', 'ی')
+        .replaceAll('ك', 'ک')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ۀ', 'ه')
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ؤ', 'و')
+        .replaceAll(RegExp(r'[\u0000-\u001F\u007F]'), '')
+        .trim()
+        .toLowerCase();
+  }
+
+  // ============================================================
+  // ✅ FLEXIBLE HEADER MAP BUILDER
+  // ============================================================
+  Map<String, int> _buildHeaderIndexMap(List<String> headers) {
+    final Map<String, List<String>> aliases = {
+      'name': [
+        'ناممواد', 'نامماده', 'نام', 'اسممواد', 'اسمماده',
+        'نام کالا', 'نامکالا', 'کالا', 'ماده', 'مواد',
+        'material', 'materialname', 'name',
+      ],
+      'supplier': [
+        'اسمفروشنده', 'نامفروشنده', 'فروشنده', 'اسم فروشنده', 'نام فروشنده',
+        'تأمینکننده', 'تامینکننده', 'تامین کننده', 'تأمین کننده',
+        'supplier', 'suppliername', 'vendor',
+      ],
+      'net_weight': [
+        'وزنخالص', 'وزن خالص', 'وزنخالص(kg)', 'وزنخالص(کیلوگرم)',
+        'netweight', 'netwt', 'net',
+      ],
+      'gross_weight': [
+        'وزنناخالص', 'وزن ناخالص', 'وزنناخالص(kg)', 'وزنناخالص(کیلوگرم)',
+        'grossweight', 'grosswt', 'gross',
+      ],
+      'date': [
+        'تاریخ', 'تاریخورود', 'تاریخ خرید', 'تاریخخرید',
+        'date', 'datein', 'entrydate',
+      ],
+      'unit': [
+        'واحد', 'واحد اندازهگیری', 'واحداندازهگیری', 'یونیت',
+        'unit', 'uom',
+      ],
+      'unit_price': [
+        'قیمتواحد', 'قیمت واحد', 'قیمت هر تن', 'قیمتهرتن', 'قیمت تن',
+        'unitprice', 'price', 'priceperton',
+      ],
+      'location': [
+        'محلتخلیه', 'محل تخلیه', 'محل', 'تخلیه', 'انبار',
+        'location', 'dischargelocation', 'warehouse',
+      ],
+      'material_type': [
+        'نوعمواد', 'نوع ماده', 'نوعماده', 'نوع', 'دسته',
+        'materialtype', 'type', 'category',
+      ],
+      'thickness': [
+        'ضخامت', 'ضخامت(mm)', 'ضخامتملیمتر', 'ضخامت میل',
+        'thickness', 'thick', 'mm',
+      ],
+      'product': [
+        'قیمتمحصول', 'قیمت محصول', 'محصول', 'هزینه محصول',
+        'product', 'productprice', 'productcost',
+      ],
+      'commission': [
+        'کمیشن', 'کمیسیون', 'پورسانت', 'دلالی',
+        'commission', 'brokerage',
+      ],
+      'transfer_cost': [
+        'هزینهحمل', 'هزینه حمل', 'حمل', 'کرایه', 'ترانسپورت',
+        'transfercost', 'transport', 'freight', 'shipping',
+      ],
+      'miscellaneous': [
+        'متفرقه', 'متفرق', 'هزینههایمتفرقه', 'سایر',
+        'miscellaneous', 'misc', 'other',
+      ],
+      'ghurfedari': [
+        'غرفهداری', 'غرفه داری', 'غرفه', 'انبارداری',
+        'ghurfedari', 'storage', 'warehousing',
+      ],
+      'barchalani': [
+        'برچالانی', 'برچالان', 'بارچالانی', 'بارگیری',
+        'barchalani', 'loading',
+      ],
+      'purchase_type': [
+        'نوعخرید', 'نوع خرید', 'خرید',
+        'purchasetype', 'purchase',
+      ],
+      'payment_method': [
+        'روشپرداخت', 'روش پرداخت', 'نحوهپرداخت', 'نحوه پرداخت',
+        'پرداخت', 'نوع پرداخت',
+        'paymentmethod', 'payment', 'paytype',
+      ],
+      'currency': [
+        'واحدپول', 'واحد پول', 'واحدپولی', 'ارز', 'نوعارز', 'نوع ارز', 'پول',
+        'currency', 'curr', 'money',
+      ],
+      'exchange_rate': [
+        'نرخارز', 'نرخ ارز', 'نرخ', 'تبدیل',
+        'exchangerate', 'rate', 'fx',
+      ],
+    };
+
+    final List<String> normHeaders = headers.map(_normalizeHeaderForMatch).toList();
+
+    final Map<String, int> result = {};
+    for (final field in aliases.keys) {
+      result[field] = -1;
+      final fieldAliases = aliases[field]!
+          .map(_normalizeHeaderForMatch)
+          .toList();
+
+      for (int i = 0; i < normHeaders.length; i++) {
+        if (fieldAliases.contains(normHeaders[i])) {
+          result[field] = i;
+          break;
+        }
+      }
+      if (result[field] == -1) {
+        for (int i = 0; i < normHeaders.length; i++) {
+          final h = normHeaders[i];
+          if (h.isEmpty) continue;
+          final matches = fieldAliases.any((a) =>
+              h == a ||
+              h.startsWith(a) ||
+              h.endsWith(a) ||
+              (a.length >= 3 && h.contains(a)));
+          if (matches) {
+            result[field] = i;
+            break;
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
   // ============ EXCEL IMPORT ============
   Future<void> _importExcel() async {
     showDialog(
@@ -236,436 +389,372 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   }
 
   Future<Map<String, dynamic>> _parseExcelSheet(excel.Sheet sheet) async {
-  try {
-    List<Map<String, dynamic>> importedData = [];
-    int successCount = 0;
-    int skippedCount = 0;
-    List<String> errors = [];
+    try {
+      List<Map<String, dynamic>> importedData = [];
+      int successCount = 0;
+      int skippedCount = 0;
+      List<String> errors = [];
 
-    // ============ DEBUG: Print all sheet rows ============
-    print('=== EXCEL SHEET DEBUG ===');
-    print('Total rows: ${sheet.rows.length}');
-    for (int i = 0; i < sheet.rows.length && i < 5; i++) {
-      final row = sheet.rows[i];
-      List<String> cellValues = [];
-      for (var cell in row) {
-        cellValues.add(cell?.value?.toString() ?? '');
+      // ============ DEBUG ============
+      print('=== EXCEL SHEET DEBUG ===');
+      print('Total rows: ${sheet.rows.length}');
+      for (int i = 0; i < sheet.rows.length && i < 5; i++) {
+        final row = sheet.rows[i];
+        List<String> cellValues = [];
+        for (var cell in row) {
+          cellValues.add(cell?.value?.toString() ?? '');
+        }
+        print('Row $i: $cellValues');
       }
-      print('Row $i: $cellValues');
-    }
-    print('=== END DEBUG ===');
+      print('=== END DEBUG ===');
 
-    // پیدا کردن سطر هدر
-    List<String> headers = [];
-    int headerRowIndex = -1;
-    
-    for (int i = 0; i < sheet.rows.length && i < 20; i++) {
-      final row = sheet.rows[i];
-      if (row.isEmpty) continue;
-      
-      List<String> potentialHeaders = [];
-      for (var cell in row) {
-        if (cell != null && cell.value != null) {
-          String val = cell.value.toString().trim();
-          if (val.isNotEmpty) potentialHeaders.add(val);
-        }
-      }
-      
-      bool hasHeader = potentialHeaders.any((h) => 
-        h.contains('نام مواد') || h.contains('فروشنده') || h.contains('وزن') || h.contains('تاریخ'));
-      
-      if (hasHeader && potentialHeaders.length >= 2) {
-        headers = potentialHeaders;
-        headerRowIndex = i;
-        break;
-      }
-    }
+      // ============ FIND HEADER ROW (flexible) ============
+      List<String> headers = [];
+      int headerRowIndex = -1;
 
-    if (headers.isEmpty) {
-      return {'success': false, 'message': 'هیچ ستونی پیدا نشد'};
-    }
+      for (int i = 0; i < sheet.rows.length && i < 20; i++) {
+        final row = sheet.rows[i];
+        if (row.isEmpty) continue;
 
-    print('=== HEADERS FOUND ===');
-    for (int i = 0; i < headers.length; i++) {
-      print('  [$i] "${headers[i]}"');
-    }
-    print('=== END HEADERS ===');
-
-    // ============ FLEXIBLE HEADER MATCHING ============
-    // Normalize header: remove spaces, ZWNJ, and standardize Arabic/Persian chars
-    String normalizeHeader(String h) {
-      return h
-          .trim()
-          .replaceAll('\u200c', '') // remove ZWNJ
-          .replaceAll(' ', '')       // remove spaces
-          .replaceAll('ي', 'ی')      // Arabic yeh -> Persian yeh
-          .replaceAll('ك', 'ک')      // Arabic kaf -> Persian kaf
-          .replaceAll('‌', '');      // remove any other ZWNJ
-    }
-
-    int nameIndex = -1;
-    int supplierIndex = -1;
-    int netWeightIndex = -1;
-    int grossWeightIndex = -1;
-    int dateIndex = -1;
-    int unitIndex = -1;
-    int unitPriceIndex = -1;
-    int locationIndex = -1;
-    int materialTypeIndex = -1;
-    int thicknessIndex = -1;
-    int productIndex = -1;
-    int commissionIndex = -1;
-    int transferCostIndex = -1;
-    int miscellaneousIndex = -1;
-    int ghurfedariIndex = -1;
-    int barchalaniIndex = -1;
-    int purchaseTypeIndex = -1;
-    int paymentMethodIndex = -1;
-    int currencyIndex = -1;
-    int exchangeRateIndex = -1;
-
-    for (int i = 0; i < headers.length; i++) {
-      String h = normalizeHeader(headers[i]);
-      
-      if (h == 'ناممواد' || h == 'نامماده') {
-        nameIndex = i;
-      } else if (h == 'اسمفروشنده' || h == 'فروشنده' || h == 'نامفروشنده') {
-        supplierIndex = i;
-      } else if (h == 'وزنخالص') {
-        netWeightIndex = i;
-      } else if (h == 'وزنناخالص') {
-        grossWeightIndex = i;
-      } else if (h == 'تاریخ') {
-        dateIndex = i;
-      } else if (h == 'واحد') {
-        unitIndex = i;
-      } else if (h == 'قیمتواحد' || h == 'قیمت واحد') {
-        unitPriceIndex = i;
-      } else if (h == 'محلتخلیه' || h == 'محل') {
-        locationIndex = i;
-      } else if (h == 'نوعمواد' || h == 'نوع') {
-        materialTypeIndex = i;
-      } else if (h == 'ضخامت') {
-        thicknessIndex = i;
-      } else if (h == 'قیمتمحصول' || h == 'محصول') {
-        productIndex = i;
-      } else if (h == 'کمیسیون') {
-        commissionIndex = i;
-      } else if (h == 'هزینهحمل' || h == 'حمل') {
-        transferCostIndex = i;
-      } else if (h == 'متفرقه' || h == 'متفرق') {
-        miscellaneousIndex = i;
-      } else if (h == 'غرفهداری' || h == 'غرفه') {
-        ghurfedariIndex = i;
-      } else if (h == 'برچالانی' || h == 'برچالان') {
-        barchalaniIndex = i;
-      } else if (h == 'نوعخرید') {
-        purchaseTypeIndex = i;
-      } else if (h == 'روشپرداخت' || h == 'پرداخت' || h == 'نحوهپرداخت') {
-        paymentMethodIndex = i;
-      } else if (h == 'واحدپول' || h == 'ارز' || h == 'نوعارز' || h == 'واحدپولی' || h == 'پول') {
-        currencyIndex = i;
-      } else if (h == 'نرخارز' || h == 'نرخ') {
-        exchangeRateIndex = i;
-      }
-    }
-
-    print('=== COLUMN INDICES ===');
-    print('nameIndex: $nameIndex');
-    print('supplierIndex: $supplierIndex');
-    print('netWeightIndex: $netWeightIndex');
-    print('grossWeightIndex: $grossWeightIndex');
-    print('dateIndex: $dateIndex');
-    print('unitIndex: $unitIndex');
-    print('unitPriceIndex: $unitPriceIndex');
-    print('currencyIndex: $currencyIndex  <-- IMPORTANT!');
-    print('exchangeRateIndex: $exchangeRateIndex  <-- IMPORTANT!');
-    print('=== END INDICES ===');
-
-    if (nameIndex == -1 || supplierIndex == -1 || netWeightIndex == -1 || grossWeightIndex == -1) {
-      String msg = '';
-      if (nameIndex == -1) msg += 'نام مواد، ';
-      if (supplierIndex == -1) msg += 'اسم فروشنده، ';
-      if (netWeightIndex == -1) msg += 'وزن خالص، ';
-      if (grossWeightIndex == -1) msg += 'وزن ناخالص، ';
-      return {
-        'success': false,
-        'message': 'فیلدهای مورد نیاز پیدا نشد: $msg'
-      };
-    }
-
-    final suppliers = await _db.getSuppliers();
-    Map<String, int> supplierMap = {};
-    for (var supplier in suppliers) {
-      supplierMap[supplier['name']?.toString() ?? ''] = supplier['id'];
-    }
-
-    for (int i = headerRowIndex + 1; i < sheet.rows.length; i++) {
-      final row = sheet.rows[i];
-      
-      bool rowHasData = false;
-      for (var cell in row) {
-        if (cell != null && cell.value != null) {
-          String val = cell.value.toString().trim();
-          if (val.isNotEmpty && val != '0' && val != '-') {
-            rowHasData = true;
-            break;
-          }
-        }
-      }
-      
-      if (!rowHasData) continue;
-
-      try {
-        String name = _getCellValueDirect(row, nameIndex);
-        String supplierName = _getCellValueDirect(row, supplierIndex);
-        String netWeightStr = _getCellValueDirect(row, netWeightIndex);
-        String grossWeightStr = _getCellValueDirect(row, grossWeightIndex);
-        
-        String date = dateIndex != -1 ? _getCellValueDirect(row, dateIndex) : '';
-        String unit = unitIndex != -1 ? _getCellValueDirect(row, unitIndex) : 'کیلوگرم';
-        String unitPriceStr = unitPriceIndex != -1 ? _getCellValueDirect(row, unitPriceIndex) : '0';
-        String location = locationIndex != -1 ? _getCellValueDirect(row, locationIndex) : '';
-        String materialType = materialTypeIndex != -1 ? _getCellValueDirect(row, materialTypeIndex) : '';
-        String thickness = thicknessIndex != -1 ? _getCellValueDirect(row, thicknessIndex) : '';
-        String productStr = productIndex != -1 ? _getCellValueDirect(row, productIndex) : '0';
-        String commissionStr = commissionIndex != -1 ? _getCellValueDirect(row, commissionIndex) : '0';
-        String transferCostStr = transferCostIndex != -1 ? _getCellValueDirect(row, transferCostIndex) : '0';
-        String miscellaneousStr = miscellaneousIndex != -1 ? _getCellValueDirect(row, miscellaneousIndex) : '0';
-        String ghurfedariStr = ghurfedariIndex != -1 ? _getCellValueDirect(row, ghurfedariIndex) : '0';
-        String barchalaniStr = barchalaniIndex != -1 ? _getCellValueDirect(row, barchalaniIndex) : '0';
-        String purchaseType = purchaseTypeIndex != -1 ? _getCellValueDirect(row, purchaseTypeIndex) : 'مستقیم';
-        String paymentMethod = paymentMethodIndex != -1 ? _getCellValueDirect(row, paymentMethodIndex) : 'cash';
-        String currency = currencyIndex != -1 ? _getCellValueDirect(row, currencyIndex) : 'AFN';
-        String exchangeRateStr = exchangeRateIndex != -1 ? _getCellValueDirect(row, exchangeRateIndex) : '1';
-
-        // ============ DEBUG: Print row values ============
-        print('=== ROW ${i+1} RAW VALUES ===');
-        print('  currency raw: "$currency"');
-        print('  exchangeRate raw: "$exchangeRateStr"');
-        print('  unitPrice raw: "$unitPriceStr"');
-        print('  netWeight raw: "$netWeightStr"');
-        print('=== END ROW ===');
-
-        // ✅ Normalize currency (handle all possible Persian/English values)
-        String currencyNorm = currency.trim().toLowerCase();
-        if (currencyNorm == 'افغانی' || currencyNorm == 'afn' || currencyNorm.isEmpty || 
-            currencyNorm == 'افغانى' || currencyNorm == 'افغانی' || currencyNorm.contains('افغان')) {
-          currency = 'AFN';
-       } else if (currencyNorm == 'دالر' || currencyNorm == 'دلار' || currencyNorm == 'usd' || 
-           currencyNorm == 'دالر امریکایی' || currencyNorm == 'دالر امریکائی' ||
-           currencyNorm.contains('دالر') || currencyNorm.contains('دلار') || 
-           currencyNorm.contains('usd')) {
-          currency = 'USD';
-        } else {
-          // Default: if unknown, check if it looks like USD
-          currency = 'AFN';
-        }
-
-        print('  currency normalized: "$currency"');
-
-        // ✅ Normalize payment method
-        String pmNorm = paymentMethod.trim();
-        if (pmNorm == 'نقد' || pmNorm == 'cash' || pmNorm == 'Cash' || pmNorm.contains('نقد')) {
-          paymentMethod = 'cash';
-        } else if (pmNorm == 'قرض کامل' || pmNorm == 'loan_full' || pmNorm.contains('قرض کامل')) {
-          paymentMethod = 'loan_full';
-        } else if (pmNorm == 'قرض جزئی' || pmNorm == 'loan_partial' || pmNorm.contains('قرض جزئ')) {
-          paymentMethod = 'loan_partial';
-        } else {
-          paymentMethod = 'cash';
-        }
-
-        if (name.isEmpty || supplierName.isEmpty || netWeightStr.isEmpty || grossWeightStr.isEmpty) {
-          skippedCount++;
-          errors.add('ردیف ${i+1}: فیلدهای مورد نیاز کامل نیستند');
-          continue;
-        }
-
-        double netWeight = _parseNumber(netWeightStr);
-        double grossWeight = _parseNumber(grossWeightStr);
-
-        if (netWeight <= 0 || grossWeight <= 0) {
-          skippedCount++;
-          errors.add('ردیف ${i+1}: وزن نامعتبر');
-          continue;
-        }
-
-        int? supplierId = supplierMap[supplierName];
-        if (supplierId == null) {
-          supplierId = await _db.insertSupplier({
-            'name': supplierName,
-            'phone': '',
-            'address': location,
-          });
-          if (supplierId != -1) {
-            supplierMap[supplierName] = supplierId;
-          } else {
-            skippedCount++;
-            errors.add('ردیف ${i+1}: خطا در ایجاد فروشنده');
-            continue;
+        final List<String> potentialHeaders = [];
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            final val = cell.value.toString().trim();
+            if (val.isNotEmpty) potentialHeaders.add(val);
           }
         }
 
-        // ============================================================
-        // ✅ FIXED CALCULATION - Expenses are ALWAYS in AFN
-        // ============================================================
-        double unitPrice = _parseNumber(unitPriceStr);
-        double product = _parseNumber(productStr);
-        double commission = _parseNumber(commissionStr);
-        double transferCost = _parseNumber(transferCostStr);
-        double miscellaneous = _parseNumber(miscellaneousStr);
-        double ghurfedari = _parseNumber(ghurfedariStr);
-        double barchalani = _parseNumber(barchalaniStr);
-        double exchangeRate = _parseNumber(exchangeRateStr);
-        
-        if (exchangeRate <= 0) exchangeRate = 1;
+        final norm = potentialHeaders.map(_normalizeHeaderForMatch).toList();
 
-        // Convert net weight to tons if unit is kg
-        double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') 
-            ? netWeight / 1000 
-            : netWeight;
-        
-        // Base price is in the selected currency (USD or AFN)
-        double basePrice = netWeightInTons * unitPrice;
+        final hasName = norm.any((h) =>
+            h.contains('ناممواد') || h.contains('نامماده') || h == 'نام' || h.contains('اسممواد'));
+        final hasSupplier = norm.any((h) =>
+            h.contains('فروشنده') || h.contains('تأمین') || h.contains('تامین'));
+        final hasWeight = norm.any((h) => h.contains('وزن'));
+        final hasDate = norm.any((h) => h.contains('تاریخ'));
 
-        // ✅ ALL expenses are ALWAYS in AFN - sum them up
-        double totalAfnExpenses = product + commission + transferCost + 
-                                  miscellaneous + ghurfedari + barchalani;
+        final score = [hasName, hasSupplier, hasWeight, hasDate].where((b) => b).length;
 
-        // ✅ Convert AFN expenses to the price currency
-        double expensesInPriceCurrency;
-        if (currency == 'USD') {
-          expensesInPriceCurrency = totalAfnExpenses / exchangeRate; // AFN ➜ USD
-        } else {
-          expensesInPriceCurrency = totalAfnExpenses; // AFN ➜ AFN
+        if (score >= 2 && potentialHeaders.length >= 3) {
+          headers = potentialHeaders;
+          headerRowIndex = i;
+          break;
         }
+      }
 
-        // ✅ Final price = base price + converted expenses
-        double finalPrice = basePrice + expensesInPriceCurrency;
-        
-        // Seller payment is base price only
-        double sellerPayment = basePrice;
+      if (headers.isEmpty) {
+        return {'success': false, 'message': 'هیچ ستونی پیدا نشد'};
+      }
 
-        // Seller paid amount based on payment method
-        double sellerPaidAmount = 0;
-        if (paymentMethod == 'cash') {
-          sellerPaidAmount = basePrice;
-        } else {
-          sellerPaidAmount = 0;
-        }
+      print('=== HEADERS FOUND (row $headerRowIndex) ===');
+      for (int i = 0; i < headers.length; i++) {
+        print('  [$i] "${headers[i]}"  →  "${_normalizeHeaderForMatch(headers[i])}"');
+      }
 
-        // ============ DEBUG: Print calculation ============
-        print('=== CALCULATION ROW ${i+1} ===');
-        print('  currency: $currency');
-        print('  unitPrice: $unitPrice');
-        print('  netWeight: $netWeight');
-        print('  netWeightInTons: $netWeightInTons');
-        print('  basePrice: $basePrice');
-        print('  totalAfnExpenses: $totalAfnExpenses');
-        print('  exchangeRate: $exchangeRate');
-        print('  expensesInPriceCurrency: $expensesInPriceCurrency');
-        print('  finalPrice: $finalPrice');
-        print('=== END CALC ===');
+      // ============ BUILD COLUMN INDEX MAP ============
+      final Map<String, int> idx = _buildHeaderIndexMap(headers);
 
-        if (date.isEmpty) {
-          date = PersianDateConverter.gregorianToJalali(DateTime.now());
-        }
-        String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+      final int nameIndex = idx['name']!;
+      final int supplierIndex = idx['supplier']!;
+      final int netWeightIndex = idx['net_weight']!;
+      final int grossWeightIndex = idx['gross_weight']!;
+      final int dateIndex = idx['date']!;
+      final int unitIndex = idx['unit']!;
+      final int unitPriceIndex = idx['unit_price']!;
+      final int locationIndex = idx['location']!;
+      final int materialTypeIndex = idx['material_type']!;
+      final int thicknessIndex = idx['thickness']!;
+      final int productIndex = idx['product']!;
+      final int commissionIndex = idx['commission']!;
+      final int transferCostIndex = idx['transfer_cost']!;
+      final int miscellaneousIndex = idx['miscellaneous']!;
+      final int ghurfedariIndex = idx['ghurfedari']!;
+      final int barchalaniIndex = idx['barchalani']!;
+      final int purchaseTypeIndex = idx['purchase_type']!;
+      final int paymentMethodIndex = idx['payment_method']!;
+      final int currencyIndex = idx['currency']!;
+      final int exchangeRateIndex = idx['exchange_rate']!;
 
-        Map<String, dynamic> material = {
-          'supplier_id': supplierId,
-          'name': name,
-          'location': location,
-          'material_type': materialType,
-          'thickness': thickness,
-          'net_weight': netWeight.toString(),
-          'gross_weight': grossWeight.toString(),
-          'date': date,
-          'date_en': dateEn,
-          'unit': unit,
-          'unit_price': unitPrice.toString(),
-          'product': product > 0 ? product.toString() : '0',
-          'commission': commission > 0 ? commission.toString() : '0',
-          'transfer_cost': transferCost > 0 ? transferCost.toString() : '0',
-          'miscellaneous': miscellaneous > 0 ? miscellaneous.toString() : '0',
-          'ghurfedari': ghurfedari > 0 ? ghurfedari.toString() : '0',
-          'barchalani': barchalani > 0 ? barchalani.toString() : '0',
-          'purchase_type': purchaseType,
-          'seller_payment': sellerPayment.toStringAsFixed(0),
-          'seller_payment_method': paymentMethod,
-          'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
-          'currency': currency,
-          'exchange_rate': exchangeRate,
-          'final_price': finalPrice.toStringAsFixed(1),
+      print('=== COLUMN INDICES ===');
+      print('  name:           $nameIndex');
+      print('  supplier:       $supplierIndex');
+      print('  net_weight:     $netWeightIndex');
+      print('  gross_weight:   $grossWeightIndex');
+      print('  currency:       $currencyIndex');
+      print('  exchange_rate:  $exchangeRateIndex');
+      print('=== END INDICES ===');
+
+      if (nameIndex == -1 || supplierIndex == -1 || netWeightIndex == -1 || grossWeightIndex == -1) {
+        String msg = '';
+        if (nameIndex == -1) msg += 'نام مواد، ';
+        if (supplierIndex == -1) msg += 'اسم فروشنده، ';
+        if (netWeightIndex == -1) msg += 'وزن خالص، ';
+        if (grossWeightIndex == -1) msg += 'وزن ناخالص، ';
+        return {
+          'success': false,
+          'message': 'فیلدهای مورد نیاز پیدا نشد: $msg'
         };
+      }
 
-        int result = await _db.insertRawMaterial(material);
-        if (result != -1) {
-          successCount++;
-          importedData.add(material);
+      final suppliers = await _db.getSuppliers();
+      Map<String, int> supplierMap = {};
+      for (var supplier in suppliers) {
+        supplierMap[supplier['name']?.toString() ?? ''] = supplier['id'];
+      }
 
-          // Create supplier loan if payment method is loan
-          if (paymentMethod != 'cash') {
-            final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 
-                ? 0.0 
-                : (sellerPayment - sellerPaidAmount);
-            
-            final loanPayload = {
-              'supplier_id': supplierId,
-              'raw_material_id': result,
-              'invoice_number': 'SL-${DateTime.now().millisecondsSinceEpoch}',
-              'supplier_name': supplierName,
-              'supplier_company': location,
-              'total_amount': sellerPayment,
-              'paid_amount': paymentMethod == 'loan_full' ? 0.0 : sellerPaidAmount,
-              'remaining_amount': remainingSeller,
-              'loan_type': paymentMethod == 'loan_full' ? 'full' : 'partial',
-              'currency': currency,
-              'date': date.trim(),
-              'date_en': dateEn,
-              'description': 'خرید مواد خام از فروشنده (وارد شده از اکسل)',
-            };
-            
-            final loanId = await _db.insertSupplierLoan(loanPayload);
-            
-            if (loanId != -1 && sellerPaidAmount > 0 && paymentMethod == 'loan_partial') {
-              await _db.insertSupplierLoanPayment({
-                'loan_id': loanId,
-                'amount': sellerPaidAmount,
-                'note': 'پرداخت اولیه فروشنده هنگام وارد کردن از اکسل',
-                'date': date.trim(),
-                'date_en': dateEn,
-              });
+      for (int i = headerRowIndex + 1; i < sheet.rows.length; i++) {
+        final row = sheet.rows[i];
+        
+        bool rowHasData = false;
+        for (var cell in row) {
+          if (cell != null && cell.value != null) {
+            String val = cell.value.toString().trim();
+            if (val.isNotEmpty && val != '0' && val != '-') {
+              rowHasData = true;
+              break;
             }
           }
-        } else {
-          skippedCount++;
-          errors.add('ردیف ${i+1}: خطا در ذخیره‌سازی');
         }
+        
+        if (!rowHasData) continue;
 
-      } catch (e) {
-        skippedCount++;
-        errors.add('ردیف ${i+1}: خطا - $e');
+        try {
+          String name = _getCellValueDirect(row, nameIndex);
+          String supplierName = _getCellValueDirect(row, supplierIndex);
+          String netWeightStr = _getCellValueDirect(row, netWeightIndex);
+          String grossWeightStr = _getCellValueDirect(row, grossWeightIndex);
+
+          String date = _getCellValueDirect(row, dateIndex);
+          String unit = _getCellValueDirect(row, unitIndex);
+          String unitPriceStr = _getCellValueDirect(row, unitPriceIndex);
+          String location = _getCellValueDirect(row, locationIndex);
+          String materialType = _getCellValueDirect(row, materialTypeIndex);
+          String thickness = _getCellValueDirect(row, thicknessIndex);
+          String productStr = _getCellValueDirect(row, productIndex);
+          String commissionStr = _getCellValueDirect(row, commissionIndex);
+          String transferCostStr = _getCellValueDirect(row, transferCostIndex);
+          String miscellaneousStr = _getCellValueDirect(row, miscellaneousIndex);
+          String ghurfedariStr = _getCellValueDirect(row, ghurfedariIndex);
+          String barchalaniStr = _getCellValueDirect(row, barchalaniIndex);
+          String purchaseType = _getCellValueDirect(row, purchaseTypeIndex);
+          String paymentMethod = _getCellValueDirect(row, paymentMethodIndex);
+          String currency = _getCellValueDirect(row, currencyIndex);
+          String exchangeRateStr = _getCellValueDirect(row, exchangeRateIndex);
+
+          // ============ AUTO DEFAULTS ============
+          if (unit.isEmpty) unit = 'کیلوگرم';
+          if (currency.isEmpty) currency = 'AFN';
+          if (exchangeRateStr.isEmpty) exchangeRateStr = '1';
+          if (paymentMethod.isEmpty) paymentMethod = 'cash';
+          if (purchaseType.isEmpty) purchaseType = 'مستقیم';
+
+          print('=== ROW ${i+1} RAW VALUES ===');
+          print('  currency raw: "$currency"');
+          print('  exchangeRate raw: "$exchangeRateStr"');
+          print('  unitPrice raw: "$unitPriceStr"');
+          print('  netWeight raw: "$netWeightStr"');
+          print('=== END ROW ===');
+
+          // ✅ Normalize currency
+          String currencyNorm = currency.trim().toLowerCase();
+          if (currencyNorm == 'افغانی' || currencyNorm == 'afn' || currencyNorm.isEmpty || 
+              currencyNorm == 'افغانى' || currencyNorm == 'افغانی' || currencyNorm.contains('افغان')) {
+            currency = 'AFN';
+          } else if (currencyNorm == 'دالر' || currencyNorm == 'دلار' || currencyNorm == 'usd' || 
+             currencyNorm == 'دالر امریکایی' || currencyNorm == 'دالر امریکائی' ||
+             currencyNorm.contains('دالر') || currencyNorm.contains('دلار') || 
+             currencyNorm.contains('usd')) {
+            currency = 'USD';
+          } else {
+            currency = 'AFN';
+          }
+
+          print('  currency normalized: "$currency"');
+
+          // ✅ Normalize payment method
+          String pmNorm = paymentMethod.trim();
+          if (pmNorm == 'نقد' || pmNorm == 'cash' || pmNorm == 'Cash' || pmNorm.contains('نقد')) {
+            paymentMethod = 'cash';
+          } else if (pmNorm == 'قرض کامل' || pmNorm == 'loan_full' || pmNorm.contains('قرض کامل')) {
+            paymentMethod = 'loan_full';
+          } else if (pmNorm == 'قرض جزئی' || pmNorm == 'loan_partial' || pmNorm.contains('قرض جزئ')) {
+            paymentMethod = 'loan_partial';
+          } else {
+            paymentMethod = 'cash';
+          }
+
+          if (name.isEmpty || supplierName.isEmpty || netWeightStr.isEmpty || grossWeightStr.isEmpty) {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: فیلدهای مورد نیاز کامل نیستند');
+            continue;
+          }
+
+          double netWeight = _parseNumber(netWeightStr);
+          double grossWeight = _parseNumber(grossWeightStr);
+
+          if (netWeight <= 0 || grossWeight <= 0) {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: وزن نامعتبر');
+            continue;
+          }
+
+          int? supplierId = supplierMap[supplierName];
+          if (supplierId == null) {
+            supplierId = await _db.insertSupplier({
+              'name': supplierName,
+              'phone': '',
+              'address': location,
+            });
+            if (supplierId != -1) {
+              supplierMap[supplierName] = supplierId;
+            } else {
+              skippedCount++;
+              errors.add('ردیف ${i+1}: خطا در ایجاد فروشنده');
+              continue;
+            }
+          }
+
+          // ============================================================
+          // ✅ FIXED CALCULATION - Expenses are ALWAYS in AFN
+          // ============================================================
+          double unitPrice = _parseNumber(unitPriceStr);
+          double product = _parseNumber(productStr);
+          double commission = _parseNumber(commissionStr);
+          double transferCost = _parseNumber(transferCostStr);
+          double miscellaneous = _parseNumber(miscellaneousStr);
+          double ghurfedari = _parseNumber(ghurfedariStr);
+          double barchalani = _parseNumber(barchalaniStr);
+          double exchangeRate = _parseNumber(exchangeRateStr);
+          
+          if (exchangeRate <= 0) exchangeRate = 1;
+
+          double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') 
+              ? netWeight / 1000 
+              : netWeight;
+          
+          double basePrice = netWeightInTons * unitPrice;
+
+          double totalAfnExpenses = product + commission + transferCost + 
+                                    miscellaneous + ghurfedari + barchalani;
+
+          double expensesInPriceCurrency;
+          if (currency == 'USD') {
+            expensesInPriceCurrency = totalAfnExpenses / exchangeRate;
+          } else {
+            expensesInPriceCurrency = totalAfnExpenses;
+          }
+
+          double finalPrice = basePrice + expensesInPriceCurrency;
+          double sellerPayment = basePrice;
+
+          double sellerPaidAmount = 0;
+          if (paymentMethod == 'cash') {
+            sellerPaidAmount = basePrice;
+          } else {
+            sellerPaidAmount = 0;
+          }
+
+          print('=== CALCULATION ROW ${i+1} ===');
+          print('  finalPrice: $finalPrice');
+          print('=== END CALC ===');
+
+          if (date.isEmpty) {
+            date = PersianDateConverter.gregorianToJalali(DateTime.now());
+          }
+          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+          Map<String, dynamic> material = {
+            'supplier_id': supplierId,
+            'name': name,
+            'location': location,
+            'material_type': materialType,
+            'thickness': thickness,
+            'net_weight': netWeight.toString(),
+            'gross_weight': grossWeight.toString(),
+            'date': date,
+            'date_en': dateEn,
+            'unit': unit,
+            'unit_price': unitPrice.toString(),
+            'product': product > 0 ? product.toString() : '0',
+            'commission': commission > 0 ? commission.toString() : '0',
+            'transfer_cost': transferCost > 0 ? transferCost.toString() : '0',
+            'miscellaneous': miscellaneous > 0 ? miscellaneous.toString() : '0',
+            'ghurfedari': ghurfedari > 0 ? ghurfedari.toString() : '0',
+            'barchalani': barchalani > 0 ? barchalani.toString() : '0',
+            'purchase_type': purchaseType,
+            'seller_payment': sellerPayment.toStringAsFixed(0),
+            'seller_payment_method': paymentMethod,
+            'seller_paid_amount': sellerPaidAmount.toStringAsFixed(0),
+            'currency': currency,
+            'exchange_rate': exchangeRate,
+            'final_price': finalPrice.toStringAsFixed(1),
+          };
+
+          int result = await _db.insertRawMaterial(material);
+          if (result != -1) {
+            successCount++;
+            importedData.add(material);
+
+            if (paymentMethod != 'cash') {
+              final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 
+                  ? 0.0 
+                  : (sellerPayment - sellerPaidAmount);
+              
+              final loanPayload = {
+                'supplier_id': supplierId,
+                'raw_material_id': result,
+                'invoice_number': 'SL-${DateTime.now().millisecondsSinceEpoch}',
+                'supplier_name': supplierName,
+                'supplier_company': location,
+                'total_amount': sellerPayment,
+                'paid_amount': paymentMethod == 'loan_full' ? 0.0 : sellerPaidAmount,
+                'remaining_amount': remainingSeller,
+                'loan_type': paymentMethod == 'loan_full' ? 'full' : 'partial',
+                'currency': currency,
+                'date': date.trim(),
+                'date_en': dateEn,
+                'description': 'خرید مواد خام از فروشنده (وارد شده از اکسل)',
+              };
+              
+              final loanId = await _db.insertSupplierLoan(loanPayload);
+              
+              if (loanId != -1 && sellerPaidAmount > 0 && paymentMethod == 'loan_partial') {
+                await _db.insertSupplierLoanPayment({
+                  'loan_id': loanId,
+                  'amount': sellerPaidAmount,
+                  'note': 'پرداخت اولیه فروشنده هنگام وارد کردن از اکسل',
+                  'date': date.trim(),
+                  'date_en': dateEn,
+                });
+              }
+            }
+          } else {
+            skippedCount++;
+            errors.add('ردیف ${i+1}: خطا در ذخیره‌سازی');
+          }
+
+        } catch (e) {
+          skippedCount++;
+          errors.add('ردیف ${i+1}: خطا - $e');
+        }
       }
+
+      return {
+        'success': true,
+        'successCount': successCount,
+        'skippedCount': skippedCount,
+        'importedData': importedData,
+        'errors': errors,
+        'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
+      };
+
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'خطا در پردازش فایل: $e',
+      };
     }
-
-    return {
-      'success': true,
-      'successCount': successCount,
-      'skippedCount': skippedCount,
-      'importedData': importedData,
-      'errors': errors,
-      'message': '✅ ${successCount} ردیف با موفقیت وارد شد. ${skippedCount} ردیف نادیده گرفته شد.',
-    };
-
-  } catch (e) {
-    return {
-      'success': false,
-      'message': 'خطا در پردازش فایل: $e',
-    };
   }
-}
 
   String _getCellValueDirect(List<excel.Data?> row, int index) {
     if (index < 0 || index >= row.length) return '';
@@ -897,304 +986,315 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   }
 
   // ============ BUILD MAIN TABLE ============
-  // ============ BUILD MAIN TABLE ============
-Widget _buildMainTable(AppLocalizations l10n) {
-  if (isLoading) {
-    return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
-  }
+  Widget _buildMainTable(AppLocalizations l10n) {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFCB001D)));
+    }
 
-  if (materials.isEmpty) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.warehouse_outlined, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(l10n.noRawMaterialsFound, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-        ],
-      ),
-    );
-  }
+    if (materials.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.warehouse_outlined, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(l10n.noRawMaterialsFound, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+          ],
+        ),
+      );
+    }
 
-  return Column(
-    children: [
-      Expanded(
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SingleChildScrollView(
-              controller: _horizontalScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
+    return Column(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.06), width: 1),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
               child: SingleChildScrollView(
-                scrollDirection: Axis.vertical,
+                controller: _horizontalScrollController,
+                scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
-                child: Column(
-                  children: [
-                    // Table Header
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCB001D).withOpacity(0.05),
-                        border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 40),
-                          const SizedBox(width: 6),
-                          _buildHeaderCell(l10n.id, 60),
-                          _buildHeaderCell(l10n.materialName, 90),
-                          _buildHeaderCell(l10n.supplierName, 120),
-                          _buildHeaderCell(l10n.supplierPhone, 90),
-                          _buildHeaderCell(l10n.supplierAddress, 120),
-                          _buildHeaderCell(l10n.date, 100),
-                          _buildHeaderCell(l10n.unit, 60),
-                          _buildHeaderCell(l10n.netWeight, 65),
-                          _buildHeaderCell(l10n.grossWeight, 65),
-                          _buildHeaderCell(l10n.unitPrice, 65),
-                          _buildHeaderCell('واحد پول', 65),        // ✅ NEW
-                          _buildHeaderCell('نرخ ارز', 60),          // ✅ NEW
-                          _buildHeaderCell(l10n.sellerBasePrice, 80),
-                          _buildHeaderCell(l10n.initialPayment, 80),
-                          _buildHeaderCell(l10n.paymentMethod, 80),
-                          _buildHeaderCell(l10n.product, 60),
-                          _buildHeaderCell(l10n.commission, 60),
-                          _buildHeaderCell(l10n.transferCost, 60),
-                          _buildHeaderCell(l10n.miscellaneous, 60),
-                          _buildHeaderCell(l10n.ghurfedari, 60),
-                          _buildHeaderCell(l10n.barchalani, 60),
-                          _buildHeaderCell(l10n.purchaseType, 70),
-                          _buildHeaderCell(l10n.finalPrice, 80),
-                          _buildHeaderCell(l10n.actions, 80),
-                        ],
-                      ),
-                    ),
-                    ..._paginatedMaterials.map((material) {
-                      final isSelected = _selectedIds.contains(material['id'] as int);
-                      final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
-                      
-                      double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
-                      double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
-                      String unit = material['unit'] ?? '-';
-                      
-                      String displayNet = _formatUnitWithConversion(unit, netWeight, l10n);
-                      String displayGross = _formatUnitWithConversion(unit, grossWeight, l10n);
-                      
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
-                          border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
+                          color: const Color(0xFFCB001D).withOpacity(0.05),
+                          border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 1)),
                         ),
                         child: Row(
                           children: [
                             SizedBox(
                               width: 40,
                               child: Checkbox(
-                                value: isSelected,
-                                onChanged: (_) => _toggleSelection(material['id'] as int),
+                                value: _paginatedMaterials.isNotEmpty &&
+                                    _paginatedMaterials.every((m) =>
+                                        _selectedIds.contains(m['id'] as int)),
+                                onChanged: (_) => _toggleSelectAll(),
                                 activeColor: const Color(0xFFCB001D),
                                 checkColor: Colors.white,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
                             ),
                             const SizedBox(width: 6),
-                            _buildDataCell(material['id'].toString(), 60),
-                            _buildDataCell(material['name'] ?? '-', 90),
-                            _buildDataCell(material['supplier_name'] ?? '-', 120),
-                            _buildDataCell(material['supplier_phone'] ?? '-', 90),
-                            _buildDataCell(material['supplier_address'] ?? '-', 120),
-                            Container(
-                              width: 100,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    material['date_en'] ?? '-',
-                                    style: const TextStyle(
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1A1A2E),
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    material['date'] ?? '-',
-                                    style: const TextStyle(
-                                      fontSize: 7,
-                                      color: Color(0xFFCB001D),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            _buildDataCell(translatedUnit, 60),
-                            _buildDataCell(displayNet, 65),
-                            _buildDataCell(displayGross, 65),
-                            _buildDataCell(material['unit_price'] ?? '-', 65),
-                            _buildDataCell(material['currency']?.toString() ?? 'AFN', 65),        // ✅ NEW
-                            _buildDataCell(material['exchange_rate']?.toString() ?? '1', 60),     // ✅ NEW
-                            _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
-                            _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
-                            _buildDataCell(material['seller_payment_method'] == 'cash'
-                                ? l10n.cash
-                                : material['seller_payment_method'] == 'loan_full'
-                                    ? l10n.fullLoan
-                                    : material['seller_payment_method'] == 'loan_partial'
-                                        ? l10n.partialLoan
-                                        : '-', 80),
-                            _buildDataCell(material['product'] ?? '-', 60),
-                            _buildDataCell(material['commission'] ?? '-', 60),
-                            _buildDataCell(material['transfer_cost'] ?? '-', 60),
-                            _buildDataCell(material['miscellaneous'] ?? '-', 60),
-                            _buildDataCell(material['ghurfedari'] ?? '-', 60),
-                            _buildDataCell(material['barchalani'] ?? '-', 60),
-                            Container(
-                              width: 70,
-                              child: _buildPurchaseTypeChip(material['purchase_type'], l10n),
-                            ),
-                            _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80, isBold: true, isRed: true),
-                            SizedBox(
-                              width: 80,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onPressed: () => _showEditDialog(context, material, l10n),
-                                    tooltip: l10n.edit,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  IconButton(
-                                    icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onPressed: () => _showDeleteDialog(context, material, l10n),
-                                    tooltip: l10n.delete,
-                                  ),
-                                ],
-                              ),
-                            ),
+                            _buildHeaderCell(l10n.id, 60),
+                            _buildHeaderCell(l10n.materialName, 90),
+                            _buildHeaderCell(l10n.supplierName, 120),
+                            _buildHeaderCell(l10n.supplierPhone, 90),
+                            _buildHeaderCell(l10n.supplierAddress, 120),
+                            _buildHeaderCell(l10n.date, 100),
+                            _buildHeaderCell(l10n.unit, 60),
+                            _buildHeaderCell(l10n.netWeight, 65),
+                            _buildHeaderCell(l10n.grossWeight, 65),
+                            _buildHeaderCell('ضخامت', 60),  
+                            _buildHeaderCell(l10n.unitPrice, 65),
+                            _buildHeaderCell('واحد پول', 65),
+                            _buildHeaderCell('نرخ ارز', 60),
+                            _buildHeaderCell(l10n.sellerBasePrice, 80),
+                            _buildHeaderCell(l10n.initialPayment, 80),
+                            _buildHeaderCell(l10n.paymentMethod, 80),
+                            _buildHeaderCell(l10n.product, 60),
+                            _buildHeaderCell(l10n.commission, 60),
+                            _buildHeaderCell(l10n.transferCost, 60),
+                            _buildHeaderCell(l10n.miscellaneous, 60),
+                            _buildHeaderCell(l10n.ghurfedari, 60),
+                            _buildHeaderCell(l10n.barchalani, 60),
+                            _buildHeaderCell(l10n.purchaseType, 70),
+                            _buildHeaderCell(l10n.finalPrice, 80),
+                            _buildHeaderCell(l10n.actions, 80),
                           ],
                         ),
-                      );
-                    }).toList(),
-                  ],
+                      ),
+                      ..._paginatedMaterials.map((material) {
+                        final isSelected = _selectedIds.contains(material['id'] as int);
+                        final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
+                        
+                        double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
+                        double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
+                        String unit = material['unit'] ?? '-';
+                        
+                        String displayNet = _formatUnitWithConversion(unit, netWeight, l10n);
+                        String displayGross = _formatUnitWithConversion(unit, grossWeight, l10n);
+                        
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFCB001D).withOpacity(0.04) : null,
+                            border: Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 40,
+                                child: Checkbox(
+                                  value: isSelected,
+                                  onChanged: (_) => _toggleSelection(material['id'] as int),
+                                  activeColor: const Color(0xFFCB001D),
+                                  checkColor: Colors.white,
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              _buildDataCell(material['id'].toString(), 60),
+                              _buildDataCell(material['name'] ?? '-', 90),
+                              _buildDataCell(material['supplier_name'] ?? '-', 120),
+                              _buildDataCell(material['supplier_phone'] ?? '-', 90),
+                              _buildDataCell(material['supplier_address'] ?? '-', 120),
+                              Container(
+                                width: 100,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      material['date_en'] ?? '-',
+                                      style: const TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1A1A2E),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      material['date'] ?? '-',
+                                      style: const TextStyle(
+                                        fontSize: 7,
+                                        color: Color(0xFFCB001D),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              _buildDataCell(translatedUnit, 60),
+                              _buildDataCell(displayNet, 65),
+                              _buildDataCell(displayGross, 65),
+                              _buildDataCell(material['thickness'] ?? '-', 60),
+                              _buildDataCell(material['unit_price'] ?? '-', 65),
+                              _buildDataCell(material['currency']?.toString() ?? 'AFN', 65),
+                              _buildDataCell(material['exchange_rate']?.toString() ?? '1', 60),
+                              _buildDataCell('${material['seller_payment'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
+                              _buildDataCell('${material['seller_paid_amount'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80),
+                              _buildDataCell(material['seller_payment_method'] == 'cash'
+                                  ? l10n.cash
+                                  : material['seller_payment_method'] == 'loan_full'
+                                      ? l10n.fullLoan
+                                      : material['seller_payment_method'] == 'loan_partial'
+                                          ? l10n.partialLoan
+                                          : '-', 80),
+                              _buildDataCell(material['product'] ?? '-', 60),
+                              _buildDataCell(material['commission'] ?? '-', 60),
+                              _buildDataCell(material['transfer_cost'] ?? '-', 60),
+                              _buildDataCell(material['miscellaneous'] ?? '-', 60),
+                              _buildDataCell(material['ghurfedari'] ?? '-', 60),
+                              _buildDataCell(material['barchalani'] ?? '-', 60),
+                              Container(
+                                width: 70,
+                                child: _buildPurchaseTypeChip(material['purchase_type'], l10n),
+                              ),
+                              _buildDataCell('${material['final_price'] ?? '-'} ${material['currency'] ?? 'AFN'}', 80, isBold: true, isRed: true),
+                              SizedBox(
+                                width: 80,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.edit_outlined, color: const Color(0xFFCB001D), size: 18),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _showEditDialog(context, material, l10n),
+                                      tooltip: l10n.edit,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 18),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _showDeleteDialog(context, material, l10n),
+                                      tooltip: l10n.delete,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-      // Pagination
-      Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(12),
-            bottomRight: Radius.circular(12),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(12),
+              bottomRight: Radius.circular(12),
+            ),
+            border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
           ),
-          border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Text(l10n.show, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: _itemsPerPage,
-                      onChanged: _changeItemsPerPage,
-                      items: _pageSizeOptions.map((size) {
-                        return DropdownMenuItem<int>(
-                          value: size,
-                          child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
-                        );
-                      }).toList(),
-                      dropdownColor: Colors.white,
-                      icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(l10n.show, style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFCB001D).withOpacity(0.2)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: _itemsPerPage,
+                        onChanged: _changeItemsPerPage,
+                        items: _pageSizeOptions.map((size) {
+                          return DropdownMenuItem<int>(
+                            value: size,
+                            child: Text(size.toString(), style: const TextStyle(color: Color(0xFF1A1A2E), fontSize: 12)),
+                          );
+                        }).toList(),
+                        dropdownColor: Colors.white,
+                        icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFCB001D), size: 18),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Text(l10n.perPage, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-              ],
-            ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFCB001D), size: 16),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30),
-                  onPressed: () {
-                    _horizontalScrollController.animateTo(
-                      _horizontalScrollController.offset - 200,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  tooltip: 'Scroll Left',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.arrow_forward_ios, color: Color(0xFFCB001D), size: 16),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30),
-                  onPressed: () {
-                    _horizontalScrollController.animateTo(
-                      _horizontalScrollController.offset + 200,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  tooltip: 'Scroll Right',
-                ),
-                const SizedBox(width: 8),
-                Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', 
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
-                const SizedBox(width: 12),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: _currentPage < _totalPages ? () => _changePage(_currentPage + 1) : null,
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 4),
+                  Text(l10n.perPage, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ],
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFCB001D), size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30),
+                    onPressed: () {
+                      _horizontalScrollController.animateTo(
+                        _horizontalScrollController.offset - 200,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    tooltip: 'Scroll Left',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios, color: Color(0xFFCB001D), size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30),
+                    onPressed: () {
+                      _horizontalScrollController.animateTo(
+                        _horizontalScrollController.offset + 200,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    tooltip: 'Scroll Right',
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', 
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, color: Color(0xFFCB001D), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _currentPage < _totalPages ? () => _changePage(_currentPage + 1) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-    ],
-  );
-}
+      ],
+    );
+  }
 
   List<Map<String, dynamic>> get _paginatedMaterials {
     final start = (_currentPage - 1) * _itemsPerPage;
@@ -1238,6 +1338,361 @@ Widget _buildMainTable(AppLocalizations l10n) {
         _selectedIds.add(id);
       }
     });
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      final currentIds = _paginatedMaterials
+          .map((item) => item['id'] as int)
+          .toList();
+      final allSelected =
+          currentIds.every((id) => _selectedIds.contains(id));
+      if (allSelected) {
+        _selectedIds.removeAll(currentIds);
+      } else {
+        _selectedIds.addAll(currentIds);
+      }
+    });
+  }
+
+  // ============================================================
+  // BULK DELETE - SELECTED RAW MATERIALS
+  // ============================================================
+  void _showBulkDeleteDialog(BuildContext context, AppLocalizations l10n) {
+    final count = _selectedIds.length;
+    if (count == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_sweep,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'حذف مواد خام انتخاب شده',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A2E),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.red.withOpacity(0.2), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'هشدار!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'شما در حال حذف $count ماده خام هستید. '
+                              'قرض‌های مربوطه نیز پاک می‌شوند. '
+                              'این عمل قابل بازگشت نیست!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'مواد خام زیر حذف خواهند شد:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A2E),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _selectedIds.map((id) {
+                        final material = materials.firstWhere(
+                          (m) => m['id'] == id,
+                          orElse: () => {},
+                        );
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            '• #$id — ${material['name'] ?? '-'} '
+                            '(فروشنده: ${material['supplier_name'] ?? '-'})',
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFF1A1A2E)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Color(0xFF888888))),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performBulkDelete(_selectedIds.toList());
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: Text('حذف $count مورد',
+                  style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BULK DELETE - ALL RAW MATERIALS
+  // ============================================================
+  void _showDeleteAllDialog(BuildContext context, AppLocalizations l10n) {
+    final count = materials.length;
+    if (count == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dangerous,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'حذف تمام مواد خام',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A2E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: Colors.red.withOpacity(0.3), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.red, size: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'هشدار جدی!',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'شما در حال حذف تمام $count ماده خام هستید.\n'
+                    'تمام قرض‌های فروشندگان و پرداخت‌های مربوطه نیز پاک خواهند شد.\n'
+                    'این عمل کاملاً غیرقابل بازگشت است!',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف',
+                  style: TextStyle(color: Color(0xFF888888))),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _performDeleteAll();
+              },
+              icon: const Icon(Icons.delete_forever,
+                  color: Colors.white, size: 18),
+              label: const Text('حذف همه',
+                  style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PERFORM BULK DELETE
+  // ============================================================
+  Future<void> _performBulkDelete(List<int> ids) async {
+    setState(() => isLoading = true);
+    try {
+      final deleted = await _db.deleteMultipleRawMaterials(ids);
+      if (!mounted) return;
+
+      if (deleted > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ $deleted ماده خام با موفقیت حذف شد'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        await _loadData();
+      } else {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ خطا در حذف مواد خام'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ خطا: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // PERFORM DELETE ALL
+  // ============================================================
+  Future<void> _performDeleteAll() async {
+    setState(() => isLoading = true);
+    try {
+      final deleted = await _db.deleteAllRawMaterials();
+      if (!mounted) return;
+
+      if (deleted >= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🗑️ تمام $deleted ماده خام حذف شدند'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        await _loadData();
+      } else {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ خطا در حذف تمام مواد خام'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ خطا: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildHeaderCell(String text, double width) {
@@ -1357,69 +1812,59 @@ Widget _buildMainTable(AppLocalizations l10n) {
     }
 
     void _updateFinalPrice() {
-  double netWeight = double.tryParse(netWeightController.text) ?? 0;
-  String selectedUnit = unitController.text;
-  
-  double netWeightInTons = netWeight;
-  if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
-    netWeightInTons = netWeight / 1000;
-  }
-  
-  double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-  
-  // ✅ These are ALWAYS in AFN
-  double productCost = double.tryParse(productController.text) ?? 0;
-  double commission = double.tryParse(commissionController.text) ?? 0;
-  double transferCost = double.tryParse(transferCostController.text) ?? 0;
-  double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
-  double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
-  double barchalani = double.tryParse(barchalaniController.text) ?? 0;
-  
-  double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
-  if (exchangeRate <= 0) exchangeRate = 1;
+      double netWeight = double.tryParse(netWeightController.text) ?? 0;
+      String selectedUnit = unitController.text;
+      
+      double netWeightInTons = netWeight;
+      if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
+        netWeightInTons = netWeight / 1000;
+      }
+      
+      double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
+      
+      double productCost = double.tryParse(productController.text) ?? 0;
+      double commission = double.tryParse(commissionController.text) ?? 0;
+      double transferCost = double.tryParse(transferCostController.text) ?? 0;
+      double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
+      double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
+      double barchalani = double.tryParse(barchalaniController.text) ?? 0;
+      
+      double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
+      if (exchangeRate <= 0) exchangeRate = 1;
 
-  // Base price is in the selected currency (USD or AFN)
-  double basePrice = netWeightInTons * unitPrice;
-  
-  // ✅ Convert AFN expenses to the selected currency with HIGH PRECISION
-  double totalAfnExpenses = productCost + commission + transferCost + 
-                            miscellaneous + ghurfedari + barchalani;
-  
-  double expensesInPriceCurrency;
-  if (selectedCurrency == 'USD') {
-    expensesInPriceCurrency = totalAfnExpenses / exchangeRate; // AFN ➜ USD
-  } else {
-    expensesInPriceCurrency = totalAfnExpenses; // AFN ➜ AFN (no conversion)
-  }
+      double basePrice = netWeightInTons * unitPrice;
+      
+      double totalAfnExpenses = productCost + commission + transferCost + 
+                                miscellaneous + ghurfedari + barchalani;
+      
+      double expensesInPriceCurrency;
+      if (selectedCurrency == 'USD') {
+        expensesInPriceCurrency = totalAfnExpenses / exchangeRate;
+      } else {
+        expensesInPriceCurrency = totalAfnExpenses;
+      }
 
-  // ✅ Final price with 2 decimal precision
-  double finalPrice = basePrice + expensesInPriceCurrency;
-  
-  // ✅ Show with 2 decimal places for precision
-  finalPriceController.text = finalPrice.toStringAsFixed(2);
-  
-  // ✅ Calculate AFN equivalent with HIGH PRECISION
-  double afnEquivalent;
-  if (selectedCurrency == 'USD') {
-    // Final price is in USD, convert to AFN
-    afnEquivalent = finalPrice * exchangeRate;
-  } else {
-    // Final price is in AFN, this is the AFN equivalent
-    afnEquivalent = finalPrice;
-  }
-  
-  // ✅ Show AFN equivalent with 0 decimal places (rounded properly)
-  afnEquivalentController.text = afnEquivalent.toStringAsFixed(0);
-  
-  // ✅ Seller payment is base price only (no expenses)
-  sellerPaymentController.text = basePrice.toStringAsFixed(2);
-  
-  if (selectedSellerPaymentMethod == 'cash') {
-    sellerPaidAmountController.text = sellerPaymentController.text;
-  } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
-    sellerPaidAmountController.text = '0';
-  }
-}
+      double finalPrice = basePrice + expensesInPriceCurrency;
+      
+      finalPriceController.text = finalPrice.toStringAsFixed(2);
+      
+      double afnEquivalent;
+      if (selectedCurrency == 'USD') {
+        afnEquivalent = finalPrice * exchangeRate;
+      } else {
+        afnEquivalent = finalPrice;
+      }
+      
+      afnEquivalentController.text = afnEquivalent.toStringAsFixed(0);
+      
+      sellerPaymentController.text = basePrice.toStringAsFixed(2);
+      
+      if (selectedSellerPaymentMethod == 'cash') {
+        sellerPaidAmountController.text = sellerPaymentController.text;
+      } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
+        sellerPaidAmountController.text = '0';
+      }
+    }
 
     showDialog(
       context: context,
@@ -2216,7 +2661,6 @@ Widget _buildMainTable(AppLocalizations l10n) {
       return unit;
     }
 
-    // ✅ FIXED HERE - ONLY THIS FUNCTION CHANGED
     void _updateFinalPrice() {
       double netWeight = double.tryParse(netWeightController.text) ?? 0;
       String selectedUnit = unitController.text;
@@ -2228,7 +2672,6 @@ Widget _buildMainTable(AppLocalizations l10n) {
       
       double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
       
-      // ✅ FIX: These are ALWAYS in AFN (not USD)
       double productCost = double.tryParse(productController.text) ?? 0;
       double commission = double.tryParse(commissionController.text) ?? 0;
       double transferCost = double.tryParse(transferCostController.text) ?? 0;
@@ -2239,25 +2682,21 @@ Widget _buildMainTable(AppLocalizations l10n) {
       double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
       if (exchangeRate <= 0) exchangeRate = 1;
 
-      // Base price is in the selected currency (USD or AFN)
       double basePrice = netWeightInTons * unitPrice;
       
-      // ✅ Convert AFN expenses to the selected currency
       double totalAfnExpenses = productCost + commission + transferCost + 
                                 miscellaneous + ghurfedari + barchalani;
       
       double expensesInPriceCurrency;
       if (selectedCurrency == 'USD') {
-        expensesInPriceCurrency = totalAfnExpenses / exchangeRate; // AFN ➜ USD
+        expensesInPriceCurrency = totalAfnExpenses / exchangeRate;
       } else {
-        expensesInPriceCurrency = totalAfnExpenses; // AFN ➜ AFN (no conversion)
+        expensesInPriceCurrency = totalAfnExpenses;
       }
 
-      // Final price is always in the selected currency
       double finalPrice = basePrice + expensesInPriceCurrency;
       finalPriceController.text = finalPrice.toStringAsFixed(1);
       
-      // ✅ Calculate AFN equivalent CORRECTLY
       if (selectedCurrency == 'USD') {
         afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(1);
       } else {
@@ -3045,7 +3484,6 @@ Widget _buildMainTable(AppLocalizations l10n) {
         child: Column(
           crossAxisAlignment: isEnglish ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
-            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -3065,6 +3503,59 @@ Widget _buildMainTable(AppLocalizations l10n) {
                 ),
                 Row(
                   children: [
+                    if (_selectedIds.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCB001D).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle, color: Color(0xFFCB001D), size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_selectedIds.length} ${l10n.selected}',
+                              style: const TextStyle(
+                                color: Color(0xFFCB001D),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (_selectedIds.isNotEmpty) const SizedBox(width: 8),
+                    if (_selectedIds.isNotEmpty)
+                      ElevatedButton.icon(
+                        onPressed: () => _showBulkDeleteDialog(context, l10n),
+                        icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 18),
+                        label: Text(
+                          'حذف ${_selectedIds.length} مورد',
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade700,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                      ),
+                    if (_selectedIds.isNotEmpty) const SizedBox(width: 10),
+                    if (materials.isNotEmpty)
+                      OutlinedButton.icon(
+                        onPressed: () => _showDeleteAllDialog(context, l10n),
+                        icon: Icon(Icons.delete_forever, color: Colors.red.shade700, size: 18),
+                        label: Text(
+                          'حذف همه',
+                          style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.red.shade700, width: 1.5),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                      ),
+                    if (materials.isNotEmpty) const SizedBox(width: 10),
                     OutlinedButton.icon(
                       onPressed: _importExcel,
                       icon: const Icon(Icons.upload_file, color: Color(0xFFCB001D), size: 18),

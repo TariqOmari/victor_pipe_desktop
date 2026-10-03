@@ -38,8 +38,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
   // Helper to check if unit is weight-based
   bool _isWeightUnit(String unit) {
-    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' || 
-           unit == 'تن' || unit == 'ton' || unit == 'Ton';
+    return unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg' ||
+        unit == 'تن' || unit == 'ton' || unit == 'Ton';
   }
 
   // Get total tons of all raw materials
@@ -48,7 +48,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     for (var material in materials) {
       String unit = material['unit'] ?? '';
       double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
-      
+
       if (_isWeightUnit(unit)) {
         if (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') {
           totalTons += grossWeight / 1000;
@@ -58,6 +58,33 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       }
     }
     return totalTons;
+  }
+
+  // ============================================================
+  // ✅ TOTAL VALUE BY CURRENCY (sum of final_price)
+  // ============================================================
+  double _getTotalValueByCurrency(String currencyCode) {
+    double total = 0;
+    for (var material in materials) {
+      final String currency = material['currency']?.toString() ?? 'AFN';
+      if (currency == currencyCode) {
+        total += double.tryParse(material['final_price']?.toString() ?? '0') ?? 0;
+      }
+    }
+    return total;
+  }
+
+  // ============================================================
+  // ✅ FORMAT NUMBER WITH THOUSANDS SEPARATOR
+  // ============================================================
+  String _formatNumber(double value) {
+    final String s = value.toStringAsFixed(2);
+    final parts = s.split('.');
+    final intPart = parts[0];
+    final decPart = parts.length > 1 ? parts[1] : '00';
+    final RegExp re = RegExp(r'\B(?=(\d{3})+(?!\d))');
+    final String withSep = intPart.replaceAllMapped(re, (m) => ',');
+    return '$withSep.$decPart';
   }
 
   // Unit translation helper - FOR TABLE DISPLAY ONLY
@@ -111,11 +138,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   // ============ PERSIAN DIGIT CONVERSION HELPERS ============
   String _convertPersianToEnglishDigits(String value) {
     if (value.isEmpty) return value;
-    
+
     const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
     const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
     const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    
+
     String result = value;
     for (int i = 0; i < 10; i++) {
       result = result.replaceAll(persianDigits[i], englishDigits[i]);
@@ -129,7 +156,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     final cell = row[index];
     if (cell == null) return '';
     if (cell.value == null) return '';
-    
+
     String value;
     if (cell.value is String) {
       value = (cell.value as String).trim();
@@ -139,11 +166,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     } else {
       value = cell.value.toString().trim();
     }
-    
+
     if (value.isNotEmpty) {
       value = _convertPersianToEnglishDigits(value);
     }
-    
+
     return value;
   }
 
@@ -312,6 +339,82 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     return result;
   }
 
+  // ============================================================
+  // ✅ PARSE PERSIAN DATE FROM EXCEL → RETURN BOTH FA & EN
+  // ============================================================
+  ({String persian, String english})? _parsePersianDateFromExcel(String raw) {
+    if (raw.isEmpty) return null;
+
+    String cleaned = _convertPersianToEnglishDigits(raw.trim());
+    cleaned = cleaned.replaceAll(RegExp(r'[/\.\-\s]+'), '-');
+
+    final match = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(cleaned);
+    if (match == null) return null;
+
+    final int year = int.parse(match.group(1)!);
+    final int month = int.parse(match.group(2)!);
+    final int day = int.parse(match.group(3)!);
+
+    if (year < 1300 || year > 1500 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+
+    final persian = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+
+    try {
+      final DateTime gregorian = _jalaliToGregorian(year, month, day);
+      final english = PersianDateConverter.getEnglishDate(gregorian);
+      return (persian: persian, english: english);
+    } catch (e) {
+      print('⚠️ Failed to convert Persian date "$raw": $e');
+      return null;
+    }
+  }
+
+  // ============================================================
+  // ✅ JALALI → GREGORIAN (self-contained)
+  // ============================================================
+  DateTime _jalaliToGregorian(int jy, int jm, int jd) {
+    int gy;
+    if (jy > 979) {
+      gy = 1600;
+      jy -= 979;
+    } else {
+      gy = 621;
+    }
+    int days = (365 * jy) +
+        ((jy ~/ 33) * 8) +
+        (((jy % 33) + 3) ~/ 4) +
+        78 +
+        jd +
+        ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+    gy += 400 * (days ~/ 146097);
+    days %= 146097;
+    if (days > 36524) {
+      gy += 100 * (--days ~/ 36524);
+      days %= 36524;
+      if (days >= 365) days++;
+    }
+    gy += 4 * (days ~/ 1461);
+    days %= 1461;
+    if (days > 365) {
+      gy += (days - 1) ~/ 365;
+      days = (days - 1) % 365;
+    }
+    int gd = days + 1;
+    final sal_a = [
+      0, 31, ((gy % 4 == 0 && gy % 100 != 0) || (gy % 400 == 0)) ? 29 : 28,
+      31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    ];
+    int gm;
+    for (gm = 0; gm < 13; gm++) {
+      final v = sal_a[gm];
+      if (gd <= v) break;
+      gd -= v;
+    }
+    return DateTime(gy, gm, gd);
+  }
+
   // ============ EXCEL IMPORT ============
   Future<void> _importExcel() async {
     showDialog(
@@ -337,7 +440,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
     try {
       final result = await _pickAndImportExcel();
-      
+
       Navigator.pop(context);
 
       if (result['success']) {
@@ -395,7 +498,6 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       int skippedCount = 0;
       List<String> errors = [];
 
-      // ============ DEBUG ============
       print('=== EXCEL SHEET DEBUG ===');
       print('Total rows: ${sheet.rows.length}');
       for (int i = 0; i < sheet.rows.length && i < 5; i++) {
@@ -408,7 +510,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       }
       print('=== END DEBUG ===');
 
-      // ============ FIND HEADER ROW (flexible) ============
+      // ============ FIND HEADER ROW ============
       List<String> headers = [];
       int headerRowIndex = -1;
 
@@ -480,6 +582,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       print('  supplier:       $supplierIndex');
       print('  net_weight:     $netWeightIndex');
       print('  gross_weight:   $grossWeightIndex');
+      print('  date:           $dateIndex');
       print('  currency:       $currencyIndex');
       print('  exchange_rate:  $exchangeRateIndex');
       print('=== END INDICES ===');
@@ -504,7 +607,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
       for (int i = headerRowIndex + 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
-        
+
         bool rowHasData = false;
         for (var cell in row) {
           if (cell != null && cell.value != null) {
@@ -515,7 +618,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
             }
           }
         }
-        
+
         if (!rowHasData) continue;
 
         try {
@@ -541,7 +644,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           String currency = _getCellValueDirect(row, currencyIndex);
           String exchangeRateStr = _getCellValueDirect(row, exchangeRateIndex);
 
-          // ============ AUTO DEFAULTS ============
+          // AUTO DEFAULTS
           if (unit.isEmpty) unit = 'کیلوگرم';
           if (currency.isEmpty) currency = 'AFN';
           if (exchangeRateStr.isEmpty) exchangeRateStr = '1';
@@ -553,17 +656,18 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           print('  exchangeRate raw: "$exchangeRateStr"');
           print('  unitPrice raw: "$unitPriceStr"');
           print('  netWeight raw: "$netWeightStr"');
+          print('  date raw: "$date"');
           print('=== END ROW ===');
 
-          // ✅ Normalize currency
+          // Normalize currency
           String currencyNorm = currency.trim().toLowerCase();
-          if (currencyNorm == 'افغانی' || currencyNorm == 'afn' || currencyNorm.isEmpty || 
+          if (currencyNorm == 'افغانی' || currencyNorm == 'afn' || currencyNorm.isEmpty ||
               currencyNorm == 'افغانى' || currencyNorm == 'افغانی' || currencyNorm.contains('افغان')) {
             currency = 'AFN';
-          } else if (currencyNorm == 'دالر' || currencyNorm == 'دلار' || currencyNorm == 'usd' || 
-             currencyNorm == 'دالر امریکایی' || currencyNorm == 'دالر امریکائی' ||
-             currencyNorm.contains('دالر') || currencyNorm.contains('دلار') || 
-             currencyNorm.contains('usd')) {
+          } else if (currencyNorm == 'دالر' || currencyNorm == 'دلار' || currencyNorm == 'usd' ||
+              currencyNorm == 'دالر امریکایی' || currencyNorm == 'دالر امریکائی' ||
+              currencyNorm.contains('دالر') || currencyNorm.contains('دلار') ||
+              currencyNorm.contains('usd')) {
             currency = 'USD';
           } else {
             currency = 'AFN';
@@ -571,7 +675,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
           print('  currency normalized: "$currency"');
 
-          // ✅ Normalize payment method
+          // Normalize payment method
           String pmNorm = paymentMethod.trim();
           if (pmNorm == 'نقد' || pmNorm == 'cash' || pmNorm == 'Cash' || pmNorm.contains('نقد')) {
             paymentMethod = 'cash';
@@ -615,7 +719,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           }
 
           // ============================================================
-          // ✅ FIXED CALCULATION - Expenses are ALWAYS in AFN
+          // CALCULATION - expenses always in AFN
           // ============================================================
           double unitPrice = _parseNumber(unitPriceStr);
           double product = _parseNumber(productStr);
@@ -625,17 +729,17 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           double ghurfedari = _parseNumber(ghurfedariStr);
           double barchalani = _parseNumber(barchalaniStr);
           double exchangeRate = _parseNumber(exchangeRateStr);
-          
+
           if (exchangeRate <= 0) exchangeRate = 1;
 
-          double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg') 
-              ? netWeight / 1000 
+          double netWeightInTons = (unit == 'کیلوگرم' || unit == 'kg' || unit == 'Kg')
+              ? netWeight / 1000
               : netWeight;
-          
+
           double basePrice = netWeightInTons * unitPrice;
 
-          double totalAfnExpenses = product + commission + transferCost + 
-                                    miscellaneous + ghurfedari + barchalani;
+          double totalAfnExpenses = product + commission + transferCost +
+              miscellaneous + ghurfedari + barchalani;
 
           double expensesInPriceCurrency;
           if (currency == 'USD') {
@@ -658,10 +762,27 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           print('  finalPrice: $finalPrice');
           print('=== END CALC ===');
 
+          // ============================================================
+          // FIXED DATE HANDLING — Parse Persian date from Excel
+          // ============================================================
+          String dateEn;
           if (date.isEmpty) {
-            date = PersianDateConverter.gregorianToJalali(DateTime.now());
+            final now = DateTime.now();
+            date = PersianDateConverter.gregorianToJalali(now);
+            dateEn = PersianDateConverter.getEnglishDate(now);
+          } else {
+            final parsed = _parsePersianDateFromExcel(date);
+            if (parsed != null) {
+              date = parsed.persian;
+              dateEn = parsed.english;
+            } else {
+              final now = DateTime.now();
+              date = PersianDateConverter.gregorianToJalali(now);
+              dateEn = PersianDateConverter.getEnglishDate(now);
+            }
           }
-          String dateEn = PersianDateConverter.getEnglishDate(DateTime.now());
+
+          print('📅 Row ${i+1}: Excel date="$date" | English date="$dateEn"');
 
           Map<String, dynamic> material = {
             'supplier_id': supplierId,
@@ -696,10 +817,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
             importedData.add(material);
 
             if (paymentMethod != 'cash') {
-              final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 
-                  ? 0.0 
+              final remainingSeller = (sellerPayment - sellerPaidAmount) < 0
+                  ? 0.0
                   : (sellerPayment - sellerPaidAmount);
-              
+
               final loanPayload = {
                 'supplier_id': supplierId,
                 'raw_material_id': result,
@@ -715,9 +836,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                 'date_en': dateEn,
                 'description': 'خرید مواد خام از فروشنده (وارد شده از اکسل)',
               };
-              
+
               final loanId = await _db.insertSupplierLoan(loanPayload);
-              
+
               if (loanId != -1 && sellerPaidAmount > 0 && paymentMethod == 'loan_partial') {
                 await _db.insertSupplierLoanPayment({
                   'loan_id': loanId,
@@ -761,7 +882,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     final cell = row[index];
     if (cell == null) return '';
     if (cell.value == null) return '';
-    
+
     String value = cell.value.toString().trim();
     if (value.isNotEmpty) {
       value = _convertPersianToEnglishDigits(value);
@@ -843,12 +964,12 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   // ============ BUILD UNIT SUMMARY CARDS ============
   List<Widget> _buildUnitSummaryCards(AppLocalizations l10n) {
     Map<String, Map<String, double>> unitTotals = {};
-    
+
     for (var material in materials) {
       String unit = material['unit'] ?? 'نامشخص';
       double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
       double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
-      
+
       if (!unitTotals.containsKey(unit)) {
         unitTotals[unit] = {'net': 0, 'gross': 0};
       }
@@ -882,10 +1003,10 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     List<Widget> cards = [];
     unitTotals.forEach((unit, totals) {
       final translatedUnit = _translateUnit(unit, l10n);
-      
+
       String displayNet = _formatUnitWithConversion(unit, totals['net']!, l10n);
       String displayGross = _formatUnitWithConversion(unit, totals['gross']!, l10n);
-      
+
       cards.add(
         Container(
           width: 170,
@@ -985,6 +1106,70 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     return cards;
   }
 
+  // ============================================================
+  // ✅ SMALL TILE WIDGET USED INSIDE THE TOP SUMMARY CARD
+  // ============================================================
+  Widget _buildValueSummaryTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.15), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                    maxLines: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ============ BUILD MAIN TABLE ============
   Widget _buildMainTable(AppLocalizations l10n) {
     if (isLoading) {
@@ -1059,7 +1244,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                             _buildHeaderCell(l10n.unit, 60),
                             _buildHeaderCell(l10n.netWeight, 65),
                             _buildHeaderCell(l10n.grossWeight, 65),
-                            _buildHeaderCell('ضخامت', 60),  
+                            _buildHeaderCell('ضخامت', 60),
                             _buildHeaderCell(l10n.unitPrice, 65),
                             _buildHeaderCell('واحد پول', 65),
                             _buildHeaderCell('نرخ ارز', 60),
@@ -1081,14 +1266,14 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                       ..._paginatedMaterials.map((material) {
                         final isSelected = _selectedIds.contains(material['id'] as int);
                         final translatedUnit = _translateUnit(material['unit'] ?? '-', l10n);
-                        
+
                         double netWeight = double.tryParse(material['net_weight']?.toString() ?? '0') ?? 0;
                         double grossWeight = double.tryParse(material['gross_weight']?.toString() ?? '0') ?? 0;
                         String unit = material['unit'] ?? '-';
-                        
+
                         String displayNet = _formatUnitWithConversion(unit, netWeight, l10n);
                         String displayGross = _formatUnitWithConversion(unit, grossWeight, l10n);
-                        
+
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -1272,8 +1457,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                     tooltip: 'Scroll Right',
                   ),
                   const SizedBox(width: 8),
-                  Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages', 
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
+                  Text('${l10n.page} $_currentPage ${l10n.pageOf} $_totalPages',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF888888))),
                   const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.chevron_right, color: Color(0xFFCB001D), size: 20),
@@ -1310,7 +1495,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   }
 
   int get _totalPages => (materials.length / _itemsPerPage).ceil();
-  
+
   void _changePage(int newPage) {
     if (newPage >= 1 && newPage <= _totalPages) {
       setState(() {
@@ -1732,7 +1917,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
   Widget _buildPurchaseTypeChip(String? purchaseType, AppLocalizations l10n) {
     final type = purchaseType ?? l10n.unknown;
     final isDirect = type == l10n.direct;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -1814,29 +1999,29 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     void _updateFinalPrice() {
       double netWeight = double.tryParse(netWeightController.text) ?? 0;
       String selectedUnit = unitController.text;
-      
+
       double netWeightInTons = netWeight;
       if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
         netWeightInTons = netWeight / 1000;
       }
-      
+
       double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      
+
       double productCost = double.tryParse(productController.text) ?? 0;
       double commission = double.tryParse(commissionController.text) ?? 0;
       double transferCost = double.tryParse(transferCostController.text) ?? 0;
       double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
       double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
       double barchalani = double.tryParse(barchalaniController.text) ?? 0;
-      
+
       double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
       if (exchangeRate <= 0) exchangeRate = 1;
 
       double basePrice = netWeightInTons * unitPrice;
-      
-      double totalAfnExpenses = productCost + commission + transferCost + 
-                                miscellaneous + ghurfedari + barchalani;
-      
+
+      double totalAfnExpenses = productCost + commission + transferCost +
+          miscellaneous + ghurfedari + barchalani;
+
       double expensesInPriceCurrency;
       if (selectedCurrency == 'USD') {
         expensesInPriceCurrency = totalAfnExpenses / exchangeRate;
@@ -1845,20 +2030,20 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
       }
 
       double finalPrice = basePrice + expensesInPriceCurrency;
-      
+
       finalPriceController.text = finalPrice.toStringAsFixed(2);
-      
+
       double afnEquivalent;
       if (selectedCurrency == 'USD') {
         afnEquivalent = finalPrice * exchangeRate;
       } else {
         afnEquivalent = finalPrice;
       }
-      
+
       afnEquivalentController.text = afnEquivalent.toStringAsFixed(0);
-      
+
       sellerPaymentController.text = basePrice.toStringAsFixed(2);
-      
+
       if (selectedSellerPaymentMethod == 'cash') {
         sellerPaidAmountController.text = sellerPaymentController.text;
       } else if ((selectedSellerPaymentMethod == 'loan_full' || selectedSellerPaymentMethod == 'loan_partial') && sellerPaidAmountController.text.isEmpty) {
@@ -1873,11 +2058,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           double netWeight = double.tryParse(netWeightController.text) ?? 0;
           double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
           String selectedUnit = unitController.text;
-          
+
           String netTon = _convertToTon(netWeight);
           String grossTon = _convertToTon(grossWeight);
           bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
-          
+
           String unitDisplay = '';
           if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
             unitDisplay = 'kg';
@@ -2309,8 +2494,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                       TextField(
                         controller: exchangeRateController,
                         decoration: InputDecoration(
-                          labelText: selectedCurrency == 'USD' 
-                              ? 'نرخ ارز (USD به AFN)' 
+                          labelText: selectedCurrency == 'USD'
+                              ? 'نرخ ارز (USD به AFN)'
                               : 'نرخ ارز (AFN به USD)',
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2489,8 +2674,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         controller: afnEquivalentController,
                         enabled: false,
                         decoration: InputDecoration(
-                          labelText: selectedCurrency == 'USD' 
-                              ? 'معادل به افغانی (AFN)' 
+                          labelText: selectedCurrency == 'USD'
+                              ? 'معادل به افغانی (AFN)'
                               : 'معادل به دالر (USD)',
                           border: const OutlineInputBorder(),
                           fillColor: const Color(0xFFF5F0EB),
@@ -2560,7 +2745,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                     };
 
                     final result = await _db.insertRawMaterial(material);
-                    
+
                     if (selectedSellerPaymentMethod != 'cash') {
                       final supplier = suppliers.firstWhere((s) => s['id'].toString() == selectedSupplierId, orElse: () => {});
                       final remainingSeller = (sellerPayment - sellerPaidAmount) < 0 ? 0 : (sellerPayment - sellerPaidAmount);
@@ -2590,7 +2775,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         });
                       }
                     }
-                    
+
                     Navigator.pop(context);
 
                     if (result != -1) {
@@ -2664,29 +2849,29 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
     void _updateFinalPrice() {
       double netWeight = double.tryParse(netWeightController.text) ?? 0;
       String selectedUnit = unitController.text;
-      
+
       double netWeightInTons = netWeight;
       if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
         netWeightInTons = netWeight / 1000;
       }
-      
+
       double unitPrice = double.tryParse(unitPriceController.text) ?? 0;
-      
+
       double productCost = double.tryParse(productController.text) ?? 0;
       double commission = double.tryParse(commissionController.text) ?? 0;
       double transferCost = double.tryParse(transferCostController.text) ?? 0;
       double miscellaneous = double.tryParse(miscellaneousController.text) ?? 0;
       double ghurfedari = double.tryParse(ghurfedariController.text) ?? 0;
       double barchalani = double.tryParse(barchalaniController.text) ?? 0;
-      
+
       double exchangeRate = double.tryParse(exchangeRateController.text) ?? 1;
       if (exchangeRate <= 0) exchangeRate = 1;
 
       double basePrice = netWeightInTons * unitPrice;
-      
-      double totalAfnExpenses = productCost + commission + transferCost + 
-                                miscellaneous + ghurfedari + barchalani;
-      
+
+      double totalAfnExpenses = productCost + commission + transferCost +
+          miscellaneous + ghurfedari + barchalani;
+
       double expensesInPriceCurrency;
       if (selectedCurrency == 'USD') {
         expensesInPriceCurrency = totalAfnExpenses / exchangeRate;
@@ -2696,15 +2881,15 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
 
       double finalPrice = basePrice + expensesInPriceCurrency;
       finalPriceController.text = finalPrice.toStringAsFixed(1);
-      
+
       if (selectedCurrency == 'USD') {
         afnEquivalentController.text = (finalPrice * exchangeRate).toStringAsFixed(1);
       } else {
-        afnEquivalentController.text = exchangeRate > 0 
-            ? (finalPrice * exchangeRate).toStringAsFixed(1) 
+        afnEquivalentController.text = exchangeRate > 0
+            ? (finalPrice * exchangeRate).toStringAsFixed(1)
             : '0';
       }
-      
+
       sellerPaymentController.text = basePrice.toStringAsFixed(0);
       if (selectedSellerPaymentMethod == 'cash') {
         sellerPaidAmountController.text = sellerPaymentController.text;
@@ -2720,11 +2905,11 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
           double netWeight = double.tryParse(netWeightController.text) ?? 0;
           double grossWeight = double.tryParse(grossWeightController.text) ?? 0;
           String selectedUnit = unitController.text;
-          
+
           String netTon = _convertToTon(netWeight);
           String grossTon = _convertToTon(grossWeight);
           bool isKg = selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg';
-          
+
           String unitDisplay = '';
           if (selectedUnit == 'کیلوگرم' || selectedUnit == 'kg' || selectedUnit == 'Kg') {
             unitDisplay = 'kg';
@@ -3156,8 +3341,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                       TextField(
                         controller: exchangeRateController,
                         decoration: InputDecoration(
-                          labelText: selectedCurrency == 'USD' 
-                              ? 'نرخ ارز (USD به AFN)' 
+                          labelText: selectedCurrency == 'USD'
+                              ? 'نرخ ارز (USD به AFN)'
                               : 'نرخ ارز (AFN به USD)',
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -3336,8 +3521,8 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                         controller: afnEquivalentController,
                         enabled: false,
                         decoration: InputDecoration(
-                          labelText: selectedCurrency == 'USD' 
-                              ? 'معادل به افغانی (AFN)' 
+                          labelText: selectedCurrency == 'USD'
+                              ? 'معادل به افغانی (AFN)'
                               : 'معادل به دالر (USD)',
                           border: const OutlineInputBorder(),
                           fillColor: const Color(0xFFF5F0EB),
@@ -3407,7 +3592,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                     };
 
                     final result = await _db.updateRawMaterial(material['id'], updatedMaterial);
-                    
+
                     Navigator.pop(context);
 
                     if (result != -1) {
@@ -3583,6 +3768,9 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
             ),
             const SizedBox(height: 16),
 
+            // ============================================================
+            // ✅ TOP SUMMARY CARD — Tons + AFN Value + USD Value
+            // ============================================================
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -3595,6 +3783,7 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
               ),
               child: Row(
                 children: [
+                  // ---- Total tons (left) ----
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -3604,24 +3793,44 @@ class _RawMaterialsPageState extends State<RawMaterialsPage> {
                     child: const Icon(Icons.scale, color: Color(0xFFCB001D), size: 20),
                   ),
                   const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'مجموع وزن به تن',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 10, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '${_getTotalTons().toStringAsFixed(1)} تن',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFCB001D),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Container(width: 1, height: 40, color: Colors.grey.shade300),
+                  const SizedBox(width: 16),
+                  // ---- AFN value ----
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'مجموع وزن به تن',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 10, fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          '${_getTotalTons().toStringAsFixed(1)} تن',
-                          style: const TextStyle(
-                            fontSize: 20, 
-                            fontWeight: FontWeight.bold, 
-                            color: Color(0xFFCB001D)
-                          ),
-                        ),
-                      ],
+                    child: _buildValueSummaryTile(
+                      label: 'ارزش به افغانی',
+                      value: '${_formatNumber(_getTotalValueByCurrency('AFN'))} AFN',
+                      icon: Icons.currency_exchange,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // ---- USD value ----
+                  Expanded(
+                    child: _buildValueSummaryTile(
+                      label: 'ارزش به دالر',
+                      value: '\$${_formatNumber(_getTotalValueByCurrency('USD'))}',
+                      icon: Icons.attach_money,
+                      color: Colors.blue.shade700,
                     ),
                   ),
                 ],

@@ -193,7 +193,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 38,
+        version: 39,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -234,7 +234,7 @@ class DatabaseHelper {
       
       return await openDatabase(
         path,
-        version: 38,
+        version: 39,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onOpen: (db) async {
@@ -1749,6 +1749,15 @@ if (oldVersion < 38) {
   }
 }
 
+if (oldVersion < 39) {
+  try {
+    await _ensureGroupWithSameInvoiceColumn(db);
+    print('✅ Database upgraded to version 39! (group_with_same_invoice)');
+  } catch (e) {
+    print('⚠️ Error upgrading to version 39: $e');
+  }
+}
+
 
       if (oldVersion < 21) {
         try {
@@ -2863,14 +2872,8 @@ Future<void> _ensureServiceInvoicesTable(Database db) async {
     }
   }
 
- Future<void> _ensureSalesInvoiceTable(Database db) async {
+Future<void> _ensureSalesInvoiceTable(Database db) async {
   try {
-    // DROP the old table and recreate without UNIQUE constraint
-    // OR add a new column for group_id
-    
-    // OPTION 1: Remove UNIQUE constraint (you need to recreate table)
-    // This is the simplest fix
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sales_invoices(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2922,14 +2925,38 @@ Future<void> _ensureServiceInvoicesTable(Database db) async {
         original_unit_count TEXT,
         original_total_weight TEXT,
         original_final_price REAL,
+        group_with_same_invoice INTEGER DEFAULT 1,   -- ⬅️ NEW LINE
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+    
+    // Make sure the column exists on older tables too
+    await _ensureGroupWithSameInvoiceColumn(db);
     
     print('✅ sales_invoices table verified/updated');
   } catch (e) {
     print('❌ Error ensuring sales invoices table: $e');
     rethrow;
+  }
+}
+
+Future<void> _ensureGroupWithSameInvoiceColumn(Database db) async {
+  try {
+    final columns = await db.rawQuery("PRAGMA table_info('sales_invoices')");
+    final columnNames = columns
+        .map((c) => c['name']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    if (!columnNames.contains('group_with_same_invoice')) {
+      await db.execute(
+        'ALTER TABLE sales_invoices '
+        'ADD COLUMN group_with_same_invoice INTEGER DEFAULT 1'
+      );
+      print('✅ Added group_with_same_invoice column to sales_invoices');
+    }
+  } catch (e) {
+    print('⚠️ Error ensuring group_with_same_invoice column: $e');
   }
 }
 

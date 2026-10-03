@@ -471,6 +471,8 @@ class _SalesPageState extends State<SalesPage> {
             'produced_product_id': null,
             'driver_name': '',
             'number_plate': '',
+            // 🔽 NEW: Excel imports are standalone — never grouped by invoice number
+            'group_with_same_invoice': 0,
           };
 
           int result = await _db.insertSalesInvoice(sale);
@@ -610,20 +612,32 @@ class _SalesPageState extends State<SalesPage> {
       }
       options.sort((a, b) => (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()));
 
+      // ============================================================
+      // Grouping logic (UPDATED):
+      //  • rows with group_with_same_invoice == 1 → grouped by invoice_number
+      //  • rows with group_with_same_invoice == 0 → each is standalone
+      // ============================================================
       final Map<String, List<Map<String, dynamic>>> groupedSales = {};
+      final List<Map<String, dynamic>> standaloneSales = [];
+
       for (var sale in sales) {
-        final invoiceNumber = sale['invoice_number']?.toString() ?? 'unknown';
-        if (!groupedSales.containsKey(invoiceNumber)) {
-          groupedSales[invoiceNumber] = [];
+        final shouldGroup = (sale['group_with_same_invoice'] ?? 1).toString() != '0';
+        if (shouldGroup) {
+          final invoiceNumber = sale['invoice_number']?.toString() ?? 'unknown';
+          if (!groupedSales.containsKey(invoiceNumber)) {
+            groupedSales[invoiceNumber] = [];
+          }
+          groupedSales[invoiceNumber]!.add(sale);
+        } else {
+          standaloneSales.add(sale);
         }
-        groupedSales[invoiceNumber]!.add(sale);
       }
 
       final List<Map<String, dynamic>> consolidatedSales = [];
-      for (var entry in groupedSales.entries) {
-        final items = entry.value;
-        final firstItem = items.first;
 
+      // Helper to consolidate a list of items into a single card
+      Map<String, dynamic> buildConsolidated(List<Map<String, dynamic>> items) {
+        final firstItem = items.first;
         final consolidated = Map<String, dynamic>.from(firstItem);
         consolidated['items'] = items;
 
@@ -648,14 +662,28 @@ class _SalesPageState extends State<SalesPage> {
         consolidated['unit'] = unit;
         consolidated['product_count'] = items.length;
 
-        final productNames = items.map((item) => item['product_name']?.toString() ?? '').where((name) => name.isNotEmpty).toList();
+        final productNames = items
+            .map((item) => item['product_name']?.toString() ?? '')
+            .where((name) => name.isNotEmpty)
+            .toList();
         consolidated['product_names'] = productNames;
         consolidated['display_products'] = productNames.join('، ');
 
-        consolidatedSales.add(consolidated);
+        return consolidated;
       }
 
-      consolidatedSales.sort((a, b) => (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
+      // Grouped invoices (modal-created)
+      for (var entry in groupedSales.entries) {
+        consolidatedSales.add(buildConsolidated(entry.value));
+      }
+
+      // Standalone invoices (Excel-imported) — each one becomes its own card
+      for (var sale in standaloneSales) {
+        consolidatedSales.add(buildConsolidated([sale]));
+      }
+
+      consolidatedSales.sort((a, b) =>
+          (b['created_at'] ?? '').toString().compareTo((a['created_at'] ?? '').toString()));
 
       if (!mounted) return;
       setState(() {
@@ -1566,6 +1594,8 @@ class _SalesPageState extends State<SalesPage> {
                           'produced_product_id': item['product_id'],
                           'driver_name': driverNameController.text.trim(),
                           'number_plate': numberPlateController.text.trim(),
+                          // 🔽 NEW: Modal-created invoices are grouped by invoice_number
+                          'group_with_same_invoice': 1,
                         };
 
                         final id = await _db.insertSalesInvoice(payload);
@@ -2592,10 +2622,16 @@ class _SalesPageState extends State<SalesPage> {
                             ? 0
                             : finalPrice - paidAmount;
 
-                    final existingInvoice = await _db.getSalesInvoiceByNumber(invoiceNumber);
-                    if (existingInvoice != null && existingInvoice['id'] != sale['id']) {
-                      _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
-                      return;
+                    // 🔽 Skip duplicate-invoice-number check for standalone (Excel) rows
+                    final isStandaloneRow =
+                        (sale['group_with_same_invoice'] ?? 1).toString() == '0';
+
+                    if (!isStandaloneRow) {
+                      final existingInvoice = await _db.getSalesInvoiceByNumber(invoiceNumber);
+                      if (existingInvoice != null && existingInvoice['id'] != sale['id']) {
+                        _showSnackbar('این شماره فاکتور قبلاً ثبت شده است', Colors.red);
+                        return;
+                      }
                     }
 
                     final payload = {

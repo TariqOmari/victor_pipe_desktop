@@ -110,7 +110,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           } else {
             price = double.tryParse(r['price']?.toString() ?? '0') ?? 0.0;
           }
-          
+
           int usdEquivalent = 0;
           if (r['usd_equivalent'] is int) {
             usdEquivalent = r['usd_equivalent'] as int;
@@ -128,7 +128,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           } else {
             afnEquivalent = int.tryParse(r['afn_equivalent']?.toString() ?? '0') ?? 0;
           }
-          
+
           _expensesData.add({
             'id': r['id'],
             'invoiceNumber': r['invoice_number'] ?? '-',
@@ -161,24 +161,37 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   bool _isUSD(String? currency) {
     if (currency == null) return false;
     final c = currency.trim().toLowerCase();
-    return c == 'usd' || 
-           c == 'دالر' || 
-           c == 'دلار' || 
-           c == '\$' ||
-           c.contains('usd') ||
-           c.contains('دالر') ||
-           c.contains('دلار');
+    return c == 'usd' ||
+        c == 'دالر' ||
+        c == 'دلار' ||
+        c == '\$' ||
+        c.contains('usd') ||
+        c.contains('دالر') ||
+        c.contains('دلار');
   }
 
   bool _isAFN(String? currency) {
     if (currency == null) return false;
     final c = currency.trim().toLowerCase();
-    return c == 'afn' || 
-           c == 'افغانی' || 
-           c == 'افغاني' || 
-           c.contains('afn') ||
-           c.contains('افغانی') ||
-           c.contains('افغاني');
+    return c == 'afn' ||
+        c == 'افغانی' ||
+        c == 'افغاني' ||
+        c.contains('afn') ||
+        c.contains('افغانی') ||
+        c.contains('افغاني');
+  }
+
+  // ============================================================
+  // HELPER: Normalize category for reliable matching
+  // ============================================================
+  String _normalizeCategory(String value) {
+    return value
+        .trim()
+        .replaceAll('\u064A', '\u06CC') // Arabic Yeh  ي -> Persian Yeh  ی
+        .replaceAll('\u0643', '\u06A9') // Arabic Kaf  ك -> Persian Kaf  ک
+        .replaceAll('\u200C', ' ')       // ZWNJ -> space
+        .replaceAll(RegExp(r'\s+'), ' ') // collapse multiple spaces
+        .replaceAll('\u0640', '');       // remove tatweel
   }
 
   // ============================================================
@@ -194,8 +207,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   bool _isPersianLeapYear(int year) {
     int mod = year % 33;
-    return mod == 1 || mod == 5 || mod == 9 || mod == 13 || 
-           mod == 17 || mod == 22 || mod == 26 || mod == 30;
+    return mod == 1 || mod == 5 || mod == 9 || mod == 13 ||
+        mod == 17 || mod == 22 || mod == 26 || mod == 30;
   }
 
   String _convertPersianToEnglish(int persianYear, int persianMonth, int persianDay) {
@@ -204,19 +217,19 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
       int refYear = 1400;
       int refMonth = 1;
       int refDay = 1;
-      
+
       int daysDiff = 0;
-      
+
       for (int y = refYear; y < persianYear; y++) {
         daysDiff += _isPersianLeapYear(y) ? 366 : 365;
       }
-      
+
       for (int m = 1; m < persianMonth; m++) {
         daysDiff += _getPersianMonthDays(m, persianYear);
       }
-      
+
       daysDiff += (persianDay - refDay);
-      
+
       DateTime result = refDate.add(Duration(days: daysDiff));
       return '${result.year}-${result.month.toString().padLeft(2, '0')}-${result.day.toString().padLeft(2, '0')}';
     } catch (e) {
@@ -230,7 +243,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
   // ============================================================
   Future<void> _importExcel() async {
     final l10n = AppLocalizations.of(context)!;
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -254,7 +267,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
     try {
       final result = await _pickAndImportExcel();
-      
+
       Navigator.pop(context);
 
       if (result['success']) {
@@ -282,7 +295,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       final file = File(result.files.single.path!);
       final bytes = await file.readAsBytes();
-      
+
       try {
         final excelFile = excel.Excel.decodeBytes(bytes);
         final sheet = excelFile.tables[excelFile.tables.keys.first];
@@ -300,11 +313,11 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
   String _convertPersianToEnglishDigits(String value) {
     if (value.isEmpty) return value;
-    
+
     const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
     const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
     const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    
+
     String result = value;
     for (int i = 0; i < 10; i++) {
       result = result.replaceAll(persianDigits[i], englishDigits[i]);
@@ -318,7 +331,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     final cell = row[index];
     if (cell == null) return '';
     if (cell.value == null) return '';
-    
+
     String value;
     if (cell.value is String) {
       value = (cell.value as String).trim();
@@ -336,11 +349,11 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     } else {
       value = cell.value.toString().trim();
     }
-    
+
     if (value.isNotEmpty) {
       value = _convertPersianToEnglishDigits(value);
     }
-    
+
     return value;
   }
 
@@ -387,7 +400,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       for (int i = 0; i < headers.length; i++) {
         String h = headers[i].trim();
-        
+
         if (h == 'شماره بل' || h.contains('نمبر بل')) {
           invoiceNumberIndex = i;
         } else if (h == 'شماره ثبت' || h.contains('شماره ثبت')) {
@@ -424,7 +437,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
-        
+
         bool hasData = false;
         for (var cell in row) {
           if (cell != null && cell.value != null) {
@@ -440,12 +453,12 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         try {
           String invoiceNumber = invoiceNumberIndex != -1 ? _getCellValue(row, invoiceNumberIndex) : '';
           String registrationNumber = registrationNumberIndex != -1 ? _getCellValue(row, registrationNumberIndex) : '';
-          
+
           String dateStr = _getCellValue(row, dateIndex);
           String category = categoryIndex != -1 ? _getCellValue(row, categoryIndex) : 'سایر';
           String description = descriptionIndex != -1 ? _getCellValue(row, descriptionIndex) : '';
           String priceStr = _getCellValue(row, priceIndex);
-          
+
           String currency = 'افغانی';
           if (currencyIndex != -1) {
             String currencyVal = _getCellValue(row, currencyIndex);
@@ -453,7 +466,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               currency = currencyVal;
             }
           }
-          
+
           String exchangeRateStr = '64.8';
           if (exchangeRateIndex != -1) {
             String rateVal = _getCellValue(row, exchangeRateIndex);
@@ -468,8 +481,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           print('  - Currency: "$currency"');
           print('  - Exchange Rate: "$exchangeRateStr"');
 
-          if ((invoiceNumber.isEmpty && registrationNumber.isEmpty) || 
-              dateStr.isEmpty || 
+          if ((invoiceNumber.isEmpty && registrationNumber.isEmpty) ||
+              dateStr.isEmpty ||
               priceStr.isEmpty) {
             skippedCount++;
             errors.add('ردیف ${i+1}: داده‌ها کامل نیستند');
@@ -478,9 +491,9 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
           String persianDate = '';
           String englishDate = '';
-          
+
           dateStr = dateStr.replaceAll(RegExp(r'[^0-9\-]'), '');
-          
+
           bool isPersianDate = false;
           try {
             List<String> parts = dateStr.split('-');
@@ -501,7 +514,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
               int persianYear = int.parse(parts[0]);
               int persianMonth = int.parse(parts[1]);
               int persianDay = int.parse(parts[2]);
-              
+
               englishDate = _convertPersianToEnglish(persianYear, persianMonth, persianDay);
             } catch (e) {
               englishDate = PersianDateConverter.getCurrentEnglishDate();
@@ -525,7 +538,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
 
           double price = _parseNumber(priceStr);
           double exchangeRate = _parseNumber(exchangeRateStr);
-          
+
           if (exchangeRate <= 0) exchangeRate = 64.8;
 
           if (price <= 0) {
@@ -538,17 +551,17 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
           final existing = await _db.getDailyExpenses();
           bool duplicate = false;
           String duplicateField = '';
-          
+
           if (invoiceNumber.isNotEmpty) {
             duplicate = existing.any((e) => e['invoice_number'] == invoiceNumber);
             if (duplicate) duplicateField = 'شماره بل';
           }
-          
+
           if (!duplicate && registrationNumber.isNotEmpty) {
             duplicate = existing.any((e) => e['registration_number'] == registrationNumber);
             if (duplicate) duplicateField = 'شماره ثبت';
           }
-          
+
           if (duplicate) {
             skippedCount++;
             errors.add('ردیف ${i+1}: $duplicateField تکراری است');
@@ -687,15 +700,15 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _currencyController.clear();
     _exchangeRateController.clear();
     _equivalentController.clear();
-    
+
     String? selectedEnglishDate;
     String selectedCurrency = 'افغانی';
     String selectedPersianDate = '';
-    
+
     void updateEquivalent() {
       final price = double.tryParse(_priceController.text) ?? 0;
       final rate = double.tryParse(_exchangeRateController.text) ?? 1;
-      
+
       if (_isAFN(selectedCurrency)) {
         _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
       } else if (_isUSD(selectedCurrency)) {
@@ -704,7 +717,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
         _equivalentController.text = '0';
       }
     }
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -838,8 +851,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                         Expanded(
                           child: _buildTextField(
                             controller: _exchangeRateController,
-                            label: _isAFN(selectedCurrency) 
-                                ? 'نرخ ارز (AFN به USD) *' 
+                            label: _isAFN(selectedCurrency)
+                                ? 'نرخ ارز (AFN به USD) *'
                                 : 'نرخ ارز (USD به AFN) *',
                             icon: Icons.trending_up_outlined,
                             hint: _isAFN(selectedCurrency) ? '0.015' : '66',
@@ -853,8 +866,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     const SizedBox(height: 12),
                     _buildTextField(
                       controller: _equivalentController,
-                      label: _isAFN(selectedCurrency) 
-                          ? 'معادل به دالر (USD)' 
+                      label: _isAFN(selectedCurrency)
+                          ? 'معادل به دالر (USD)'
                           : 'معادل به افغانی (AFN)',
                       icon: Icons.attach_money_outlined,
                       hint: '0',
@@ -951,11 +964,11 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     _equivalentController.text = expense['usdEquivalent'].toString();
 
     String? selectedEnglishDate = expense['date_en'];
-    
+
     void updateEquivalent() {
       final price = double.tryParse(_priceController.text) ?? 0;
       final rate = double.tryParse(_exchangeRateController.text) ?? 1;
-      
+
       if (_isAFN(selectedCurrency)) {
         _equivalentController.text = rate > 0 ? (price / rate).toStringAsFixed(2) : '0';
       } else if (_isUSD(selectedCurrency)) {
@@ -1095,8 +1108,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                         Expanded(
                           child: _buildTextField(
                             controller: _exchangeRateController,
-                            label: _isAFN(selectedCurrency) 
-                                ? 'نرخ ارز (AFN به USD) *' 
+                            label: _isAFN(selectedCurrency)
+                                ? 'نرخ ارز (AFN به USD) *'
                                 : 'نرخ ارز (USD به AFN) *',
                             icon: Icons.trending_up_outlined,
                             keyboardType: TextInputType.number,
@@ -1109,8 +1122,8 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
                     const SizedBox(height: 12),
                     _buildTextField(
                       controller: _equivalentController,
-                      label: _isAFN(selectedCurrency) 
-                          ? 'معادل به دالر (USD)' 
+                      label: _isAFN(selectedCurrency)
+                          ? 'معادل به دالر (USD)'
                           : 'معادل به افغانی (AFN)',
                       icon: Icons.attach_money_outlined,
                       keyboardType: TextInputType.number,
@@ -1623,13 +1636,15 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     final isEnglish = languageProvider.isEnglish;
 
     final filteredData = _expensesData.where((expense) {
-      final matchesSearch = 
-        (expense['invoiceNumber'] ?? '').toString().contains(_searchQuery) ||
-        (expense['registrationNumber'] ?? '').toString().contains(_searchQuery) ||
-        (expense['description'] ?? '').toString().contains(_searchQuery) ||
-        (expense['category'] ?? '').toString().contains(_searchQuery);
+      final matchesSearch =
+          (expense['invoiceNumber'] ?? '').toString().contains(_searchQuery) ||
+          (expense['registrationNumber'] ?? '').toString().contains(_searchQuery) ||
+          (expense['description'] ?? '').toString().contains(_searchQuery) ||
+          (expense['category'] ?? '').toString().contains(_searchQuery);
+      // ✅ FIXED: normalized category comparison
       final matchesCategory = _selectedCategory == 'همه' ||
-          expense['category'] == _selectedCategory;
+          _normalizeCategory(expense['category']?.toString() ?? '') ==
+              _normalizeCategory(_selectedCategory);
       final matchesCurrency = _selectedCurrency == 'همه' ||
           expense['currency'] == _selectedCurrency;
       return matchesSearch && matchesCategory && matchesCurrency;
@@ -2147,7 +2162,7 @@ class _DailyExpensesPageState extends State<DailyExpensesPage> {
     double price = expense['price'] is double ? expense['price'] as double : 0.0;
     String priceDisplay = price.toStringAsFixed(0);
     final isSelected = _selectedIds.contains(expense['id'] as int);
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(

@@ -19,9 +19,10 @@ import 'pages/supplier_loans_page.dart';
 import 'pages/customer_company_loans_page.dart';
 import 'pages/capital_Page.dart';
 import 'pages/sarafi_page.dart';
+import 'pages/anbar_page.dart';  // 👈 ADD THIS IMPORT
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
-import 'pages/incomes_page.dart'; // Add this with the other imports
+import 'pages/incomes_page.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -38,7 +39,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize pages here where widget is available
     pages = [
       const HomePage(),                          // index 0
       const CustomersPage(),                     // index 1
@@ -55,9 +55,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const CapitalPage(),                       // index 12
       const SarafiPage(),                        // index 13
       AdminsPage(currentUser: widget.user),     // index 14
-      const CustomerCompanyLoansPage(),          // index 15 👈 FIXED: Customer Loans
-      const SupplierLoansPage(),   
-      const IncomesPage(),                   // index 16 👈 FIXED: Supplier Loans
+      const CustomerCompanyLoansPage(),          // index 15
+      const SupplierLoansPage(),                 // index 16
+      const IncomesPage(),                       // index 17
+      const AnbarPage(),                         // index 18 👈 ADD THIS - Warehouse Management
     ];
   }
 

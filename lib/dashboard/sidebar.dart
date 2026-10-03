@@ -25,8 +25,9 @@ class Sidebar extends StatelessWidget {
     final languageProvider = Provider.of<LanguageProvider>(context);
 
     // Get dynamic user name based on language
-    String displayName = user['full_name'] ?? (languageProvider.isEnglish ? 'User' : 'کاربر');
-    
+    String displayName = user['full_name'] ??
+        (languageProvider.isEnglish ? 'User' : 'کاربر');
+
     // If admin, show translated name
     if (user['role'] == 'admin' || user['role'] == 'مدیر') {
       displayName = languageProvider.isEnglish ? 'System Admin' : 'مدیر سیستم';
@@ -64,7 +65,7 @@ class Sidebar extends StatelessWidget {
         children: [
           // User Profile Header
           _buildUserProfile(isSmallScreen, l10n, updatedUser),
-          
+
           // Menu Items
           Expanded(
             child: ListView(
@@ -173,26 +174,37 @@ class Sidebar extends StatelessWidget {
                 ),
                 _buildMenuItem(
                   context: context,
-                  index: 15,  // 👈 FIXED: Now points to CustomerCompanyLoansPage
+                  index: 15,
                   icon: Icons.account_balance_wallet,
-                  title: l10n.loans,  // Customer Loans
+                  title: l10n.loans,
                   isSelected: selectedIndex == 15,
                 ),
                 _buildMenuItem(
                   context: context,
-                  index: 16,  // 👈 FIXED: Now points to SupplierLoansPage
+                  index: 16,
                   icon: Icons.storefront,
-                  title: l10n.supplierLoans,  // Supplier Loans
+                  title: l10n.supplierLoans,
                   isSelected: selectedIndex == 16,
                 ),
                 _buildMenuItem(
-  context: context,
-  index: 17,  // 👈 ADD THIS - points to IncomesPage
-  icon: Icons.monetization_on,  // Money icon
-  title: l10n.incomesManagement,  // ✅ Uses localization  // Hardcoded Persian // or 'عواید' if you have it in localization
-  isSelected: selectedIndex == 17,
-),
-                
+                  context: context,
+                  index: 17,
+                  icon: Icons.monetization_on,
+                  title: l10n.incomesManagement,
+                  isSelected: selectedIndex == 17,
+                ),
+
+                // 👈 NEW: Warehouse Management Tab (مدیریت انبار)
+                _buildMenuItem(
+                  context: context,
+                  index: 18,
+                  icon: Icons.inventory_2_outlined,
+                  title: languageProvider.isEnglish
+                      ? 'Warehouse Management'
+                      : 'مدیریت انبار',
+                  isSelected: selectedIndex == 18,
+                ),
+
                 Padding(
                   padding: EdgeInsets.symmetric(
                     vertical: isSmallScreen ? 8 : 12,
@@ -204,7 +216,7 @@ class Sidebar extends StatelessWidget {
                     height: 1,
                   ),
                 ),
-                
+
                 _buildMenuItem(
                   context: context,
                   index: -1,
@@ -221,8 +233,10 @@ class Sidebar extends StatelessWidget {
     );
   }
 
-  Widget _buildUserProfile(bool isSmallScreen, AppLocalizations l10n, Map<String, dynamic> userData) {
-    final String fullName = userData['full_name'] ?? (l10n.language == 'en' ? 'User' : 'کاربر');
+  Widget _buildUserProfile(bool isSmallScreen, AppLocalizations l10n,
+      Map<String, dynamic> userData) {
+    final String fullName = userData['full_name'] ??
+        (l10n.language == 'en' ? 'User' : 'کاربر');
     final String username = userData['username'] ?? '';
     final String? profilePic = userData['profile_pic'];
     final String firstLetter = fullName.isNotEmpty ? fullName[0] : '?';
@@ -281,9 +295,9 @@ class Sidebar extends StatelessWidget {
                   : _buildAvatarFallback(firstLetter, isSmallScreen),
             ),
           ),
-          
+
           const SizedBox(height: 10),
-          
+
           Text(
             fullName,
             style: TextStyle(
@@ -303,9 +317,9 @@ class Sidebar extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          
+
           const SizedBox(height: 2),
-          
+
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
             decoration: BoxDecoration(
@@ -336,9 +350,9 @@ class Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 4),
-          
+
           if (username.isNotEmpty)
             Text(
               '@$username',
@@ -380,7 +394,6 @@ class Sidebar extends StatelessWidget {
   }) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 1200;
-    final l10n = AppLocalizations.of(context)!;
 
     return Material(
       color: Colors.transparent,
@@ -470,7 +483,7 @@ class Sidebar extends StatelessWidget {
             ),
             onTap: () {
               if (isLogout) {
-                _showLogoutDialog(context, l10n);
+                _showLogoutDialog(context, AppLocalizations.of(context)!);
               } else {
                 onItemSelected(index);
               }
